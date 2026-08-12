@@ -49,6 +49,3 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
-
-# Push separately once gh token has workflow scope
-.github/workflows/
