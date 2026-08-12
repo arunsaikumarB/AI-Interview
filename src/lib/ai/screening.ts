@@ -1,6 +1,12 @@
 import { z } from "zod";
 import type { AIRecommendation, Job } from "@prisma/client";
 import { AIError, chatJSON } from "@/lib/ai/ollama";
+import {
+  coerceEnum,
+  coerceScore,
+  coerceStringArray,
+  ensureMinText,
+} from "@/lib/ai/llm-coerce";
 
 /**
  * JD vs Resume advisory screening.
@@ -15,7 +21,7 @@ export const ScreeningBreakdownSchema = z.object({
   jobRequirements: z.number().min(0).max(100),
 });
 
-export const ScreeningResultSchema = z.object({
+const ScreeningResultShape = z.object({
   overall: z.number().min(0).max(100),
   breakdown: ScreeningBreakdownSchema,
   whyMatch: z.array(z.string().min(1)).min(3).max(6),
@@ -25,7 +31,60 @@ export const ScreeningResultSchema = z.object({
   reasoning: z.string().min(40),
 });
 
-export type ScreeningResult = z.infer<typeof ScreeningResultSchema>;
+/** Lenient parse — coerces common local-LLM quirks before strict checks. */
+export const ScreeningResultSchema = z.preprocess((raw) => {
+  if (!raw || typeof raw !== "object") return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+
+  o.overall = coerceScore(o.overall, 50);
+
+  if (o.breakdown && typeof o.breakdown === "object") {
+    const b = { ...(o.breakdown as Record<string, unknown>) };
+    for (const key of [
+      "technicalSkills",
+      "experience",
+      "education",
+      "domainExperience",
+      "jobRequirements",
+    ] as const) {
+      b[key] = coerceScore(b[key], 50);
+    }
+    o.breakdown = b;
+  } else {
+    o.breakdown = {
+      technicalSkills: 50,
+      experience: 50,
+      education: 50,
+      domainExperience: 50,
+      jobRequirements: 50,
+    };
+  }
+
+  o.whyMatch = coerceStringArray(o.whyMatch, {
+    min: 3,
+    max: 6,
+    padWith:
+      "Limited resume evidence for an additional match point; recruiter should verify.",
+  });
+  o.missingRequirements = coerceStringArray(o.missingRequirements, {
+    max: 12,
+  });
+  o.concerns = coerceStringArray(o.concerns, { max: 12 });
+  o.recommendedAction = coerceEnum(
+    o.recommendedAction,
+    ["SHORTLIST", "REVIEW", "REJECT"] as const,
+    "REVIEW",
+  );
+  o.reasoning = ensureMinText(
+    o.reasoning,
+    40,
+    "Advisory screening completed. Recruiter should review scores, match points, and missing requirements before deciding.",
+  );
+
+  return o;
+}, ScreeningResultShape);
+
+export type ScreeningResult = z.infer<typeof ScreeningResultShape>;
 export type ScreeningBreakdown = z.infer<typeof ScreeningBreakdownSchema>;
 
 export type ScreeningCriteria = {
@@ -49,6 +108,8 @@ const SYSTEM_PROMPT = `You are an advisory hiring screener for a self-hosted ATS
 You NEVER make hiring decisions and you NEVER change application stages.
 Score the candidate ONLY against the provided job description and criteria.
 Rules:
+- whyMatch MUST be a JSON array of 3 to 6 strings (never a single string, never an object).
+- missingRequirements and concerns MUST be JSON arrays of strings (use [] if none).
 - Cite concrete evidence from the resume for EVERY whyMatch point.
 - Do not invent facts, employers, degrees, or skills not present in the inputs.
 - If something is unverifiable from the resume, put it in concerns — do not assume it.
@@ -150,7 +211,8 @@ export function buildScreeningUserPrompt(params: {
     `Resume text:\n${resumeText}`,
     "",
     "JSON schema keys:",
-    '{ "overall": 0-100, "breakdown": { "technicalSkills", "experience", "education", "domainExperience", "jobRequirements" }, "whyMatch": string[3-6], "missingRequirements": string[], "concerns": string[], "recommendedAction": "SHORTLIST"|"REVIEW"|"REJECT", "reasoning": string }',
+    '{ "overall": 0-100, "breakdown": { "technicalSkills", "experience", "education", "domainExperience", "jobRequirements" }, "whyMatch": ["string","string","string"], "missingRequirements": ["string"], "concerns": ["string"], "recommendedAction": "SHORTLIST"|"REVIEW"|"REJECT", "reasoning": "string" }',
+    'CRITICAL: whyMatch must be an array like ["point one","point two","point three"], never a single paragraph string.',
   ].join("\n");
 }
 
@@ -177,6 +239,14 @@ export async function runResumeScreening(params: {
       SYSTEM_PROMPT,
       user,
       ScreeningResultSchema,
+      {
+        temperature: 0.1,
+        numPredict: 1200,
+        jsonSchema: z.toJSONSchema(ScreeningResultShape) as Record<
+          string,
+          unknown
+        >,
+      },
     );
 
     if (!data.reasoning?.trim()) {

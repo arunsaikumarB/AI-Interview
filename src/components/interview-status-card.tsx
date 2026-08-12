@@ -15,31 +15,50 @@ export type InterviewSummary = {
   proctoringEventCount: number;
 };
 
+export type InterviewStatusApplication = {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  candidateEmail: string;
+  jobId: string;
+  jobTitle: string;
+};
+
 function statusLabel(status: string) {
   switch (status) {
     case "SCHEDULED":
-      return "Scheduled";
+      return "Active";
     case "IN_PROGRESS":
-      return "In progress";
+      return "In Progress";
     case "COMPLETED":
       return "Completed";
+    case "CANCELLED":
+      return "Cancelled";
     default:
       return status;
   }
 }
 
 export function InterviewStatusCard({
-  applicationId,
+  application,
   latest,
 }: {
-  applicationId: string;
+  application: InterviewStatusApplication;
   latest: InterviewSummary | null;
 }) {
+  const apps = [application];
+
   return (
     <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h2 className="text-base font-semibold text-slate-900">Interview</h2>
-        {!latest ? <CreateInterviewDialog applicationId={applicationId} /> : null}
+        {!latest ? (
+          <CreateInterviewDialog
+            applications={apps}
+            triggerLabel="Create Interview Link"
+            preselectedApplicationId={application.id}
+          />
+        ) : null}
       </div>
 
       {!latest ? (
@@ -87,7 +106,11 @@ export function InterviewStatusCard({
                   : "Open Interview"}
               </Link>
             )}
-            <CreateInterviewDialog applicationId={applicationId} />
+            <CreateInterviewDialog
+              applications={apps}
+              triggerLabel="Create Interview Link"
+              preselectedApplicationId={application.id}
+            />
           </div>
           <p className="pt-2 text-xs text-slate-500">
             Proctoring

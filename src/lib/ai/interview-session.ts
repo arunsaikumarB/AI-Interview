@@ -11,12 +11,34 @@ import {
 
 export { mapDifficultyToEnum, initialAdaptiveState };
 
+export const EXPIRED_INTERVIEW_LINK_MESSAGE =
+  "This interview link has expired. Please contact the recruiter.";
+
 export function createAccessToken(): string {
   return randomBytes(32).toString("hex");
 }
 
-export function tokenExpiresInDays(days = 7): Date {
+/** Link validity window from creation (default 3 days). */
+export function tokenExpiresInDays(days = 3): Date {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+}
+
+/** Absolute end time for a timed interview session (null = no wall-clock limit). */
+export function sessionEndsAt(
+  startedAt: Date | null | undefined,
+  durationMinutes: number | null | undefined,
+): Date | null {
+  if (!startedAt || durationMinutes == null || durationMinutes <= 0) return null;
+  return new Date(startedAt.getTime() + durationMinutes * 60 * 1000);
+}
+
+export function isSessionTimeUp(
+  startedAt: Date | null | undefined,
+  durationMinutes: number | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  const ends = sessionEndsAt(startedAt, durationMinutes);
+  return ends != null && now.getTime() >= ends.getTime();
 }
 
 export function parsePlan(raw: unknown): InterviewPlan {

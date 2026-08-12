@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { VoiceDeviceCheck } from "@/components/voice-device-check";
+import { PreInterviewSystemCheck } from "@/components/pre-interview-system-check";
 import { ProctoringConsent } from "@/components/proctoring-consent";
+import { EnhancedProctoringSetup } from "@/components/enhanced-proctoring-setup";
 import { CandidateQuestions } from "@/components/candidate-questions";
 import {
   createProctoringCollector,
@@ -29,12 +30,24 @@ type Info = {
   jobTitle: string;
   candidateFirstName: string;
   maxQuestions: number;
+  durationMinutes?: number | null;
+  endsAt?: string | null;
   instructions: string;
   concluded: boolean;
   mode: "TEXT" | "VOICE";
   proctoringEnabled?: boolean;
+  proctoringMode?: string;
   proctoringConsentAt?: string | null;
+  secondaryPlacementConfirmed?: boolean;
 };
+
+function formatRemaining(ms: number): string {
+  if (ms <= 0) return "0:00";
+  const totalSec = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 type AnswerMode = "voice" | "text";
 
@@ -50,7 +63,8 @@ export function InterviewRoom({ token }: { token: string }) {
   const [answer, setAnswer] = useState("");
   const [thinking, setThinking] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [deviceReady, setDeviceReady] = useState(false);
+  const [systemCheckReady, setSystemCheckReady] = useState(false);
+  const [enhancedSetupReady, setEnhancedSetupReady] = useState(false);
   const [preferText, setPreferText] = useState(false);
   const [answerMode, setAnswerMode] = useState<AnswerMode>("voice");
   const [recording, setRecording] = useState(false);
@@ -63,6 +77,8 @@ export function InterviewRoom({ token }: { token: string }) {
   const [cameraAllowed, setCameraAllowed] = useState(false);
   const [focusNudge, setFocusNudge] = useState<string | null>(null);
   const [postPhase, setPostPhase] = useState<"questions" | "thanks" | null>(null);
+  const [remainingLabel, setRemainingLabel] = useState<string | null>(null);
+  const [timeUp, setTimeUp] = useState(false);
   const startedAt = useRef<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -151,6 +167,8 @@ export function InterviewRoom({ token }: { token: string }) {
             jobTitle: data.jobTitle,
             candidateFirstName: data.candidateFirstName,
             maxQuestions: data.maxQuestions,
+            durationMinutes: data.durationMinutes ?? prev.durationMinutes,
+            endsAt: data.endsAt ?? prev.endsAt,
             concluded: data.concluded,
           }
         : {
@@ -159,6 +177,8 @@ export function InterviewRoom({ token }: { token: string }) {
             jobTitle: data.jobTitle,
             candidateFirstName: data.candidateFirstName,
             maxQuestions: data.maxQuestions,
+            durationMinutes: data.durationMinutes ?? null,
+            endsAt: data.endsAt ?? null,
             instructions: "",
             concluded: data.concluded,
           },
@@ -177,7 +197,9 @@ export function InterviewRoom({ token }: { token: string }) {
         ...data,
         mode: data.mode === "VOICE" ? "VOICE" : "TEXT",
         proctoringEnabled: Boolean(data.proctoringEnabled),
+        proctoringMode: data.proctoringMode ?? "OFF",
         proctoringConsentAt: data.proctoringConsentAt ?? null,
+        secondaryPlacementConfirmed: Boolean(data.secondaryPlacementConfirmed),
       });
       setConcluded(Boolean(data.concluded));
       if (data.proctoringConsentAt) {
@@ -186,14 +208,29 @@ export function InterviewRoom({ token }: { token: string }) {
           setCameraAllowed(data.cameraConsent);
         }
       }
+      if (data.secondaryPlacementConfirmed) {
+        setEnhancedSetupReady(true);
+      }
       if (data.mode !== "VOICE") {
-        setDeviceReady(true);
         setPreferText(true);
         setAnswerMode("text");
       }
+      // Resume / completed: skip system check (session already underway).
       if (data.status === "IN_PROGRESS" || data.status === "COMPLETED") {
-        if (data.mode === "VOICE") setDeviceReady(true);
+        setSystemCheckReady(true);
+        setEnhancedSetupReady(true);
         await loadState();
+      } else {
+        try {
+          if (sessionStorage.getItem(`aros-syscheck-${token}`) === "1") {
+            setSystemCheckReady(true);
+          }
+          if (sessionStorage.getItem(`aros-enhanced-${token}`) === "1") {
+            setEnhancedSetupReady(true);
+          }
+        } catch {
+          /* ignore */
+        }
       }
       if (data.status === "COMPLETED" || data.concluded) {
         try {
@@ -301,6 +338,21 @@ export function InterviewRoom({ token }: { token: string }) {
     }, 1000);
     return () => clearInterval(id);
   }, [timerKey, thinking, recording]);
+
+  useEffect(() => {
+    if (!info?.endsAt || concluded) {
+      setRemainingLabel(null);
+      return;
+    }
+    const tick = () => {
+      const ms = new Date(info.endsAt!).getTime() - Date.now();
+      setRemainingLabel(formatRemaining(ms));
+      setTimeUp(ms <= 0);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [info?.endsAt, concluded]);
 
   const activeSequence = current?.sequence;
   const activeQuestionText = current?.question;
@@ -625,6 +677,39 @@ export function InterviewRoom({ token }: { token: string }) {
     );
   }
 
+  // Pre-interview system check before consent / start (SCHEDULED only).
+  if (!systemCheckReady && info.status === "SCHEDULED") {
+    return (
+      <PreInterviewSystemCheck
+        mode={info.mode}
+        proctoringEnabled={Boolean(info.proctoringEnabled)}
+        onContinue={() => {
+          try {
+            sessionStorage.setItem(`aros-syscheck-${token}`, "1");
+          } catch {
+            /* ignore */
+          }
+          setSystemCheckReady(true);
+          if (info.mode === "VOICE") setAnswerMode("voice");
+        }}
+        onUseText={
+          info.mode === "VOICE"
+            ? () => {
+                try {
+                  sessionStorage.setItem(`aros-syscheck-${token}`, "1");
+                } catch {
+                  /* ignore */
+                }
+                setPreferText(true);
+                setSystemCheckReady(true);
+                setAnswerMode("text");
+              }
+            : undefined
+        }
+      />
+    );
+  }
+
   if (
     info.proctoringEnabled &&
     !proctoringConsented &&
@@ -633,6 +718,7 @@ export function InterviewRoom({ token }: { token: string }) {
   ) {
     return (
       <ProctoringConsent
+        enhanced={info.proctoringMode === "ENHANCED"}
         onContinue={async (allowCamera) => {
           await recordConsent(allowCamera);
         }}
@@ -641,20 +727,20 @@ export function InterviewRoom({ token }: { token: string }) {
   }
 
   if (
-    info.mode === "VOICE" &&
-    !deviceReady &&
+    info.proctoringMode === "ENHANCED" &&
+    !enhancedSetupReady &&
     info.status === "SCHEDULED"
   ) {
     return (
-      <VoiceDeviceCheck
-        onContinue={() => {
-          setDeviceReady(true);
-          setAnswerMode("voice");
-        }}
-        onUseText={() => {
-          setPreferText(true);
-          setDeviceReady(true);
-          setAnswerMode("text");
+      <EnhancedProctoringSetup
+        token={token}
+        onReady={() => {
+          try {
+            sessionStorage.setItem(`aros-enhanced-${token}`, "1");
+          } catch {
+            /* ignore */
+          }
+          setEnhancedSetupReady(true);
         }}
       />
     );
@@ -679,7 +765,8 @@ export function InterviewRoom({ token }: { token: string }) {
         </p>
         <h1 className="mt-2 font-display text-3xl text-slate-900">{info.jobTitle}</h1>
         <p className="mt-4 text-slate-600">
-          Hi {info.candidateFirstName}. You&apos;ll get about {info.maxQuestions} questions.
+          Hi {info.candidateFirstName}. You&apos;ll get about {info.maxQuestions} questions
+          {info.durationMinutes ? ` within ${info.durationMinutes} minutes` : ""}.
           {info.mode === "VOICE"
             ? " Answer by voice — typing is always available."
             : " Answer in text — take your time."}
@@ -708,7 +795,13 @@ export function InterviewRoom({ token }: { token: string }) {
         <p className="text-sm text-slate-500">
           Question {activeQuestion?.sequence ?? answeredTurns.length} of ~{info.maxQuestions}
           {info.mode === "VOICE" ? ` · ${useVoiceUi ? "Voice" : "Typing"}` : ""}
+          {remainingLabel != null ? ` · ${remainingLabel} left` : ""}
         </p>
+        {timeUp && !concluded ? (
+          <p className="mt-1 text-sm text-amber-800">
+            Time is up — submit your current answer to finish the interview.
+          </p>
+        ) : null}
       </header>
 
       <div className="flex-1 space-y-4 overflow-y-auto pb-4">

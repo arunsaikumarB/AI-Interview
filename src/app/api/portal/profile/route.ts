@@ -5,7 +5,6 @@ import { requireCandidate } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
 import { embedCandidate } from "@/lib/ai/embeddings";
 import { saveUpload } from "@/lib/storage";
-import { extractResumeText } from "@/lib/resume/parse";
 import {
   isAllowedResumeFile,
   resumeMimeError,
@@ -129,6 +128,8 @@ export async function PUT(request: Request) {
     let resumeText: string | null = null;
     let parseError: string | null = null;
     try {
+      // Dynamic import: pdf-parse/pdfjs must not load on GET (Docker lacks canvas/DOMMatrix).
+      const { extractResumeText } = await import("@/lib/resume/parse");
       resumeText = await extractResumeText({
         buffer,
         mimeType: file.type || "application/octet-stream",

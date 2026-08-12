@@ -133,6 +133,8 @@ enum ProctoringSignalType {
   COPY_PASTE
   WINDOW_SWITCH
   NETWORK_DROP
+  SECONDARY_CAMERA_CONNECTED
+  SECONDARY_CAMERA_DISCONNECTED
   OTHER
 }
 
@@ -413,6 +415,8 @@ model InterviewSession {
   /// Candidate magic-link token (public interview room)
   accessToken    String          @unique
   tokenExpiresAt DateTime?
+  /// Wall-clock session limit from startedAt (minutes). Null = no time limit (legacy).
+  durationMinutes Int?
   maxQuestions   Int             @default(12)
   /// Generated interview plan (topics + opening question + focusAreas)
   plan           Json?
@@ -424,10 +428,20 @@ model InterviewSession {
   adaptiveState  Json?
   /// When true, candidate room may emit timestamped proctoring SIGNALS (never auto-verdicts)
   proctoringEnabled   Boolean   @default(false)
+  /// OFF | STANDARD | ENHANCED — Enhanced adds secondary-camera pairing (not AI detection)
+  proctoringMode      String    @default("OFF")
   /// Set when candidate acknowledges consent (tab/paste always; camera optional)
   proctoringConsentAt DateTime?
   /// Explicit camera choice at consent — null until consent; never inferred
   proctoringCameraConsent Boolean?
+  /// Short-lived secondary device pair token (QR / deep link)
+  secondaryPairToken          String?   @unique
+  secondaryPairExpiresAt      DateTime?
+  /// NONE | WAITING | CONNECTED | DISCONNECTED
+  secondaryDeviceStatus       String    @default("NONE")
+  secondaryDeviceLastSeenAt   DateTime?
+  /// Candidate confirmed secondary camera placement before start
+  secondaryPlacementConfirmedAt DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

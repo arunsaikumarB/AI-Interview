@@ -7,6 +7,7 @@ import {
 } from "@/lib/ai/interview";
 import {
   asJson,
+  isSessionTimeUp,
   mapDifficultyToEnum,
   parseAdaptiveState,
   parsePlan,
@@ -78,7 +79,22 @@ export async function processAnswerTurn(sessionId: string): Promise<{
     jobTitle: session.application.job.title,
   });
 
-  const { result: turnResult, nextState, model, raw } = out;
+  const { model, raw } = out;
+  let { result: turnResult, nextState } = out;
+
+  // Wall-clock limit: accept the current answer, then conclude (no further questions).
+  if (
+    isSessionTimeUp(session.startedAt, session.durationMinutes) &&
+    turnResult.nextAction !== "CONCLUDE"
+  ) {
+    turnResult = {
+      ...turnResult,
+      nextAction: "CONCLUDE",
+      nextQuestion: null,
+      actionReasoning: `durationMinutes (${session.durationMinutes}) reached — concluding after final answer.`,
+    };
+    nextState = { ...nextState, concluded: true };
+  }
 
   await prisma.interviewAnswer.update({
     where: { questionId: latestAnswered.id },
@@ -159,6 +175,18 @@ export async function processAnswerTurn(sessionId: string): Promise<{
         adaptiveState: asJson({ ...nextState, concluded: true }),
       },
     });
+
+    try {
+      const { endSecondaryCameraSession } = await import(
+        "@/lib/secondary-camera-lifecycle"
+      );
+      await endSecondaryCameraSession(session.id);
+    } catch (err) {
+      console.warn(
+        "[secondary-camera] cleanup after complete failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
 
     await prisma.timelineEvent.create({
       data: {

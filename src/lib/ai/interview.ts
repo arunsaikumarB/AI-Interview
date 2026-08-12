@@ -1,6 +1,11 @@
 import { z } from "zod";
 import type { AIRecommendation, Job } from "@prisma/client";
 import { AIError, chatJSON } from "@/lib/ai/ollama";
+import {
+  coerceDifficulty,
+  coerceStringArray,
+  ensureMinText,
+} from "@/lib/ai/llm-coerce";
 import type { ScreeningResult } from "@/lib/ai/screening";
 
 /**
@@ -48,13 +53,118 @@ export const OpeningQuestionSchema = z.object({
   competency: z.string().min(1),
 });
 
-export const InterviewPlanSchema = z.object({
-  topics: z.array(PlanTopicSchema).min(5).max(8),
+const InterviewPlanShape = z.object({
+  topics: z.array(PlanTopicSchema).min(4).max(8),
   openingQuestion: OpeningQuestionSchema,
   focusAreas: z.array(z.string()),
 });
 
-export type InterviewPlan = z.infer<typeof InterviewPlanSchema>;
+function coercePlanTopic(raw: unknown): {
+  name: string;
+  why: string;
+  targetDifficulty: number;
+  fromResume: boolean;
+} | null {
+  if (!raw || typeof raw !== "object") {
+    if (typeof raw === "string" && raw.trim()) {
+      return {
+        name: raw.trim().slice(0, 80),
+        why: "Derived from job/resume context",
+        targetDifficulty: 3,
+        fromResume: false,
+      };
+    }
+    return null;
+  }
+  const o = raw as Record<string, unknown>;
+  const name =
+    typeof o.name === "string" && o.name.trim()
+      ? o.name.trim()
+      : typeof o.topic === "string" && o.topic.trim()
+        ? o.topic.trim()
+        : "";
+  if (!name) return null;
+  const why =
+    typeof o.why === "string" && o.why.trim()
+      ? o.why.trim()
+      : typeof o.reason === "string" && o.reason.trim()
+        ? o.reason.trim()
+        : "Relevant to role assessment";
+  return {
+    name,
+    why,
+    targetDifficulty: coerceDifficulty(o.targetDifficulty ?? o.difficulty, 3),
+    fromResume: Boolean(o.fromResume),
+  };
+}
+
+/** Lenient plan parse — pads/coerces common local-LLM quirks. */
+export const InterviewPlanSchema = z.preprocess((raw) => {
+  if (!raw || typeof raw !== "object") return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+
+  const topicsRaw = Array.isArray(o.topics) ? o.topics : [];
+  let topics = topicsRaw
+    .map(coercePlanTopic)
+    .filter((t): t is NonNullable<typeof t> => t != null);
+
+  const defaults = [
+    {
+      name: "Role fundamentals",
+      why: "Baseline role fit",
+      targetDifficulty: 2,
+      fromResume: false,
+    },
+    {
+      name: "Core technical skills",
+      why: "Required by job description",
+      targetDifficulty: 3,
+      fromResume: false,
+    },
+    {
+      name: "Recent experience",
+      why: "Validate hands-on delivery",
+      targetDifficulty: 3,
+      fromResume: true,
+    },
+    {
+      name: "Problem solving",
+      why: "Assess approach under ambiguity",
+      targetDifficulty: 3,
+      fromResume: false,
+    },
+  ];
+  while (topics.length < 4) {
+    topics.push(defaults[topics.length]!);
+  }
+  topics = topics.slice(0, 8);
+  o.topics = topics;
+
+  if (!o.openingQuestion || typeof o.openingQuestion !== "object") {
+    o.openingQuestion = {
+      question: `Tell me about your experience most relevant to this role.`,
+      topic: topics[0]!.name,
+      difficulty: 2,
+      competency: "Communication",
+    };
+  } else {
+    const q = { ...(o.openingQuestion as Record<string, unknown>) };
+    q.question = ensureMinText(
+      q.question,
+      1,
+      `Tell me about your experience most relevant to this role.`,
+    );
+    q.topic = ensureMinText(q.topic, 1, topics[0]!.name);
+    q.competency = ensureMinText(q.competency, 1, "Communication");
+    q.difficulty = coerceDifficulty(q.difficulty, 2);
+    o.openingQuestion = q;
+  }
+
+  o.focusAreas = coerceStringArray(o.focusAreas, { max: 12 });
+  return o;
+}, InterviewPlanShape);
+
+export type InterviewPlan = z.infer<typeof InterviewPlanShape>;
 export type PlanTopic = z.infer<typeof PlanTopicSchema>;
 
 export const AnswerEvaluationSchema = z.object({
@@ -406,10 +516,67 @@ const FINAL_RESULT_JSON_SCHEMA = `{ "overall": <0-100>, "dimensions": { "technic
 const PLAN_SYSTEM = `You are designing an adaptive interview plan for a self-hosted ATS.
 Return ONLY valid JSON matching the schema.
 Rules:
-- Produce 5-8 topics mixing: (1) JD requirements, (2) specific resume projects/claims with fromResume:true, (3) screening focusAreas/gaps.
+- Produce 4-6 topics mixing: (1) JD requirements, (2) specific resume projects/claims with fromResume:true, (3) screening focusAreas/gaps.
+- topics MUST be a JSON array of objects with name, why, targetDifficulty (1-5), fromResume (boolean).
 - openingQuestion must be conversational, one question, role-relevant.
+- focusAreas MUST be a JSON array of strings.
 - Never invent resume facts — only use provided resume text.
 - Do not include scores or hiring decisions.`;
+
+export function buildFallbackInterviewPlan(params: {
+  jobTitle: string;
+  skills: string[];
+  focusAreas?: string[];
+}): InterviewPlan {
+  const skillTopics = params.skills.slice(0, 3).map((skill) => ({
+    name: skill,
+    why: `Required or preferred skill for ${params.jobTitle}`,
+    targetDifficulty: 3,
+    fromResume: false,
+  }));
+
+  const topics = [
+    {
+      name: "Role overview",
+      why: `Baseline fit for ${params.jobTitle}`,
+      targetDifficulty: 2,
+      fromResume: false,
+    },
+    ...skillTopics,
+    {
+      name: "Recent project deep-dive",
+      why: "Validate hands-on delivery from resume",
+      targetDifficulty: 3,
+      fromResume: true,
+    },
+    {
+      name: "Problem solving",
+      why: "Assess structured thinking",
+      targetDifficulty: 3,
+      fromResume: false,
+    },
+  ].slice(0, 6);
+
+  while (topics.length < 4) {
+    topics.push({
+      name: `Competency ${topics.length + 1}`,
+      why: "Cover remaining interview dimensions",
+      targetDifficulty: 3,
+      fromResume: false,
+    });
+  }
+
+  return {
+    topics,
+    openingQuestion: {
+      question: `Tell me about your experience most relevant to the ${params.jobTitle} role.`,
+      topic: topics[0]!.name,
+      difficulty: 2,
+      competency: "Communication",
+    },
+    focusAreas: (params.focusAreas ?? []).slice(0, 12),
+  };
+}
 
 export async function generatePlan(params: {
   job: Pick<Job, "title" | "description" | "skills" | "experienceMin" | "experienceMax" | "screeningCriteria">;
@@ -445,23 +612,54 @@ export async function generatePlan(params: {
     `Candidate skills: ${params.candidate.skills.join(", ")}`,
     `Candidate experience years: ${params.candidate.experience}`,
     `Candidate summary: ${params.candidate.summary ?? "(none)"}`,
-    `Resume text:\n${params.resumeText.slice(0, 6000) || "(none)"}`,
+    `Resume text:\n${params.resumeText.slice(0, 4000) || "(none)"}`,
     "",
     "Return JSON: { topics: [{ name, why, targetDifficulty 1-5, fromResume }], openingQuestion: { question, topic, difficulty, competency }, focusAreas: string[] }",
   ].join("\n");
 
-  const { data, model, raw } = await chatJSON(PLAN_SYSTEM, user, InterviewPlanSchema);
+  try {
+    const { data, model, raw } = await chatJSON(
+      PLAN_SYSTEM,
+      user,
+      InterviewPlanSchema,
+      {
+        temperature: 0.1,
+        numPredict: 900,
+        jsonSchema: z.toJSONSchema(InterviewPlanShape) as Record<
+          string,
+          unknown
+        >,
+      },
+    );
 
-  // Merge screening focus into focusAreas if model omitted them
-  const focusAreas = Array.from(
-    new Set([...data.focusAreas, ...focusFromScreen].filter(Boolean)),
-  );
+    // Merge screening focus into focusAreas if model omitted them
+    const focusAreas = Array.from(
+      new Set([...data.focusAreas, ...focusFromScreen].filter(Boolean)),
+    );
 
-  return {
-    plan: { ...data, focusAreas },
-    model,
-    raw,
-  };
+    return {
+      plan: { ...data, focusAreas },
+      model,
+      raw,
+    };
+  } catch (err) {
+    // Never block interview-link creation on slow/noisy local LLM output.
+    const message = err instanceof Error ? err.message : "plan generation failed";
+    console.warn("[generatePlan] using template fallback:", message);
+    const plan = buildFallbackInterviewPlan({
+      jobTitle: params.job.title,
+      skills: [
+        ...params.job.skills,
+        ...params.candidate.skills,
+      ],
+      focusAreas: focusFromScreen,
+    });
+    return {
+      plan,
+      model: "fallback-template",
+      raw: { fallback: true, error: message },
+    };
+  }
 }
 
 const TURN_SYSTEM = `You are an adaptive interviewer for a self-hosted ATS (text-only).

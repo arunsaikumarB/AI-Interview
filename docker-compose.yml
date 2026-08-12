@@ -1,7 +1,9 @@
 # AI Recruitment OS — full local stack
-#   docker compose --env-file .env.docker up -d --build
+#   docker compose --env-file .env.docker --env-file .env up -d --build
 #   ./scripts/setup-pilot.ps1   (or setup-pilot.sh)
 #
+# AUTH_SECRET must be set in `.env` (single source of truth). `.env.docker`
+# holds compose ports/service vars only — do not define a second AUTH_SECRET there.
 # Services: postgres (pgvector) + ollama + speech + app
 
 services:
@@ -75,7 +77,7 @@ services:
         condition: service_started
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-ats}:${POSTGRES_PASSWORD:-ats_local_dev}@postgres:5432/${POSTGRES_DB:-ai_recruitment_os}?schema=public
-      AUTH_SECRET: ${AUTH_SECRET:-change-me-to-a-long-random-string}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env — required for JWT signing}
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-aros_session}
       AUTH_TOKEN_TTL_HOURS: ${AUTH_TOKEN_TTL_HOURS:-12}
       AI_PROVIDER: ${AI_PROVIDER:-local}

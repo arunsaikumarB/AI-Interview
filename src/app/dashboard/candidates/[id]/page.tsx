@@ -254,7 +254,14 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
 
           <div id="interview">
             <InterviewStatusCard
-              applicationId={selectedApp.id}
+              application={{
+                id: selectedApp.id,
+                candidateId: candidate.id,
+                candidateName: `${candidate.firstName} ${candidate.lastName}`.trim(),
+                candidateEmail: candidate.email,
+                jobId: selectedApp.job.id,
+                jobTitle: selectedApp.job.title,
+              }}
               latest={
                 latestInterview
                   ? {

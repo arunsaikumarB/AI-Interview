@@ -24,7 +24,10 @@ function isPublic(pathname: string) {
 }
 
 function secretKey() {
-  const secret = process.env.AUTH_SECRET ?? "dev-only-change-in-production-aros-2026";
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) {
+    throw new Error("AUTH_SECRET is not set");
+  }
   return new TextEncoder().encode(secret);
 }
 

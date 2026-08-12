@@ -20,6 +20,18 @@ export async function POST(_request: Request, { params }: Ctx) {
   if (!session) {
     return Response.json({ error: "Interview not found" }, { status: 404 });
   }
+  if (session.tokenExpiresAt && session.tokenExpiresAt < new Date()) {
+    return Response.json(
+      {
+        error:
+          "This interview link has expired. Please contact the recruiter.",
+      },
+      { status: 410 },
+    );
+  }
+  if (session.status === "CANCELLED") {
+    return Response.json({ error: "Interview cancelled" }, { status: 410 });
+  }
   if (session.status === "COMPLETED") {
     return Response.json({ concluded: true });
   }

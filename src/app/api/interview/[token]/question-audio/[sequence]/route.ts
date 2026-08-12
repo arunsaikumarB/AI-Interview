@@ -37,7 +37,7 @@ export async function GET(_request: Request, { params }: Ctx) {
     return Response.json({ error: "Interview not found" }, { status: 404 });
   }
   if (session.tokenExpiresAt && session.tokenExpiresAt < new Date()) {
-    return Response.json({ error: "This interview link has expired" }, { status: 410 });
+    return Response.json({ error: "This interview link has expired. Please contact the recruiter." }, { status: 410 });
   }
 
   const question = session.questions[0];

@@ -98,20 +98,33 @@ async function ollamaFetch<T>(
   path: string,
   body: unknown,
   headers: HeadersInit,
+  timeoutMs = Number(process.env.OLLAMA_TIMEOUT_MS ?? 240_000),
 ): Promise<T> {
   let res: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     res = await fetch(`${baseUrl}${path}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
   } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new AIError(
+        "OLLAMA_UNREACHABLE",
+        `Ollama timed out after ${Math.round(timeoutMs / 1000)}s at ${baseUrl}. The model may be slow on CPU — retry, or use a smaller chat model.`,
+        err,
+      );
+    }
     throw new AIError(
       "OLLAMA_UNREACHABLE",
       `Ollama is unreachable at ${baseUrl}. Is it running?`,
       err,
     );
+  } finally {
+    clearTimeout(timer);
   }
 
   if (!res.ok) {
@@ -141,20 +154,50 @@ function parseJsonLoose(content: string): unknown {
   }
 }
 
+function resolveOllamaFormat(
+  zodSchema: ZodType<unknown>,
+  jsonSchema?: Record<string, unknown>,
+): "json" | Record<string, unknown> {
+  const source = jsonSchema ?? (() => {
+    try {
+      return z.toJSONSchema(zodSchema as never) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!source || typeof source !== "object") return "json";
+
+  // Ollama wants a plain JSON Schema object (no draft $schema marker).
+  const rest = { ...source };
+  delete rest.$schema;
+  return Object.keys(rest).length > 0 ? rest : "json";
+}
+
 /**
- * Chat with Ollama, force JSON format, validate with Zod.
+ * Chat with Ollama, force JSON / JSON-Schema format, validate with Zod.
  * Uses AI_PROVIDER host (local or cloud).
  */
 export async function chatJSON<T>(
   system: string,
   user: string,
   zodSchema: ZodType<T>,
-  options?: { model?: string; temperature?: number },
+  options?: {
+    model?: string;
+    temperature?: number;
+    numPredict?: number;
+    /** Explicit JSON Schema for Ollama structured outputs. */
+    jsonSchema?: Record<string, unknown>;
+  },
 ): Promise<{ data: T; model: string; raw: unknown }> {
   const model = options?.model ?? OLLAMA_MODEL();
-  const temperature = options?.temperature ?? 0.2;
+  const temperature = options?.temperature ?? 0.1;
   const baseUrl = getChatOllamaUrl();
   const headers = chatHeaders(true);
+  const format = resolveOllamaFormat(
+    zodSchema as ZodType<unknown>,
+    options?.jsonSchema,
+  );
 
   let lastError: string | null = null;
 
@@ -162,7 +205,7 @@ export async function chatJSON<T>(
     const userContent =
       attempt === 1 || !lastError
         ? user
-        : `${user}\n\nYour previous output was invalid: ${lastError}. Return only valid JSON.`;
+        : `${user}\n\nYour previous output was invalid: ${lastError}. Return only valid JSON matching the schema. Arrays must be JSON arrays of strings, never a single string.`;
 
     const raw = await ollamaFetch<{
       model?: string;
@@ -170,8 +213,12 @@ export async function chatJSON<T>(
     }>(baseUrl, "/api/chat", {
       model,
       stream: false,
-      format: "json",
-      options: { temperature },
+      format,
+      options: {
+        temperature,
+        // Cap plan/turn JSON size so CPU hosts don't run for many minutes.
+        num_predict: options?.numPredict ?? 2048,
+      },
       messages: [
         { role: "system", content: system },
         { role: "user", content: userContent },

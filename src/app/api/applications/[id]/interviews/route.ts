@@ -31,6 +31,14 @@ const bodySchema = z.object({
   /** Candidate channel — TEXT | VOICE (stored as deliveryMode). */
   mode: z.enum(["TEXT", "VOICE"]).default("TEXT"),
   proctoringEnabled: z.boolean().default(false),
+  /** OFF | STANDARD | ENHANCED — Enhanced enables secondary-camera pairing. */
+  proctoringMode: z.enum(["OFF", "STANDARD", "ENHANCED"]).optional(),
+  /** Link validity from creation. */
+  linkExpiresInDays: z.union([z.literal(1), z.literal(3), z.literal(7)]).default(3),
+  /** Wall-clock session length after start. */
+  durationMinutes: z
+    .union([z.literal(15), z.literal(30), z.literal(45), z.literal(60)])
+    .default(30),
 });
 
 export async function GET(_request: Request, { params }: Ctx) {
@@ -145,17 +153,25 @@ export async function POST(request: Request, { params }: Ctx) {
     });
 
     const accessToken = createAccessToken();
+    const proctoringMode =
+      body.proctoringMode ??
+      (body.proctoringEnabled ? "STANDARD" : "OFF");
+    const proctoringEnabled =
+      proctoringMode === "STANDARD" || proctoringMode === "ENHANCED";
+
     const interview = await prisma.interviewSession.create({
       data: {
         applicationId: application.id,
         mode: "AI_ADAPTIVE",
         deliveryMode: body.mode,
-        proctoringEnabled: body.proctoringEnabled,
+        proctoringEnabled,
+        proctoringMode,
         status: "SCHEDULED",
         interviewType: body.interviewType,
         maxQuestions: body.maxQuestions,
+        durationMinutes: body.durationMinutes,
         accessToken,
-        tokenExpiresAt: tokenExpiresInDays(7),
+        tokenExpiresAt: tokenExpiresInDays(body.linkExpiresInDays),
         scheduledAt: new Date(),
         plan: asJson(plan),
         adaptiveState: asJson(initialAdaptiveState(plan.openingQuestion.difficulty)),
@@ -171,8 +187,11 @@ export async function POST(request: Request, { params }: Ctx) {
           sessionId: interview.id,
           interviewType: body.interviewType,
           deliveryMode: body.mode,
-          proctoringEnabled: body.proctoringEnabled,
+          proctoringEnabled,
+          proctoringMode,
           maxQuestions: body.maxQuestions,
+          durationMinutes: body.durationMinutes,
+          linkExpiresInDays: body.linkExpiresInDays,
           model,
           planTopics: plan.topics.map((t) => t.name),
           advisoryOnly: true,
@@ -190,8 +209,11 @@ export async function POST(request: Request, { params }: Ctx) {
         interviewType: interview.interviewType,
         mode: interview.deliveryMode,
         maxQuestions: interview.maxQuestions,
+        durationMinutes: interview.durationMinutes,
         accessToken: interview.accessToken,
         tokenExpiresAt: interview.tokenExpiresAt,
+        proctoringEnabled: interview.proctoringEnabled,
+        proctoringMode: interview.proctoringMode,
       },
       candidateLink,
       planMeta: {

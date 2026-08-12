@@ -15,21 +15,42 @@ for arg in "$@"; do
   esac
 done
 
-if [[ ! -f .env.docker ]]; then
-  cp .env.docker.example .env.docker
-  echo "Created .env.docker from example — set AUTH_SECRET before production use."
+if [[ ! -f .env ]]; then
+  cp .env.example .env
+  echo "Created .env from example — set AUTH_SECRET to a long random value before use."
 fi
 
-CHAT_MODEL="$(grep -E '^OLLAMA_CHAT_MODEL=' .env.docker | cut -d= -f2- | tr -d '"' || true)"
-EMBED_MODEL="$(grep -E '^OLLAMA_EMBED_MODEL=' .env.docker | cut -d= -f2- | tr -d '"' || true)"
-CHAT_MODEL="${CHAT_MODEL:-qwen3.6:latest}"
+AUTH_VAL="$(grep -E '^[[:space:]]*AUTH_SECRET=' .env | head -n1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)"
+if [[ -z "${AUTH_VAL}" || "${AUTH_VAL}" == "replace-with-a-long-random-secret" || "${AUTH_VAL}" == "change-me-to-a-long-random-string" ]]; then
+  echo "AUTH_SECRET in .env is missing or still a placeholder. Set a long random secret (single source for host + Docker)." >&2
+  exit 1
+fi
+
+if [[ ! -f .env.docker ]]; then
+  cp .env.docker.example .env.docker
+  echo "Created .env.docker from example (ports/services only; AUTH_SECRET comes from .env)."
+fi
+
+# Strip legacy AUTH_SECRET from .env.docker so it cannot override .env
+if grep -qE '^[[:space:]]*AUTH_SECRET=' .env.docker 2>/dev/null; then
+  grep -vE '^[[:space:]]*AUTH_SECRET=' .env.docker > .env.docker.tmp
+  mv .env.docker.tmp .env.docker
+  echo "Removed AUTH_SECRET from .env.docker (use .env only)."
+fi
+
+CHAT_MODEL="$(grep -E '^OLLAMA_CHAT_MODEL=' .env .env.docker 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"' || true)"
+EMBED_MODEL="$(grep -E '^OLLAMA_EMBED_MODEL=' .env .env.docker 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"' || true)"
+CHAT_MODEL="${CHAT_MODEL:-qwen2.5:7b}"
 EMBED_MODEL="${EMBED_MODEL:-nomic-embed-text}"
+
+# Later --env-file wins: .env supplies AUTH_SECRET
+COMPOSE_ENV=(--env-file .env.docker --env-file .env)
 
 echo "==> Starting stack"
 if [[ "$SKIP_BUILD" -eq 1 ]]; then
-  docker compose --env-file .env.docker up -d
+  docker compose "${COMPOSE_ENV[@]}" up -d
 else
-  docker compose --env-file .env.docker up -d --build
+  docker compose "${COMPOSE_ENV[@]}" up -d --build
 fi
 
 echo "==> Waiting for app health…"
@@ -41,20 +62,20 @@ for i in $(seq 1 60); do
   fi
   sleep 3
 done
-[[ "$ok" -eq 1 ]] || { echo "App health failed"; docker compose --env-file .env.docker logs --tail=80 app; exit 1; }
+[[ "$ok" -eq 1 ]] || { echo "App health failed"; docker compose "${COMPOSE_ENV[@]}" logs --tail=80 app; exit 1; }
 
 echo "==> Pulling Ollama models ($CHAT_MODEL, $EMBED_MODEL)"
-docker compose --env-file .env.docker exec -T ollama ollama pull "$EMBED_MODEL"
-docker compose --env-file .env.docker exec -T ollama ollama pull "$CHAT_MODEL"
+docker compose "${COMPOSE_ENV[@]}" exec -T ollama ollama pull "$EMBED_MODEL"
+docker compose "${COMPOSE_ENV[@]}" exec -T ollama ollama pull "$CHAT_MODEL"
 
 if [[ "$SKIP_SEED" -eq 0 ]]; then
   echo "==> Seeding database"
-  docker compose --env-file .env.docker exec -T app node dist/docker/seed.cjs
+  docker compose "${COMPOSE_ENV[@]}" exec -T app node dist/docker/seed.cjs
 fi
 
 if [[ "$SKIP_EMBED" -eq 0 ]]; then
   echo "==> Backfilling embeddings"
-  docker compose --env-file .env.docker exec -T \
+  docker compose "${COMPOSE_ENV[@]}" exec -T \
     -e DATABASE_URL="postgresql://ats:ats_local_dev@postgres:5432/ai_recruitment_os?schema=public" \
     -e OLLAMA_LOCAL_URL="http://ollama:11434" \
     -e OLLAMA_EMBED_MODEL="$EMBED_MODEL" \

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { jsonOk, withApiHandler } from "@/lib/api";
+import { sessionEndsAt } from "@/lib/ai/interview-session";
 
 type Ctx = { params: { token: string } };
 
@@ -36,7 +37,7 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
     return Response.json({ error: "Interview not found" }, { status: 404 });
   }
   if (session.tokenExpiresAt && session.tokenExpiresAt < new Date()) {
-    return Response.json({ error: "This interview link has expired" }, { status: 410 });
+    return Response.json({ error: "This interview link has expired. Please contact the recruiter." }, { status: 410 });
   }
 
   const turns = session.questions.map((q) => ({
@@ -57,12 +58,16 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
     session.questions.length > 0 &&
     session.questions.every((q) => q.answer != null);
 
+  const endsAt = sessionEndsAt(session.startedAt, session.durationMinutes);
+
   return jsonOk({
     status: session.status,
     mode: session.deliveryMode === "VOICE" ? "VOICE" : "TEXT",
     jobTitle: session.application.job.title,
     candidateFirstName: session.application.candidate.firstName,
     maxQuestions: session.maxQuestions,
+    durationMinutes: session.durationMinutes,
+    endsAt: endsAt?.toISOString() ?? null,
     turns,
     currentQuestion: current
       ? {

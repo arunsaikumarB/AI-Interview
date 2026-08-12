@@ -141,7 +141,7 @@ export default async function JobDetailPage({ params, searchParams }: Ctx) {
           ) : null}
           {canPipeline ? (
             <Link
-              href="/dashboard/interview-links"
+              href={`/dashboard/interview-links?create=1&jobId=${job.id}`}
               className={cn(buttonVariants({ variant: "default" }))}
             >
               Create Interview Link

@@ -5,8 +5,9 @@ One command path for a self-hosted pilot: **Postgres + Ollama + speech-service +
 ## Quick start (Windows)
 
 ```powershell
+cp .env.example .env
+# Edit AUTH_SECRET in .env (required — single source for host tests + Docker JWT)
 cp .env.docker.example .env.docker
-# Edit AUTH_SECRET (required for anything beyond local toy use)
 
 .\scripts\setup-pilot.ps1
 ```
@@ -14,16 +15,19 @@ cp .env.docker.example .env.docker
 ## Quick start (macOS / Linux)
 
 ```bash
+cp .env.example .env
+# Edit AUTH_SECRET in .env (required — single source for host tests + Docker JWT)
 cp .env.docker.example .env.docker
-# Edit AUTH_SECRET
 
 chmod +x scripts/setup-pilot.sh
 ./scripts/setup-pilot.sh
 ```
 
+**AUTH_SECRET:** set only in `.env`. Compose loads `.env.docker` then `.env` so the app container and `npm run test:isolation` share the same JWT secret. Do not put a second `AUTH_SECRET` in `.env.docker`.
+
 What the setup script does:
 
-1. `docker compose up -d --build` (app, postgres, ollama, speech)
+1. `docker compose --env-file .env.docker --env-file .env up -d --build` (app, postgres, ollama, speech)
 2. Waits for `/api/health`
 3. Pulls chat + embedding models into the Ollama volume
 4. Seeds demo users/jobs (`recruiter@local.dev` / `password123`)

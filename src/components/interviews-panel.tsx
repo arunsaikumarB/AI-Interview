@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CreateInterviewDialog } from "@/components/create-interview-dialog";
 import { toast } from "sonner";
 import { formatDateTime } from "@/lib/format";
 
@@ -19,6 +18,7 @@ type InterviewRow = {
   createdAt: string;
 };
 
+/** Legacy panel — prefer /dashboard/interview-links. */
 export function InterviewsPanel({ applicationId }: { applicationId: string }) {
   const [rows, setRows] = useState<InterviewRow[]>([]);
 
@@ -36,14 +36,19 @@ export function InterviewsPanel({ applicationId }: { applicationId: string }) {
   async function copyLink(token: string) {
     const base = window.location.origin;
     await navigator.clipboard.writeText(`${base}/interview/${token}`);
-    toast.success("Link copied");
+    toast.success("Link copied.");
   }
 
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-medium text-slate-900">Interviews</h2>
-        <CreateInterviewDialog applicationId={applicationId} />
+        <Link
+          href={`/dashboard/interview-links?create=1&applicationId=${applicationId}`}
+          className="inline-flex h-9 items-center rounded-lg bg-slate-900 px-3 text-sm text-white hover:bg-slate-800"
+        >
+          Create Interview Link
+        </Link>
       </div>
       <ul className="space-y-2">
         {rows.map((r) => (
@@ -60,16 +65,8 @@ export function InterviewsPanel({ applicationId }: { applicationId: string }) {
                 {formatDateTime(r.createdAt)}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary">{r.status}</Badge>
-              {r.status === "SCHEDULED" ? (
-                <Link
-                  href={`/dashboard/interviews/${r.id}/plan`}
-                  className="inline-flex h-7 items-center rounded-lg bg-slate-900 px-2 text-sm text-white hover:bg-slate-800"
-                >
-                  Review plan
-                </Link>
-              ) : null}
               <Button size="sm" variant="outline" onClick={() => copyLink(r.accessToken)}>
                 Copy link
               </Button>

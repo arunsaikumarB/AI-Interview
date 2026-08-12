@@ -3,13 +3,18 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
-const CONSENT_COPY =
+const CONSENT_COPY_STANDARD =
   "This interview monitors tab focus, window switching, copy/paste, and (if you allow the camera) whether a face is visible. These are informational signals reviewed by a human recruiter; they do not automatically affect your result.";
+
+const CONSENT_COPY_ENHANCED =
+  "This interview uses standard browser signals plus an optional secondary camera on another device for a second viewing angle. Signals and the secondary feed are for human review only — there is no AI cheating detection, and nothing automatically changes your result.";
 
 export function ProctoringConsent({
   onContinue,
+  enhanced = false,
 }: {
   onContinue: (cameraConsent: boolean) => void | Promise<void>;
+  enhanced?: boolean;
 }) {
   const [acked, setAcked] = useState(false);
   const [cameraConsent, setCameraConsent] = useState(false);
@@ -33,8 +38,10 @@ export function ProctoringConsent({
       <p className="text-sm uppercase tracking-wide text-slate-400">
         Proctoring consent
       </p>
-      <h1 className="font-display text-3xl text-slate-900">Before you begin</h1>
-      <p className="text-sm leading-relaxed text-slate-700">{CONSENT_COPY}</p>
+      <h1 className="font-display text-3xl text-slate-900">Proctoring notice</h1>
+      <p className="text-sm leading-relaxed text-slate-700">
+        {enhanced ? CONSENT_COPY_ENHANCED : CONSENT_COPY_STANDARD}
+      </p>
 
       <label className="flex items-start gap-2 text-sm text-slate-800">
         <input
