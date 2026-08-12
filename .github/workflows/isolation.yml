@@ -1,0 +1,70 @@
+name: Isolation tests (Phase 9)
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ats
+          POSTGRES_PASSWORD: ats_local_dev
+          POSTGRES_DB: ai_recruitment_os
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U ats -d ai_recruitment_os"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://ats:ats_local_dev@localhost:55432/ai_recruitment_os?schema=public
+      AUTH_SECRET: ci-isolation-test-secret-not-for-production
+      AUTH_COOKIE_NAME: aros_session
+      AI_PROVIDER: local
+      OLLAMA_LOCAL_URL: http://127.0.0.1:9
+      SPEECH_SERVICE_URL: http://127.0.0.1:9
+      BASE_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Schema + seed
+        run: |
+          npx prisma db push --skip-generate
+          npx prisma generate
+          npm run db:seed
+
+      - name: Start Next.js
+        run: |
+          npm run build
+          npm run start -- --hostname 127.0.0.1 --port 3000 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3000/api/health >/dev/null; then
+              echo "server up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "server failed to become healthy"
+          exit 1
+
+      - name: Run isolation suite
+        run: npm run test:isolation

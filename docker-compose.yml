@@ -1,0 +1,106 @@
+# AI Recruitment OS — full local stack
+#   docker compose --env-file .env.docker up -d --build
+#   ./scripts/setup-pilot.ps1   (or setup-pilot.sh)
+#
+# Services: postgres (pgvector) + ollama + speech + app
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aros-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ats}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ats_local_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_recruitment_os}
+    ports:
+      - "${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - ats_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ats -d ai_recruitment_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aros-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_HOST_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  speech:
+    build:
+      context: ./speech-service
+      dockerfile: Dockerfile
+    container_name: aros-speech
+    restart: unless-stopped
+    environment:
+      SPEECH_HOST: "0.0.0.0"
+      SPEECH_PORT: "8001"
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_MODEL_CPU: ${WHISPER_MODEL_CPU:-small}
+      PIPER_VOICE: ${PIPER_VOICE:-en_US-lessac-medium}
+    ports:
+      - "${SPEECH_HOST_PORT:-8001}:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8001/health | grep -q '\"ok\":true' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aros-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      speech:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ats}:${POSTGRES_PASSWORD:-ats_local_dev}@postgres:5432/${POSTGRES_DB:-ai_recruitment_os}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-to-a-long-random-string}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-aros_session}
+      AUTH_TOKEN_TTL_HOURS: ${AUTH_TOKEN_TTL_HOURS:-12}
+      AI_PROVIDER: ${AI_PROVIDER:-local}
+      OLLAMA_LOCAL_URL: http://ollama:11434
+      OLLAMA_CLOUD_URL: ${OLLAMA_CLOUD_URL:-https://ollama.com}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:7b}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      SPEECH_SERVICE_URL: http://speech:8001
+      STORAGE_ROOT: /storage
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-AI Recruitment OS}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      RUN_SEED: ${RUN_SEED:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    ports:
+      - "${APP_HOST_PORT:-3000}:3000"
+    volumes:
+      - app_storage:/storage
+
+volumes:
+  ats_pgdata:
+  ollama_data:
+  app_storage:

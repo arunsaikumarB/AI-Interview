@@ -1,0 +1,2 @@
+docker/app/entrypoint.sh text eol=lf
+scripts/setup-pilot.sh text eol=lf

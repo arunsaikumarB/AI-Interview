@@ -1,0 +1,51 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env
+.env.docker
+.env*.local
+
+# local uploads
+/storage/**
+!/storage/.gitkeep
+
+# vendored MediaPipe (regenerate via npm run setup:mediapipe)
+/public/mediapipe/
+
+# speech-service models / venv (never commit Piper onnx)
+/speech-service/.venv/
+/speech-service/voices/*.onnx
+/speech-service/voices/*.onnx.json
+/speech-service/__pycache__/
+/speech-service/**/__pycache__/
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+/src/generated/prisma

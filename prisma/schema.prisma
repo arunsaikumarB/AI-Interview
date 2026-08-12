@@ -1,0 +1,576 @@
+// =============================================================================
+// AI Recruitment OS — Prisma schema
+// 100% self-hosted: PostgreSQL + pgvector. AI via local Ollama only.
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  HR_ADMIN
+  RECRUITER
+  HIRING_MANAGER
+  INTERVIEWER
+  CANDIDATE
+}
+
+/// Hiring pipeline. Terminal stages: SELECTED, REJECTED.
+enum PipelineStage {
+  APPLIED
+  SCREENING
+  SHORTLISTED
+  ASSESSMENT
+  AI_INTERVIEW
+  TECH_INTERVIEW
+  HR_INTERVIEW
+  SELECTED
+  REJECTED
+}
+
+enum JobStatus {
+  DRAFT
+  OPEN
+  PAUSED
+  CLOSED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+  TEMPORARY
+}
+
+enum ApplicationStatus {
+  ACTIVE
+  WITHDRAWN
+  HIRED
+  REJECTED
+  ON_HOLD
+}
+
+enum TimelineEventType {
+  APPLICATION_CREATED
+  STAGE_CHANGED
+  STATUS_CHANGED
+  NOTE_ADDED
+  DOCUMENT_UPLOADED
+  SCREENING_COMPLETED
+  INTERVIEW_SCHEDULED
+  INTERVIEW_STARTED
+  INTERVIEW_COMPLETED
+  AI_EVALUATION
+  PROCTORING_SIGNAL
+  EMAIL_SENT
+  TAG_ADDED
+  TAG_REMOVED
+  DECISION
+  OTHER
+}
+
+enum InterviewMode {
+  AI_ADAPTIVE
+  TECH
+  HR
+  PANEL
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+/// Advisory only — never auto-applies a hiring decision.
+enum AIRecommendation {
+  STRONG_YES
+  YES
+  MAYBE
+  NO
+  STRONG_NO
+}
+
+enum AIEvaluationKind {
+  RESUME_SCREEN
+  SKILL_MATCH
+  INTERVIEW_ANSWER
+  INTERVIEW_OVERALL
+  ASSESSMENT
+  RESUME_VS_INTERVIEW
+}
+
+/// Proctoring signals — never auto-verdicts.
+enum ProctoringSignalType {
+  TAB_BLUR
+  TAB_FOCUS
+  FULLSCREEN_EXIT
+  MULTIPLE_FACES
+  NO_FACE
+  LOOKING_AWAY
+  AUDIO_ANOMALY
+  COPY_PASTE
+  WINDOW_SWITCH
+  NETWORK_DROP
+  OTHER
+}
+
+enum CommunicationChannel {
+  EMAIL
+  IN_APP
+  OTHER
+}
+
+enum CommunicationStatus {
+  DRAFT
+  QUEUED
+  SENT
+  FAILED
+}
+
+// -----------------------------------------------------------------------------
+// Organization structure
+// -----------------------------------------------------------------------------
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  /// Display name for email templates ({{companyName}}); falls back to name when empty
+  companyName String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  departments    Department[]
+  users          User[]
+  jobs           Job[]
+  candidates     Candidate[]
+  tags           Tag[]
+  emailTemplates EmailTemplate[]
+}
+
+model Department {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users        User[]
+  jobs         Job[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// -----------------------------------------------------------------------------
+// Users (staff + candidate portal accounts)
+// -----------------------------------------------------------------------------
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  name           String
+  role           Role
+  isActive       Boolean  @default(true)
+  organizationId String?
+  departmentId   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  /// Optional link when this user is a candidate portal account
+  candidate Candidate?
+
+  createdJobs             Job[]              @relation("JobCreator")
+  assignedJobs            JobAssignment[]
+  notesAuthored           Note[]             @relation("NoteAuthor")
+  interviewsAsInterviewer InterviewSession[] @relation("InterviewInterviewer")
+  communicationLogs       CommunicationLog[] @relation("CommunicationActor")
+
+  @@index([role])
+  @@index([organizationId])
+}
+
+// -----------------------------------------------------------------------------
+// Jobs
+// -----------------------------------------------------------------------------
+
+model Job {
+  id             String         @id @default(cuid())
+  organizationId String
+  departmentId   String?
+  title          String
+  description    String
+  location       String?
+  /// Minimum years of experience required
+  experienceMin  Int            @default(0)
+  /// Maximum years of experience (null = no upper bound)
+  experienceMax  Int?
+  skills         String[]       @default([])
+  salaryMin      Int?
+  salaryMax      Int?
+  employmentType EmploymentType @default(FULL_TIME)
+  openings       Int            @default(1)
+  status         JobStatus      @default(DRAFT)
+  /// Ordered interview stage config for this role, e.g. [{ "key": "AI_INTERVIEW", "label": "..." }]
+  interviewStages   Json        @default("[]")
+  /// Structured screening criteria for AI + human review, e.g. { "mustHave": [], "niceToHave": [] }
+  screeningCriteria Json        @default("{}")
+  createdById    String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department   Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  createdBy    User           @relation("JobCreator", fields: [createdById], references: [id])
+  assignments  JobAssignment[]
+  applications Application[]
+
+  @@index([status])
+  @@index([organizationId])
+  @@index([departmentId])
+}
+
+model JobAssignment {
+  id     String @id @default(cuid())
+  jobId  String
+  userId String
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, userId])
+}
+
+// -----------------------------------------------------------------------------
+// Candidates (talent profiles; may link to a User for portal login)
+// -----------------------------------------------------------------------------
+
+model Candidate {
+  id             String                       @id @default(cuid())
+  organizationId String
+  userId         String?                      @unique
+  email          String
+  firstName      String
+  lastName       String
+  phone          String?
+  linkedIn       String?
+  location       String?
+  /// Free-text professional summary / profile
+  summary        String?
+  skills         String[]                     @default([])
+  /// Years of experience
+  experience     Float                        @default(0)
+  education      Json                         @default("[]")
+  certifications Json                         @default("[]")
+  /// Relative path under local /storage (not a cloud URL)
+  resumeUrl      String?
+  /// Locally extracted resume text (PDF/DOCX parse). Used for AI screening.
+  resumeText     String?
+  /// Local Ollama embedding for talent-pool search (nomic-embed-text → 768 dims)
+  embedding      Unsupported("vector(768)")?
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  applications Application[]
+  notes        Note[]
+  tags         CandidateTag[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@index([lastName, firstName])
+}
+
+// -----------------------------------------------------------------------------
+// Applications + timeline
+// -----------------------------------------------------------------------------
+
+model Application {
+  id          String            @id @default(cuid())
+  candidateId String
+  jobId       String
+  stage       PipelineStage     @default(APPLIED)
+  status      ApplicationStatus @default(ACTIVE)
+  /// e.g. "career_site", "referral", "linkedin", "agency"
+  source      String?
+  coverNote   String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  candidate         Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job               Job                @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  timelineEvents    TimelineEvent[]
+  interviewSessions InterviewSession[]
+  aiEvaluations     AIEvaluation[]
+
+  @@unique([candidateId, jobId])
+  @@index([stage])
+  @@index([status])
+  @@index([jobId])
+  @@index([candidateId])
+}
+
+model TimelineEvent {
+  id            String            @id @default(cuid())
+  applicationId String
+  type          TimelineEventType
+  payload       Json              @default("{}")
+  createdAt     DateTime          @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, createdAt])
+  @@index([type])
+}
+
+// -----------------------------------------------------------------------------
+// Notes + tags
+// -----------------------------------------------------------------------------
+
+model Note {
+  id          String   @id @default(cuid())
+  authorId    String
+  candidateId String
+  text        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  author    User      @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId, createdAt])
+  @@index([authorId])
+}
+
+model Tag {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  color          String?
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  candidates   CandidateTag[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model CandidateTag {
+  id          String   @id @default(cuid())
+  candidateId String
+  tagId       String
+  createdAt   DateTime @default(now())
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  tag       Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, tagId])
+  @@index([tagId])
+}
+
+// -----------------------------------------------------------------------------
+// Interviews (adaptive engine; TEXT or VOICE delivery)
+// -----------------------------------------------------------------------------
+
+model InterviewSession {
+  id             String          @id @default(cuid())
+  applicationId  String
+  /// Engine kind (AI_ADAPTIVE, TECH, …)
+  mode           InterviewMode   @default(AI_ADAPTIVE)
+  /// Candidate channel: TEXT | VOICE (default TEXT)
+  deliveryMode   String          @default("TEXT")
+  status         InterviewStatus @default(SCHEDULED)
+  /// TECHNICAL | HR | BEHAVIORAL | MANAGERIAL | FULLSTACK | DATA_AI | CUSTOM
+  interviewType  String          @default("TECHNICAL")
+  /// Candidate magic-link token (public interview room)
+  accessToken    String          @unique
+  tokenExpiresAt DateTime?
+  maxQuestions   Int             @default(12)
+  /// Generated interview plan (topics + opening question + focusAreas)
+  plan           Json?
+  interviewerId  String?
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  endedAt        DateTime?
+  /// Adaptive engine state — updated in code, not by the LLM
+  adaptiveState  Json?
+  /// When true, candidate room may emit timestamped proctoring SIGNALS (never auto-verdicts)
+  proctoringEnabled   Boolean   @default(false)
+  /// Set when candidate acknowledges consent (tab/paste always; camera optional)
+  proctoringConsentAt DateTime?
+  /// Explicit camera choice at consent — null until consent; never inferred
+  proctoringCameraConsent Boolean?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  application   Application         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  interviewer   User?               @relation("InterviewInterviewer", fields: [interviewerId], references: [id], onDelete: SetNull)
+  questions     InterviewQuestion[]
+  answers       InterviewAnswer[]
+  proctoring    ProctoringEvent[]
+  aiEvaluations AIEvaluation[]
+
+  @@index([applicationId])
+  @@index([status])
+  @@index([accessToken])
+}
+
+model InterviewQuestion {
+  id         String             @id @default(cuid())
+  sessionId  String
+  sequence   Int
+  question   String
+  topic      String?
+  difficulty QuestionDifficulty @default(MEDIUM)
+  /// Competency / rubric hint for scoring
+  competency String?
+  /// Which adaptive action produced this question (FOLLOW_UP, GO_DEEPER, …)
+  action     String?
+  /// Cached Piper TTS wav relative path under /storage
+  ttsPath    String?
+  createdAt  DateTime           @default(now())
+
+  session InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  answer  InterviewAnswer?
+
+  @@unique([sessionId, sequence])
+  @@index([sessionId])
+}
+
+model InterviewAnswer {
+  id          String   @id @default(cuid())
+  sessionId   String
+  questionId  String   @unique
+  /// Candidate response (typed text or STT transcript)
+  answerText  String
+  answeredAt  DateTime @default(now())
+  /// Duration in seconds if timed
+  durationSec Int?
+  /// Original audio relative path under /storage (VOICE)
+  audioPath   String?
+  /// Whisper avg_logprob / confidence proxy
+  transcriptConfidence Float?
+  /// Per-answer score stored inline (also mirrored to AIEvaluation)
+  evaluation  Json?
+
+  session  InterviewSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+// -----------------------------------------------------------------------------
+// AI evaluations (advisory only — always store reasoning)
+// -----------------------------------------------------------------------------
+
+model AIEvaluation {
+  id              String            @id @default(cuid())
+  applicationId   String
+  sessionId       String?
+  kind            AIEvaluationKind
+  /// Structured score breakdown, e.g. { "overall": 78, "skills": 80, "experience": 70, "why": [], "missing": [], "concerns": [] }
+  scores          Json
+  recommendation  AIRecommendation
+  /// Mandatory human-readable explanation — never omit
+  reasoning       String
+  model           String
+  rawResponse     Json?
+  createdAt       DateTime          @default(now())
+
+  application Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  session     InterviewSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId, kind])
+  @@index([sessionId])
+}
+
+// -----------------------------------------------------------------------------
+// Proctoring — SIGNALS with timestamps, never auto-verdicts
+// -----------------------------------------------------------------------------
+
+model ProctoringEvent {
+  id        String               @id @default(cuid())
+  sessionId String
+  type      ProctoringSignalType
+  /// When the signal was observed (client or server clock)
+  timestamp DateTime
+  meta      Json                 @default("{}")
+  createdAt DateTime             @default(now())
+
+  session InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, timestamp])
+  @@index([type])
+}
+
+// -----------------------------------------------------------------------------
+// Communication (local templates + send log; no cloud ESP required)
+// -----------------------------------------------------------------------------
+
+model EmailTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  subject        String
+  body           String
+  /// Optional category key, e.g. "interview_invite", "rejection"
+  category       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  logs         CommunicationLog[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model CommunicationLog {
+  id         String               @id @default(cuid())
+  templateId String?
+  actorId    String?
+  /// Recipient email or candidate id reference in meta
+  toAddress  String
+  channel    CommunicationChannel @default(EMAIL)
+  status     CommunicationStatus  @default(DRAFT)
+  subject    String?
+  body       String?
+  meta       Json                 @default("{}")
+  sentAt     DateTime?
+  createdAt  DateTime             @default(now())
+
+  template EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  actor    User?          @relation("CommunicationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([toAddress])
+  @@index([createdAt])
+  @@index([status])
+}
