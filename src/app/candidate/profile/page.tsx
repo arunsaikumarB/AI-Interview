@@ -17,8 +17,8 @@ export default async function CandidateProfilePage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-display text-3xl text-slate-900">Profile & resume</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Profile & resume</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Upload a PDF/DOCX resume — text is extracted on this server only.
         </p>
       </div>
@@ -26,7 +26,7 @@ export default async function CandidateProfilePage() {
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Resume</h2>
         <ResumeUpload />
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted-foreground">
           {profile?.resumeText
             ? `${profile.resumeText.length} characters extracted · ${profile.resumeUrl ?? "in memory"}`
             : "No resume uploaded yet."}

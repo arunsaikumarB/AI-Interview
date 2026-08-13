@@ -53,26 +53,30 @@ export function CandidateTags({ candidateId }: { candidateId: string }) {
   const available = all.filter((t) => !assigned.some((a) => a.id === t.id));
 
   return (
-    <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
-      <h2 className="text-lg font-medium text-slate-900">Tags</h2>
-      <div className="flex flex-wrap gap-1">
+    <div className="space-y-1.5">
+      <p className="text-[12px] text-muted-foreground">Tags</p>
+      <div className="flex flex-wrap items-center gap-1">
         {assigned.length === 0 ? (
-          <p className="text-sm text-slate-500">No tags yet.</p>
+          <span className="text-[13px] text-muted-foreground">No tags yet.</span>
         ) : (
           assigned.map((t) => (
-            <button key={t.id} type="button" onClick={() => void remove(t.id)}>
-              <Badge className="bg-slate-900 text-white">
-                {t.name} ×
-              </Badge>
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => void remove(t.id)}
+              aria-label={`Remove tag ${t.name}`}
+            >
+              <Badge className="bg-muted text-foreground">{t.name} ×</Badge>
             </button>
           ))
         )}
       </div>
       <div className="flex flex-wrap gap-2">
         <select
-          className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
+          className="h-7 rounded-lg border border-border bg-background px-2 text-[13px]"
           value={pick}
           onChange={(e) => setPick(e.target.value)}
+          aria-label="Add tag"
         >
           <option value="">Add tag…</option>
           {available.map((t) => (
@@ -85,6 +89,6 @@ export function CandidateTags({ candidateId }: { candidateId: string }) {
           Add
         </Button>
       </div>
-    </section>
+    </div>
   );
 }

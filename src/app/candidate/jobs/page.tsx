@@ -21,29 +21,29 @@ export default async function CandidateJobsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-3xl text-slate-900">Open roles</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Open roles</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Apply in one click. Screening is human-reviewed.
         </p>
       </div>
       <div className="space-y-4">
         {jobs.map((job) => (
-          <article key={job.id} className="rounded-xl border border-slate-200 p-4">
+          <article key={job.id} className="rounded-xl border border-border p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-medium text-slate-900">{job.title}</h2>
-                <p className="text-sm text-slate-500">
+                <h2 className="text-lg font-medium text-foreground">{job.title}</h2>
+                <p className="text-sm text-muted-foreground">
                   {[job.department?.name, job.location].filter(Boolean).join(" · ") ||
                     "Remote / TBD"}
                 </p>
               </div>
               <ApplyButton jobId={job.id} />
             </div>
-            <p className="mt-3 line-clamp-3 text-sm text-slate-600">{job.description}</p>
+            <p className="mt-3 line-clamp-3 text-sm text-muted-foreground">{job.description}</p>
           </article>
         ))}
         {jobs.length === 0 ? (
-          <p className="text-sm text-slate-500">No open roles right now.</p>
+          <p className="text-sm text-muted-foreground">No open roles right now.</p>
         ) : null}
       </div>
     </div>

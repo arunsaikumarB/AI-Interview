@@ -49,14 +49,14 @@ export function CandidateQuestions({
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-4 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-      <p className="text-sm uppercase tracking-wide text-slate-400">
+    <div className="mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm">
+      <p className="text-sm uppercase tracking-wide text-muted-foreground">
         Almost done
       </p>
-      <h1 className="font-display text-3xl text-slate-900">
+      <h1 className="text-3xl font-semibold tracking-tight text-foreground">
         Do you have any questions about the role?
       </h1>
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-muted-foreground">
         You can ask up to 3 questions. Answers come only from the job posting
         (title, location, description). Salary, benefits, and feedback are always
         deferred to the hiring team. Not scored.
@@ -65,9 +65,9 @@ export function CandidateQuestions({
       {exchanges.length > 0 ? (
         <ul className="space-y-3">
           {exchanges.map((ex, i) => (
-            <li key={i} className="rounded-lg bg-slate-50 p-3 text-sm">
-              <p className="font-medium text-slate-900">Q: {ex.question}</p>
-              <p className="mt-1 text-slate-600">A: {ex.answer}</p>
+            <li key={i} className="rounded-lg bg-muted/40 p-3 text-sm">
+              <p className="font-medium text-foreground">Q: {ex.question}</p>
+              <p className="mt-1 text-muted-foreground">A: {ex.answer}</p>
             </li>
           ))}
         </ul>
@@ -82,7 +82,7 @@ export function CandidateQuestions({
             placeholder="Ask about the role…"
             disabled={busy}
           />
-          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => void ask()}

@@ -36,8 +36,8 @@ export default async function CareersPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-display text-4xl text-slate-900">Open roles</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="font-sans text-4xl font-semibold tracking-tight text-foreground">Open roles</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Apply in a few minutes — no account required.
         </p>
       </div>
@@ -46,13 +46,13 @@ export default async function CareersPage() {
           <li key={job.id}>
             <Link
               href={`/careers/${job.id}`}
-              className="block rounded-xl border border-slate-200 bg-white/80 px-5 py-4 transition hover:border-slate-300 hover:bg-white"
+              className="block rounded-xl border border-border bg-card/80 px-5 py-4 transition hover:border-border hover:bg-card"
             >
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="font-medium text-slate-900">{job.title}</p>
-                <p className="text-xs text-slate-500">{job.organization.name}</p>
+                <p className="font-medium text-foreground">{job.title}</p>
+                <p className="text-xs text-muted-foreground">{job.organization.name}</p>
               </div>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {[
                   job.department?.name,
                   job.location,
@@ -66,7 +66,7 @@ export default async function CareersPage() {
           </li>
         ))}
         {jobs.length === 0 ? (
-          <p className="text-sm text-slate-500">No open roles right now. Check back soon.</p>
+          <p className="text-sm text-muted-foreground">No open roles right now. Check back soon.</p>
         ) : null}
       </ul>
     </div>

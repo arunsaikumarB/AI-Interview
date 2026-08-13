@@ -1,5 +1,5 @@
 // =============================================================================
-// AI Recruitment OS — Prisma schema
+// Logisoft HireOS — Prisma schema
 // 100% self-hosted: PostgreSQL + pgvector. AI via local Ollama only.
 // =============================================================================
 
@@ -95,6 +95,8 @@ enum InterviewStatus {
   COMPLETED
   CANCELLED
   NO_SHOW
+  /// Ended by interview integrity policy (Strict mode) — not an ATS stage change
+  TERMINATED
 }
 
 enum QuestionDifficulty {
@@ -135,6 +137,10 @@ enum ProctoringSignalType {
   NETWORK_DROP
   SECONDARY_CAMERA_CONNECTED
   SECONDARY_CAMERA_DISCONNECTED
+  SECONDARY_CAMERA_MOVED
+  SECONDARY_NO_FACE
+  SECONDARY_MULTIPLE_FACES
+  SECONDARY_LOOKING_AT_DEVICE
   OTHER
 }
 
@@ -434,6 +440,18 @@ model InterviewSession {
   proctoringConsentAt DateTime?
   /// Explicit camera choice at consent — null until consent; never inferred
   proctoringCameraConsent Boolean?
+  /// STANDARD | STRICT — Strict may auto-end the interview after repeated browser-observable violations
+  integrityMode              String    @default("STANDARD")
+  /// Candidate acknowledged Strict integrity requirements (required before start when STRICT)
+  integrityConsentAt         DateTime?
+  /// Count of closed focus/fullscreen violation episodes (server authority)
+  integrityViolationCount    Int       @default(0)
+  /// Count of paste violations under Strict policy (server authority)
+  integrityPasteCount        Int       @default(0)
+  /// Secondary-camera movement warnings (Enhanced). 2nd episode may terminate.
+  integrityCameraMoveCount   Int       @default(0)
+  /// Short reason key when status=TERMINATED (e.g. focus_threshold, paste_threshold)
+  integrityTerminatedReason  String?
   /// Short-lived secondary device pair token (QR / deep link)
   secondaryPairToken          String?   @unique
   secondaryPairExpiresAt      DateTime?
@@ -442,6 +460,23 @@ model InterviewSession {
   secondaryDeviceLastSeenAt   DateTime?
   /// Candidate confirmed secondary camera placement before start
   secondaryPlacementConfirmedAt DateTime?
+  /// Explicit consent to secondary camera + room-audio recording (Enhanced)
+  secondaryRecordingConsentAt DateTime?
+  /// Active/final secondary recording id (folder under /storage)
+  secondaryRecordingId            String?
+  /// NONE | READY | RECORDING | INTERRUPTED | FINALIZING | SAVED | FAILED | DISCARDED
+  secondaryRecordingStatus        String    @default("NONE")
+  /// Relative path to finalized recording under STORAGE_ROOT
+  secondaryRecordingPath          String?
+  secondaryRecordingMime          String?
+  secondaryRecordingStartedAt     DateTime?
+  secondaryRecordingEndedAt       DateTime?
+  secondaryRecordingDurationMs    Int?
+  /// Accumulated interrupted/gap time (honest reporting)
+  secondaryRecordingInterruptedMs Int       @default(0)
+  secondaryRecordingHasGap        Boolean   @default(false)
+  /// Last successfully stored chunk index (-1 = none)
+  secondaryRecordingLastChunkIndex Int      @default(-1)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

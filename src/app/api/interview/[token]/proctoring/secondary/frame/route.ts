@@ -37,7 +37,7 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
       { status: 410 },
     );
   }
-  if (session.status === "COMPLETED" || session.status === "CANCELLED") {
+  if (session.status === "COMPLETED" || session.status === "CANCELLED" || session.status === "TERMINATED") {
     return Response.json({ error: "Interview ended" }, { status: 410 });
   }
   if (!session.proctoringEnabled || session.proctoringMode !== "ENHANCED") {

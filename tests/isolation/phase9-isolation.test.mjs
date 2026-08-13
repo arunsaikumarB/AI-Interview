@@ -24,6 +24,7 @@ const STAFF_ENDPOINTS = [
   { method: "POST", path: "/api/talent/search", body: { query: "engineer", limit: 5 } },
   { method: "GET", path: "/api/candidates" },
   { method: "GET", path: "/api/interviews/nonexistent-but-well-formed-id" },
+  { method: "GET", path: "/api/interviews/nonexistent-but-well-formed-id/secondary-recording/file" },
   { method: "GET", path: "/api/applications" },
   { method: "GET", path: "/api/applications/board" },
   { method: "GET", path: "/api/jobs" },
@@ -155,5 +156,141 @@ describe("Phase 9 candidate isolation", () => {
     assert.equal(json.applications?.[0]?.stageLabel, "Under review");
     assert.ok(!text.includes("SECRET_EVAL_REASONING_BOB_ONLY"));
     assert.ok(!/"overall"\s*:\s*91/.test(text));
+  });
+});
+
+describe("Phase 4C secondary recording access", () => {
+  let db;
+  let pair;
+  let interview;
+  let recruiterSame;
+  let recruiterOther;
+  let otherOrg;
+  let cookieRecruiter;
+  let cookieOther;
+  let cookieCandidate;
+
+  before(async () => {
+    db = prisma();
+    pair = await seedIsolationPair(db);
+    const stamp = Date.now();
+    const passwordHash = pair.userA.passwordHash;
+
+    recruiterSame = await db.user.create({
+      data: {
+        email: `iso-rec-${stamp}@example.com`,
+        name: "Iso Recruiter",
+        role: "RECRUITER",
+        passwordHash,
+        organizationId: pair.org.id,
+        isActive: true,
+      },
+    });
+    otherOrg = await db.organization.create({
+      data: {
+        name: `Iso Other ${stamp}`,
+        slug: `iso-other-${stamp}`,
+        companyName: `Iso Other ${stamp}`,
+      },
+    });
+    recruiterOther = await db.user.create({
+      data: {
+        email: `iso-rec-other-${stamp}@example.com`,
+        name: "Other Recruiter",
+        role: "RECRUITER",
+        passwordHash,
+        organizationId: otherOrg.id,
+        isActive: true,
+      },
+    });
+    interview = await db.interviewSession.create({
+      data: {
+        applicationId: pair.appB.id,
+        accessToken: `iso-rec-token-${stamp}`,
+        status: "COMPLETED",
+        secondaryRecordingStatus: "SAVED",
+        secondaryRecordingPath: "interviews/iso-missing/recording.webm",
+      },
+    });
+    cookieRecruiter = await mintCookie({
+      id: recruiterSame.id,
+      email: recruiterSame.email,
+      name: recruiterSame.name,
+      role: "RECRUITER",
+      organizationId: recruiterSame.organizationId,
+    });
+    cookieOther = await mintCookie({
+      id: recruiterOther.id,
+      email: recruiterOther.email,
+      name: recruiterOther.name,
+      role: "RECRUITER",
+      organizationId: recruiterOther.organizationId,
+    });
+    cookieCandidate = await mintCookie({
+      id: pair.userA.id,
+      email: pair.userA.email,
+      name: pair.userA.name,
+      role: "CANDIDATE",
+      organizationId: pair.userA.organizationId,
+    });
+  });
+
+  after(async () => {
+    if (interview) {
+      await db.interviewSession.deleteMany({ where: { id: interview.id } });
+    }
+    if (recruiterSame || recruiterOther) {
+      await db.user.deleteMany({
+        where: {
+          id: {
+            in: [recruiterSame?.id, recruiterOther?.id].filter(Boolean),
+          },
+        },
+      });
+    }
+    if (otherOrg) {
+      await db.organization.deleteMany({ where: { id: otherOrg.id } });
+    }
+    await cleanupIsolationPair(db, pair);
+    await db?.$disconnect();
+  });
+
+  const filePath = () =>
+    `/api/interviews/${interview.id}/secondary-recording/file`;
+
+  it("unauthenticated → 401 GET secondary-recording/file", async () => {
+    const res = await fetch(
+      `${process.env.BASE_URL ?? "http://localhost:3000"}${filePath()}`,
+    );
+    assert.equal(res.status, 401);
+  });
+
+  it("candidate → 403 GET secondary-recording/file", async () => {
+    const { res } = await api(cookieCandidate, "GET", filePath());
+    assert.equal(res.status, 403);
+  });
+
+  it("recruiter same organization → allowed (not 403)", async () => {
+    const { res } = await api(cookieRecruiter, "GET", filePath());
+    assert.notEqual(res.status, 403);
+    assert.notEqual(res.status, 401);
+    assert.ok(
+      res.status === 200 || res.status === 404,
+      `same-org recruiter must be authorized, got ${res.status}`,
+    );
+  });
+
+  it("recruiter other organization → 403", async () => {
+    const { res } = await api(cookieOther, "GET", filePath());
+    assert.equal(res.status, 403);
+  });
+
+  it("invalid session → denied", async () => {
+    const { res } = await api(
+      cookieRecruiter,
+      "GET",
+      "/api/interviews/clxxxxxxxxxxxxxxxxxxxx/secondary-recording/file",
+    );
+    assert.ok(res.status === 404 || res.status === 403);
   });
 });

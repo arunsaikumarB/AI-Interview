@@ -38,7 +38,7 @@ export const POST = withApiHandler<Ctx>(async (request, { params }) => {
       { status: 410 },
     );
   }
-  if (session.status === "COMPLETED" || session.status === "CANCELLED") {
+  if (session.status === "COMPLETED" || session.status === "CANCELLED" || session.status === "TERMINATED") {
     clearLiveFrame(session.id);
     return Response.json({ error: "Interview ended" }, { status: 410 });
   }

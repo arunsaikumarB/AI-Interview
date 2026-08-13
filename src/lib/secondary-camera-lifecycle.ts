@@ -75,6 +75,18 @@ export async function signalSecondaryTransition(params: {
 
 /** Invalidate pairing + clear ephemeral frames when interview ends/cancels/expires. */
 export async function endSecondaryCameraSession(sessionId: string): Promise<void> {
+  try {
+    const { finalizeSecondaryRecording } = await import(
+      "@/lib/secondary-recording-server"
+    );
+    await finalizeSecondaryRecording(sessionId);
+  } catch (err) {
+    console.warn(
+      "[secondary-recording] finalize on end failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   const session = await prisma.interviewSession.findUnique({
     where: { id: sessionId },
     select: {

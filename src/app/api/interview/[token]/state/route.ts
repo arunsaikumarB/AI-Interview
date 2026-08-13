@@ -77,5 +77,10 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
       : null,
     pendingProcessing,
     concluded: session.status === "COMPLETED",
+    terminated: session.status === "TERMINATED",
+    integrityMode: session.integrityMode === "STRICT" ? "STRICT" : "STANDARD",
+    integrityViolationCount: session.integrityViolationCount,
+    integrityPasteCount: session.integrityPasteCount,
+    integrityTerminatedReason: session.integrityTerminatedReason,
   });
 });

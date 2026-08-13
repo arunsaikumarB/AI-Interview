@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { jsonOk, withApiHandler } from "@/lib/api";
+import { secondaryPairUrl } from "@/lib/public-app-url";
 import {
   clearLiveFrame,
   clearSecondaryRuntime,
   createSecondaryPairToken,
+  getLiveFrame,
   getRuntimeDiagnostics,
   pairExpiresAt,
   resolveSecondaryStatus,
@@ -12,6 +14,7 @@ import {
   sweepSecondaryRuntime,
 } from "@/lib/secondary-camera";
 import { signalSecondaryTransition } from "@/lib/secondary-camera-lifecycle";
+import { recordingStatusLabel } from "@/lib/secondary-recording-labels";
 
 type Ctx = { params: { token: string } };
 
@@ -31,6 +34,10 @@ async function loadEnhancedSession(accessToken: string) {
       secondaryDeviceStatus: true,
       secondaryDeviceLastSeenAt: true,
       secondaryPlacementConfirmedAt: true,
+      secondaryRecordingConsentAt: true,
+      secondaryRecordingStatus: true,
+      secondaryRecordingHasGap: true,
+      secondaryRecordingInterruptedMs: true,
     },
   });
 }
@@ -47,7 +54,7 @@ function gate(
       { status: 410 },
     );
   }
-  if (session.status === "CANCELLED" || session.status === "COMPLETED") {
+  if (session.status === "CANCELLED" || session.status === "COMPLETED" || session.status === "TERMINATED") {
     return Response.json({ error: "Interview is not available" }, { status: 400 });
   }
   if (!session.proctoringEnabled || session.proctoringMode !== "ENHANCED") {
@@ -93,9 +100,8 @@ export const GET = withApiHandler<Ctx>(async (request, { params }) => {
     url.searchParams.get("diag") === "1" &&
     process.env.NODE_ENV !== "production";
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const pairUrl = session.secondaryPairToken
-    ? `${appUrl.replace(/\/$/, "")}/interview/secondary/${session.secondaryPairToken}`
+  const app = session.secondaryPairToken
+    ? secondaryPairUrl(session.secondaryPairToken, request)
     : null;
 
   return jsonOk({
@@ -103,9 +109,22 @@ export const GET = withApiHandler<Ctx>(async (request, { params }) => {
     label: secondaryStatusLabel(status),
     pairToken: session.secondaryPairToken,
     pairExpiresAt: session.secondaryPairExpiresAt?.toISOString() ?? null,
-    pairUrl,
+    pairUrl: app?.pairUrl ?? null,
+    reachableFromPhone: app?.reachableFromPhone ?? false,
+    requiresHttpsTrust: app?.requiresHttpsTrust ?? false,
     placementConfirmed: Boolean(session.secondaryPlacementConfirmedAt),
+    recordingConsent: Boolean(session.secondaryRecordingConsentAt),
+    recordingStatus: session.secondaryRecordingStatus,
+    recordingLabel: recordingStatusLabel(session.secondaryRecordingStatus),
+    recordingHasGap: session.secondaryRecordingHasGap,
+    recordingInterruptedMs: session.secondaryRecordingInterruptedMs,
     livePreviewAvailable: status === "CONNECTED",
+    frameFresh: Boolean(
+      (() => {
+        const f = getLiveFrame(session.id);
+        return f && f.ageMs < 3000;
+      })(),
+    ),
     ...(diag
       ? { diagnostics: getRuntimeDiagnostics(session.id) }
       : {}),
@@ -140,14 +159,10 @@ export const POST = withApiHandler<Ctx>(async (request, { params }) => {
         secondaryPlacementConfirmedAt: null,
       },
     });
-    const origin =
-      request.headers.get("x-forwarded-host") &&
-      request.headers.get("x-forwarded-proto")
-        ? `${request.headers.get("x-forwarded-proto")}://${request.headers.get("x-forwarded-host")}`
-        : null;
-    const appUrl =
-      origin ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const pairUrl = `${appUrl.replace(/\/$/, "")}/interview/secondary/${token}`;
+    const { pairUrl, reachableFromPhone, requiresHttpsTrust } = secondaryPairUrl(
+      token,
+      request,
+    );
 
     return jsonOk({
       status: "WAITING" as const,
@@ -155,6 +170,8 @@ export const POST = withApiHandler<Ctx>(async (request, { params }) => {
       pairToken: token,
       pairExpiresAt: expires.toISOString(),
       pairUrl,
+      reachableFromPhone,
+      requiresHttpsTrust,
       placementConfirmed: false,
     });
   }
@@ -172,11 +189,37 @@ export const POST = withApiHandler<Ctx>(async (request, { params }) => {
         { status: 400 },
       );
     }
+    const frame = getLiveFrame(session.id);
+    if (!frame || frame.ageMs > 3000) {
+      return Response.json(
+        {
+          error:
+            "Live preview is not ready. Wait for a fresh frame, then confirm placement.",
+        },
+        { status: 400 },
+      );
+    }
+    if (!session.secondaryRecordingConsentAt) {
+      return Response.json(
+        { error: "Enhanced recording consent is required first" },
+        { status: 403 },
+      );
+    }
     await prisma.interviewSession.update({
       where: { id: session.id },
-      data: { secondaryPlacementConfirmedAt: new Date() },
+      data: {
+        secondaryPlacementConfirmedAt: new Date(),
+        secondaryRecordingStatus:
+          session.secondaryRecordingStatus === "NONE"
+            ? "READY"
+            : session.secondaryRecordingStatus,
+      },
     });
-    return jsonOk({ placementConfirmed: true, status, label: secondaryStatusLabel(status) });
+    return jsonOk({
+      placementConfirmed: true,
+      status,
+      label: "Camera placement ready",
+    });
   }
 
   if (body.action === "reset_placement") {

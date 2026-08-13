@@ -23,14 +23,14 @@ export default async function CareersApplyPage({ params, searchParams }: Props) 
 
   if (searchParams.already === "1") {
     return (
-      <div className="space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-6">
-        <h1 className="font-display text-2xl text-slate-900">Already applied</h1>
-        <p className="text-sm text-slate-700">
+      <div className="space-y-4 rounded-xl border border-warning/30 bg-warning/10 p-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Already applied</h1>
+        <p className="text-sm text-foreground/90">
           You (or someone using this email) have already applied for{" "}
           <strong>{job.title}</strong>. Our team will be in touch if there is an
           update.
         </p>
-        <Link href="/careers" className="text-sm text-slate-900 underline">
+        <Link href="/careers" className="text-sm text-foreground underline">
           Back to open roles
         </Link>
       </div>
@@ -39,14 +39,14 @@ export default async function CareersApplyPage({ params, searchParams }: Props) 
 
   if (searchParams.done === "1") {
     return (
-      <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50 p-6">
-        <h1 className="font-display text-2xl text-slate-900">Application received</h1>
-        <p className="text-sm text-slate-700">
+      <div className="space-y-4 rounded-xl border border-success/30 bg-success/10 p-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Application received</h1>
+        <p className="text-sm text-foreground/90">
           Thanks for applying to <strong>{job.title}</strong> at{" "}
           {job.organization.name}. We&apos;ll review your resume shortly.
         </p>
         {searchParams.account === "1" ? (
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-foreground/90">
             Your portal account is ready —{" "}
             <Link href="/login" className="underline">
               sign in
@@ -54,7 +54,7 @@ export default async function CareersApplyPage({ params, searchParams }: Props) 
             to track your application.
           </p>
         ) : (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted-foreground">
             Want to track status later? You can create an account next time you
             apply, or{" "}
             <Link href="/register" className="underline">
@@ -63,7 +63,7 @@ export default async function CareersApplyPage({ params, searchParams }: Props) 
             .
           </p>
         )}
-        <Link href="/careers" className="text-sm text-slate-900 underline">
+        <Link href="/careers" className="text-sm text-foreground underline">
           Back to open roles
         </Link>
       </div>
@@ -73,11 +73,11 @@ export default async function CareersApplyPage({ params, searchParams }: Props) 
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm text-slate-500">{job.organization.name}</p>
-        <h1 className="font-display text-3xl text-slate-900">
+        <p className="text-sm text-muted-foreground">{job.organization.name}</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Apply — {job.title}
         </h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-muted-foreground">
           No account required. Optional portal login if you set a password below.
         </p>
       </div>

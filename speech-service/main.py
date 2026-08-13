@@ -33,7 +33,7 @@ VOICE_JSON = VOICES_DIR / f"{DEFAULT_VOICE}.onnx.json"
 # Whisper avg_logprob: closer to 0 is better; very low → reject
 AVG_LOGPROB_FAIL = float(os.environ.get("AVG_LOGPROB_FAIL", "-1.2"))
 
-app = FastAPI(title="AI Recruitment OS — Speech Service", version="1.0.0")
+app = FastAPI(title="Logisoft HireOS — Speech Service", version="1.0.0")
 
 _whisper = None
 _whisper_model_name: str = "medium"

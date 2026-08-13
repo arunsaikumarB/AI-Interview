@@ -16,8 +16,8 @@ export default async function PortalProfilePage() {
   if (!candidate) {
     return (
       <div className="space-y-2">
-        <h1 className="font-display text-3xl text-slate-900">Profile</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Profile</h1>
+        <p className="text-sm text-muted-foreground">
           No candidate profile linked to this account yet. Apply via careers to create one.
         </p>
       </div>
@@ -27,8 +27,8 @@ export default async function PortalProfilePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-3xl text-slate-900">Profile & resume</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Profile & resume</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           {candidate.firstName} {candidate.lastName} · {candidate.email}
         </p>
       </div>

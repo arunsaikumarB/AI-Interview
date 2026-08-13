@@ -1,4 +1,6 @@
-# AI Recruitment OS
+# Logisoft HireOS
+
+AI Recruitment Operating System — Intelligent hiring. Human decisions.
 
 Self-hosted ATS + AI Screening + Adaptive AI Interview + Proctoring signals + Evaluation.
 

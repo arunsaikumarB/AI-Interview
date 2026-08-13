@@ -45,7 +45,7 @@ export default async function InterviewPlanPage({ params }: Ctx) {
     <div className="space-y-4">
       <Link
         href={`/dashboard/candidates/${interview.application.candidate.id}?applicationId=${interview.applicationId}`}
-        className="text-sm text-slate-500 hover:underline"
+        className="text-sm text-muted-foreground hover:underline"
       >
         ← Back to candidate
       </Link>

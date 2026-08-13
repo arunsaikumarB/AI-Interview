@@ -1,0 +1,11 @@
+{
+	auto_https off
+}
+
+# Listen on container :443 (host maps PUBLIC_HTTPS_PORT → 443).
+# Host header may be "LAN:3443"; do not bind the site to :443 in the address.
+:443 {
+	tls /certs/lan.pem /certs/lan-key.pem
+	encode gzip
+	reverse_proxy {$UPSTREAM}
+}

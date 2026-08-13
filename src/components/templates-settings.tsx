@@ -145,7 +145,7 @@ export function TemplatesSettings() {
         <div className="grid gap-6 lg:grid-cols-2">
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-medium text-slate-900">Org templates</h2>
+              <h2 className="text-lg font-medium text-foreground">Org templates</h2>
               <Button size="sm" variant="outline" onClick={startCreate}>
                 New
               </Button>
@@ -154,12 +154,12 @@ export function TemplatesSettings() {
               {templates.map((t) => (
                 <li
                   key={t.id}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  className="rounded-lg border border-border bg-card px-3 py-2 text-sm"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p className="font-medium text-slate-900">{t.name}</p>
-                      <p className="text-xs text-slate-500">
+                      <p className="font-medium text-foreground">{t.name}</p>
+                      <p className="text-xs text-muted-foreground">
                         {t.category
                           ? CATEGORY_LABELS[t.category as TemplateCategory] ??
                             t.category
@@ -182,13 +182,13 @@ export function TemplatesSettings() {
                 </li>
               ))}
               {templates.length === 0 ? (
-                <p className="text-sm text-slate-500">No templates yet.</p>
+                <p className="text-sm text-muted-foreground">No templates yet.</p>
               ) : null}
             </ul>
           </section>
 
-          <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-lg font-medium text-slate-900">
+          <section className="space-y-3 rounded-xl border border-border bg-card p-4">
+            <h2 className="text-lg font-medium text-foreground">
               {editing ? "Edit template" : "Create template"}
             </h2>
             <div className="space-y-1">
@@ -234,7 +234,7 @@ export function TemplatesSettings() {
                 onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
               />
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               Variables: {"{{candidateFirstName}}"}, {"{{jobTitle}}"},{" "}
               {"{{companyName}}"}, {"{{interviewLink}}"}, {"{{recruiterName}}"},{" "}
               {"{{stage}}"}, {"{{candidateLastName}}"}
@@ -246,32 +246,32 @@ export function TemplatesSettings() {
         </div>
       ) : (
         <section className="space-y-3">
-          <h2 className="text-lg font-medium text-slate-900">
+          <h2 className="text-lg font-medium text-foreground">
             Sent log (latest 100)
           </h2>
           <ul className="space-y-2">
             {logs.map((l) => (
               <li
                 key={l.id}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge
                     className={
                       l.status === "SENT"
-                        ? "bg-emerald-100 text-emerald-900"
+                        ? "bg-success/15 text-success"
                         : l.status === "FAILED"
-                          ? "bg-rose-100 text-rose-900"
-                          : "bg-amber-100 text-amber-950"
+                          ? "bg-destructive/15 text-destructive"
+                          : "bg-warning/15 text-foreground"
                     }
                   >
                     {l.status}
                   </Badge>
-                  <span className="font-medium text-slate-900">
+                  <span className="font-medium text-foreground">
                     {l.subject ?? "(no subject)"}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted-foreground">
                   To {l.toAddress} · {formatDateTime(l.sentAt ?? l.createdAt)}
                   {l.actor ? ` · ${l.actor.name}` : ""}
                   {l.template ? ` · ${l.template.name}` : ""}
@@ -279,7 +279,7 @@ export function TemplatesSettings() {
               </li>
             ))}
             {logs.length === 0 ? (
-              <p className="text-sm text-slate-500">No communication logs yet.</p>
+              <p className="text-sm text-muted-foreground">No communication logs yet.</p>
             ) : null}
           </ul>
         </section>

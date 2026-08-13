@@ -6,6 +6,8 @@ import { FormEvent, Suspense, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { DEFAULT_COMPANY_NAME, PRODUCT_NAME, TAGLINE } from "@/lib/branding";
 
 function LoginForm() {
   const router = useRouter();
@@ -49,7 +51,7 @@ function LoginForm() {
         <Label htmlFor="password">Password</Label>
         <Input id="password" name="password" type="password" required />
       </div>
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Signing in…" : "Sign in"}
       </Button>
@@ -59,20 +61,27 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_#e8eef7_0%,_#f7f5f1_50%,_#efe8dc_100%)] px-4">
-      <div className="w-full max-w-md rounded-2xl border border-black/5 bg-white/90 p-8 shadow-sm backdrop-blur">
-        <p className="font-[family-name:var(--font-display)] text-3xl text-slate-900">
-          AI Recruitment OS
-        </p>
-        <p className="mt-2 text-sm text-slate-500">Sign in to your self-hosted workspace</p>
+    <div className="app-canvas flex min-h-screen items-center justify-center px-4">
+      <div className="surface-elevated w-full max-w-md p-8">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="accent-rule mb-4" />
+            <p className="text-3xl font-semibold tracking-tight text-foreground">
+              {DEFAULT_COMPANY_NAME}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">{PRODUCT_NAME}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{TAGLINE}</p>
+          </div>
+          <ThemeToggle />
+        </div>
         <div className="mt-8">
           <Suspense>
             <LoginForm />
           </Suspense>
         </div>
-        <p className="mt-6 text-center text-sm text-slate-500">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           Candidate?{" "}
-          <Link href="/register" className="text-slate-900 underline">
+          <Link href="/register" className="text-primary underline-offset-4 hover:underline">
             Create an account
           </Link>
         </p>

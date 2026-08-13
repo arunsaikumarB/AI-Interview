@@ -43,20 +43,20 @@ export function PortalApplications() {
   }, []);
 
   if (error) {
-    return <p className="text-sm text-rose-600">{error}</p>;
+    return <p className="text-sm text-destructive">{error}</p>;
   }
   if (!apps) {
-    return <p className="text-sm text-slate-500">Loading…</p>;
+    return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
 
   return (
     <div className="space-y-3">
       {apps.map((app) => (
-        <article key={app.id} className="rounded-xl border border-slate-200 p-4">
+        <article key={app.id} className="rounded-xl border border-border p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="font-medium text-slate-900">{app.jobTitle}</p>
-              <p className="text-sm text-slate-500">{app.department ?? "—"}</p>
+              <p className="font-medium text-foreground">{app.jobTitle}</p>
+              <p className="text-sm text-muted-foreground">{app.department ?? "—"}</p>
             </div>
             <Badge variant="secondary">{app.stageLabel}</Badge>
           </div>
@@ -72,7 +72,7 @@ export function PortalApplications() {
         </article>
       ))}
       {apps.length === 0 ? (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           No applications yet.{" "}
           <Link href="/careers" className="underline">
             Browse open roles

@@ -155,25 +155,25 @@ export function InterviewPlanEditor({
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           {candidateName} · {jobTitle}
         </p>
-        <h1 className="mt-1 font-display text-3xl text-slate-900">
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">
           Review interview plan
         </h1>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-muted-foreground">
           Edit topics and the opening question before sharing the candidate
           link. Plan locks once the interview starts.
         </p>
         {!editable ? (
-          <Badge className="mt-2 bg-amber-100 text-amber-950">
+          <Badge className="mt-2 bg-warning/15 text-foreground">
             Locked — interview already started
           </Badge>
         ) : null}
       </div>
 
-      <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-medium text-slate-900">Opening question</h2>
+      <section className="space-y-3 rounded-xl border border-border bg-card p-4">
+        <h2 className="text-lg font-medium text-foreground">Opening question</h2>
         <Textarea
           rows={3}
           disabled={!editable}
@@ -245,7 +245,7 @@ export function InterviewPlanEditor({
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-medium text-slate-900">Topics</h2>
+          <h2 className="text-lg font-medium text-foreground">Topics</h2>
           {editable ? (
             <Button
               size="sm"
@@ -287,7 +287,7 @@ export function InterviewPlanEditor({
         </DndContext>
       </section>
 
-      <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
+      <section className="space-y-2 rounded-xl border border-border bg-card p-4">
         <Label>Focus areas (comma-separated)</Label>
         <Input
           disabled={!editable}
@@ -297,8 +297,8 @@ export function InterviewPlanEditor({
       </section>
 
       {editable ? (
-        <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-          <h2 className="text-lg font-medium text-slate-900">
+        <section className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
+          <h2 className="text-lg font-medium text-foreground">
             Refine with natural language
           </h2>
           <Textarea
@@ -315,9 +315,9 @@ export function InterviewPlanEditor({
             {refineBusy ? "Refining…" : "Preview refine"}
           </Button>
           {pendingRefine ? (
-            <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-sm font-medium text-slate-900">Proposed changes</p>
-              <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+            <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+              <p className="text-sm font-medium text-foreground">Proposed changes</p>
+              <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                 {pendingRefine.changeSummary.map((c) => (
                   <li key={c}>{c}</li>
                 ))}
@@ -347,7 +347,7 @@ export function InterviewPlanEditor({
         </section>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+      <div className="flex flex-wrap gap-2 border-t border-border pt-4">
         {editable ? (
           <Button disabled={saving} onClick={() => void save()}>
             {saving ? "Saving…" : "Save plan"}
@@ -357,7 +357,7 @@ export function InterviewPlanEditor({
           Copy candidate link
         </Button>
       </div>
-      <p className="break-all font-mono text-xs text-slate-400">{candidateLink}</p>
+      <p className="break-all font-mono text-xs text-muted-foreground">{candidateLink}</p>
     </div>
   );
 }
@@ -388,7 +388,7 @@ function SortableTopicCard({
         transition,
       }}
       className={cn(
-        "rounded-xl border border-slate-200 bg-white p-4",
+        "rounded-xl border border-border bg-card p-4",
         isDragging && "opacity-80 shadow-md",
       )}
     >
@@ -397,18 +397,18 @@ function SortableTopicCard({
           {editable ? (
             <button
               type="button"
-              className="cursor-grab rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-100"
+              className="cursor-grab rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
               {...attributes}
               {...listeners}
             >
               Drag
             </button>
           ) : null}
-          <span className="text-xs uppercase tracking-wide text-slate-400">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">
             Topic {index + 1}
           </span>
           {topic.fromResume ? (
-            <Badge className="bg-emerald-100 text-emerald-900">fromResume</Badge>
+            <Badge className="bg-success/15 text-success">fromResume</Badge>
           ) : (
             <Badge variant="secondary">role</Badge>
           )}
@@ -451,7 +451,7 @@ function SortableTopicCard({
           onChange={(e) => onChange({ why: e.target.value })}
         />
       </div>
-      <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+      <label className="mt-2 flex items-center gap-2 text-sm text-foreground/90">
         <input
           type="checkbox"
           disabled={!editable}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 import {
   BarChart3,
   Briefcase,
@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/sheet";
 import { ROLE_LABELS } from "@/lib/constants";
 import type { Role } from "@prisma/client";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { DEFAULT_COMPANY_NAME, PRODUCT_NAME } from "@/lib/branding";
 
 type NavItem = {
   href: string;
@@ -47,19 +49,23 @@ function canAdminNav(role: Role) {
 }
 
 function staffNavForRole(role: Role): {
+  general: NavItem[];
   recruitment: NavItem[];
   tools: NavItem[];
 } {
   const pipeline = canPipelineNav(role);
   const admin = canAdminNav(role);
 
-  const recruitment: NavItem[] = [
+  const general: NavItem[] = [
     {
       href: "/dashboard",
       label: "Dashboard",
       icon: LayoutDashboard,
       match: (p) => p === "/dashboard",
     },
+  ];
+
+  const recruitment: NavItem[] = [
     {
       href: "/dashboard/recruiting",
       label: "Jobs & Candidates",
@@ -108,7 +114,7 @@ function staffNavForRole(role: Role): {
     });
   }
 
-  return { recruitment, tools };
+  return { general, recruitment, tools };
 }
 
 const candidateNav: NavItem[] = [
@@ -131,9 +137,9 @@ function NavSection({
 }) {
   if (items.length === 0) return null;
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       {title ? (
-        <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        <p className="px-2.5 pb-1.5 pt-4 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
           {title}
         </p>
       ) : null}
@@ -151,13 +157,20 @@ function NavSection({
             href={item.href}
             onClick={onNavigate}
             className={cn(
-              "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors",
+              "group flex items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-[13px] font-medium transition-colors duration-ui",
               active
-                ? "bg-slate-900/90 text-white"
-                : "text-slate-600 hover:bg-slate-900/5 hover:text-slate-900",
+                ? "nav-active"
+                : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
             )}
           >
-            <Icon className="h-4 w-4 shrink-0 opacity-80" />
+            <Icon
+              className={cn(
+                "h-[18px] w-[18px] shrink-0 transition-colors duration-ui",
+                active
+                  ? "nav-active-icon"
+                  : "text-muted-foreground group-hover:text-foreground/80",
+              )}
+            />
             {item.label}
           </Link>
         );
@@ -179,7 +192,7 @@ function SidebarBody({
 }) {
   const router = useRouter();
   const isCandidate = user.role === "CANDIDATE";
-  const { recruitment, tools } = staffNavForRole(user.role);
+  const { general, recruitment, tools } = staffNavForRole(user.role);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -189,18 +202,30 @@ function SidebarBody({
 
   return (
     <>
-      <div className="mb-6 px-1">
-        <p className="font-display text-lg tracking-tight text-slate-900">
+      <div className="mb-6 px-2">
+        <p className="truncate font-sans text-[15px] font-semibold tracking-tight text-foreground">
           {orgLabel}
         </p>
-        <p className="mt-0.5 text-xs text-slate-500">Recruitment</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          {PRODUCT_NAME}
+        </p>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-2">
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
         {isCandidate ? (
-          <NavSection items={candidateNav} pathname={pathname} onNavigate={onNavigate} />
+          <NavSection
+            items={candidateNav}
+            pathname={pathname}
+            onNavigate={onNavigate}
+          />
         ) : (
           <>
+            <NavSection
+              title="General"
+              items={general}
+              pathname={pathname}
+              onNavigate={onNavigate}
+            />
             <NavSection
               title="Recruitment"
               items={recruitment}
@@ -217,17 +242,23 @@ function SidebarBody({
         )}
       </nav>
 
-      <div className="mt-4 border-t border-slate-200/80 pt-4">
-        <div className="mb-3 flex items-start gap-2 px-1">
-          <Shield className="mt-0.5 h-4 w-4 text-slate-400" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-slate-800">{user.name}</p>
-            <p className="text-xs text-slate-500">{ROLE_LABELS[user.role]}</p>
+      <div className="mt-4 border-t border-border pt-4">
+        <div className="mb-3 flex items-start gap-2.5 px-2">
+          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface-hover text-[11px] font-semibold text-foreground">
+            {user.name.slice(0, 1).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-medium text-foreground">
+              {user.name}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {ROLE_LABELS[user.role]}
+            </p>
           </div>
         </div>
         <Button
-          variant="outline"
-          className="w-full justify-start gap-2"
+          variant="ghost"
+          className="w-full justify-start gap-2 text-muted-foreground"
           onClick={logout}
         >
           <LogOut className="h-4 w-4" />
@@ -238,10 +269,44 @@ function SidebarBody({
   );
 }
 
+function TopSearch({
+  canSearchTalent,
+}: {
+  canSearchTalent: boolean;
+}) {
+  const router = useRouter();
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!canSearchTalent) return;
+    const q = new FormData(e.currentTarget).get("q");
+    const value = typeof q === "string" ? q.trim() : "";
+    router.push(
+      value
+        ? `/dashboard/talent?q=${encodeURIComponent(value)}`
+        : "/dashboard/talent",
+    );
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="relative mx-auto w-full max-w-md">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+      <input
+        name="q"
+        type="search"
+        placeholder={canSearchTalent ? "Search talent…" : "Search"}
+        disabled={!canSearchTalent}
+        className="topbar-search pl-9"
+        aria-label="Search"
+      />
+    </form>
+  );
+}
+
 export function AppShell({
   children,
   user,
-  orgLabel = "AI Recruitment OS",
+  orgLabel = DEFAULT_COMPANY_NAME,
 }: {
   children: React.ReactNode;
   user: { name: string; email: string; role: Role };
@@ -249,25 +314,33 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const canSearchTalent = canPipelineNav(user.role);
 
   return (
-    <div className="min-h-screen bg-[#f6f4f0]">
-      <div className="mx-auto flex min-h-screen max-w-[1400px] gap-6 px-4 py-4 md:px-6 md:py-6">
-        <aside className="hidden w-56 shrink-0 flex-col rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm md:flex">
-          <SidebarBody user={user} orgLabel={orgLabel} pathname={pathname} />
-        </aside>
+    <div className="app-canvas flex min-h-screen">
+      <aside className="glass-sidebar hidden w-[232px] shrink-0 flex-col border-r px-3 py-5 md:flex">
+        <SidebarBody user={user} orgLabel={orgLabel} pathname={pathname} />
+      </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="glass-topbar flex h-16 shrink-0 items-center gap-3 border-b px-4 md:px-6">
           <div className="flex items-center gap-2 md:hidden">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger
                 render={
-                  <Button variant="outline" size="icon" aria-label="Open menu" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Open menu"
+                  />
                 }
               >
                 <Menu className="h-4 w-4" />
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 bg-white p-4">
+              <SheetContent
+                side="left"
+                className="glass-sidebar w-64 border-border p-4"
+              >
                 <SheetHeader className="sr-only">
                   <SheetTitle>Navigation</SheetTitle>
                 </SheetHeader>
@@ -279,13 +352,32 @@ export function AppShell({
                 />
               </SheetContent>
             </Sheet>
-            <p className="font-display text-base text-slate-900">{orgLabel}</p>
           </div>
 
-          <main className="min-w-0 flex-1 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm md:p-8">
-            {children}
-          </main>
-        </div>
+          <div className="hidden min-w-0 flex-1 md:block">
+            <TopSearch canSearchTalent={canSearchTalent} />
+          </div>
+          <div className="ml-auto flex items-center gap-2 md:ml-0">
+            <ThemeToggle />
+            <div className="glass-control hidden items-center gap-2 rounded-full border py-1 pl-1 pr-3 sm:flex">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-hover text-[11px] font-semibold text-foreground">
+                {user.name.slice(0, 1).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="max-w-[140px] truncate text-[12px] font-medium leading-tight text-foreground">
+                  {user.name}
+                </p>
+                <p className="max-w-[140px] truncate text-[11px] leading-tight text-muted-foreground">
+                  {user.email}
+                </p>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="min-w-0 flex-1 overflow-x-hidden p-5 md:p-8">
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -40,7 +40,7 @@ export function ResumeUpload({
 
   return (
     <div className="flex items-center gap-3">
-      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50">
+      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted/40">
         <input
           type="file"
           accept=".pdf,.docx,.txt,.md,application/pdf"
@@ -55,7 +55,7 @@ export function ResumeUpload({
         variant="ghost"
         size="sm"
         disabled
-        className="pointer-events-none text-xs text-slate-400"
+        className="pointer-events-none text-xs text-muted-foreground"
       >
         PDF / DOCX / TXT · local parse
       </Button>

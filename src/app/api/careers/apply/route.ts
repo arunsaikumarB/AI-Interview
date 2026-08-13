@@ -4,7 +4,6 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { handleApiError, jsonCreated, jsonOk } from "@/lib/api";
 import { saveUpload } from "@/lib/storage";
-import { extractResumeText } from "@/lib/resume/parse";
 import { embedCandidate } from "@/lib/ai/embeddings";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import {
@@ -98,6 +97,8 @@ export async function POST(request: Request) {
     let resumeText: string | null = null;
     let parseError: string | null = null;
     try {
+      // Dynamic import: avoid loading pdfjs until a resume is actually parsed.
+      const { extractResumeText } = await import("@/lib/resume/parse");
       resumeText = await extractResumeText({
         buffer,
         mimeType: file.type || "application/octet-stream",
@@ -105,6 +106,7 @@ export async function POST(request: Request) {
       });
     } catch (err) {
       parseError = err instanceof Error ? err.message : "Parse failed";
+      console.warn("[careers/apply] resume parse failed:", parseError);
     }
 
     let candidate = await prisma.candidate.findUnique({

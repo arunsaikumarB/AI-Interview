@@ -16,7 +16,7 @@ export function SettingsSubnav({
   ].filter((t) => t.show);
 
   return (
-    <div className="flex flex-wrap gap-1 border-b border-slate-200 pb-3">
+    <div className="inline-flex flex-wrap gap-1 rounded-full border border-border bg-muted p-1">
       {tabs.map((tab) => {
         const active =
           pathname === tab.href || pathname.startsWith(`${tab.href}/`);
@@ -25,10 +25,10 @@ export function SettingsSubnav({
             key={tab.href}
             href={tab.href}
             className={cn(
-              "rounded-md px-3 py-1.5 text-sm transition-colors",
+              "rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors",
               active
-                ? "bg-slate-900 text-white"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {tab.label}

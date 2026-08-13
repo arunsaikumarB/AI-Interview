@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
+const APPLY_TIMEOUT_MS = 120_000;
+
 export function CareersApplyForm({
   jobId,
   jobTitle,
@@ -30,34 +32,55 @@ export function CareersApplyForm({
       data.delete("password");
     }
 
-    const res = await fetch("/api/careers/apply", {
-      method: "POST",
-      body: data,
-    });
-    const json = (await res.json()) as {
-      error?: string;
-      alreadyApplied?: boolean;
-      applicationId?: string;
-      accountCreated?: boolean;
-      dropped?: boolean;
-    };
-    setLoading(false);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), APPLY_TIMEOUT_MS);
 
-    if (res.status === 409 && json.alreadyApplied) {
-      router.push(`/careers/${jobId}/apply?already=1`);
-      return;
+    try {
+      const res = await fetch("/api/careers/apply", {
+        method: "POST",
+        body: data,
+        signal: controller.signal,
+      });
+
+      let json: {
+        error?: string;
+        alreadyApplied?: boolean;
+        applicationId?: string;
+        accountCreated?: boolean;
+        dropped?: boolean;
+      } = {};
+      try {
+        json = (await res.json()) as typeof json;
+      } catch {
+        setError("Server returned an invalid response. Please try again.");
+        return;
+      }
+
+      if (res.status === 409 && json.alreadyApplied) {
+        router.push(`/careers/${jobId}/apply?already=1`);
+        return;
+      }
+      if (!res.ok) {
+        setError(json.error ?? "Application failed");
+        return;
+      }
+      if (json.dropped) {
+        router.push(`/careers/${jobId}/apply?done=1`);
+        return;
+      }
+      router.push(
+        `/careers/${jobId}/apply?done=1${json.accountCreated ? "&account=1" : ""}`,
+      );
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("Submission timed out. Please try again with a smaller PDF, or use DOCX/TXT.");
+      } else {
+        setError("Network error. Check your connection and try again.");
+      }
+    } finally {
+      window.clearTimeout(timer);
+      setLoading(false);
     }
-    if (!res.ok) {
-      setError(json.error ?? "Application failed");
-      return;
-    }
-    if (json.dropped) {
-      router.push(`/careers/${jobId}/apply?done=1`);
-      return;
-    }
-    router.push(
-      `/careers/${jobId}/apply?done=1${json.accountCreated ? "&account=1" : ""}`,
-    );
   }
 
   return (
@@ -107,7 +130,7 @@ export function CareersApplyForm({
         <Textarea id="coverNote" name="coverNote" rows={4} />
       </div>
 
-      <label className="flex items-start gap-2 text-sm text-slate-700">
+      <label className="flex items-start gap-2 text-sm text-foreground/90">
         <input
           type="checkbox"
           className="mt-1"
@@ -134,7 +157,7 @@ export function CareersApplyForm({
         </div>
       ) : null}
 
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <Button type="submit" disabled={loading} className="w-full sm:w-auto">
         {loading ? "Submitting…" : "Submit application"}

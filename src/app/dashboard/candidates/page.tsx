@@ -10,8 +10,13 @@ import { ScreeningResultSchema } from "@/lib/ai/screening";
 import { formatDate } from "@/lib/format";
 import { CandidatesListToolbar } from "@/components/candidates-list-toolbar";
 import { Suspense } from "react";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Candidates",
+};
 
 type Search = {
   q?: string;
@@ -109,8 +114,8 @@ export default async function CandidatesPage({
     <div className="space-y-6">
       <RecruitingSubnav />
       <div>
-        <h1 className="font-display text-3xl text-slate-900">Candidates</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="page-title">Candidates</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Review applicants across jobs. Open a role from Jobs for a focused
           workspace.
         </p>
@@ -120,9 +125,9 @@ export default async function CandidatesPage({
         <CandidatesListToolbar />
       </Suspense>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <div className="overflow-x-auto rounded-xl border border-border">
         <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-500">
+          <thead className="bg-muted/40 text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">Candidate</th>
               <th className="px-4 py-3 font-medium">Experience</th>
@@ -134,7 +139,7 @@ export default async function CandidatesPage({
           </thead>
           <tbody>
             {rows.map((c) => (
-              <tr key={c.id} className="border-t border-slate-100">
+              <tr key={c.id} className="border-t border-border">
                 <td className="px-4 py-3">
                   <Link
                     href={
@@ -142,36 +147,36 @@ export default async function CandidatesPage({
                         ? `/dashboard/candidates/${c.id}?applicationId=${c.applicationId}`
                         : `/dashboard/candidates/${c.id}`
                     }
-                    className="font-medium text-slate-900 hover:underline"
+                    className="font-medium text-foreground hover:underline"
                   >
                     {c.name}
                   </Link>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     {c.email}
                     {c.jobTitle ? ` · ${c.jobTitle}` : ""}
                   </p>
                 </td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="px-4 py-3 text-muted-foreground">
                   {c.experience} yr{c.experience === 1 ? "" : "s"}
                 </td>
                 <td className="px-4 py-3">
                   {c.aiMatch == null ? (
-                    <span className="text-slate-400">—</span>
+                    <span className="text-muted-foreground">—</span>
                   ) : (
                     <div>
-                      <span className="tabular-nums text-slate-900">
+                      <span className="tabular-nums text-foreground">
                         {Math.round(c.aiMatch)}%
                       </span>
-                      <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                         AI Match
                       </p>
                     </div>
                   )}
                 </td>
-                <td className="px-4 py-3 text-slate-700">
+                <td className="px-4 py-3 text-foreground/90">
                   {c.stage ? STAGE_LABELS[c.stage] : "—"}
                 </td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="px-4 py-3 text-muted-foreground">
                   {c.interviewStatus === "COMPLETED"
                     ? "Completed"
                     : c.interviewStatus === "IN_PROGRESS"
@@ -180,7 +185,7 @@ export default async function CandidatesPage({
                         ? "Scheduled"
                         : "—"}
                 </td>
-                <td className="px-4 py-3 text-slate-500">
+                <td className="px-4 py-3 text-muted-foreground">
                   {formatDate(c.updatedAt)}
                 </td>
               </tr>
@@ -189,7 +194,7 @@ export default async function CandidatesPage({
               <tr>
                 <td
                   colSpan={6}
-                  className="px-4 py-10 text-center text-slate-500"
+                  className="px-4 py-10 text-center text-muted-foreground"
                 >
                   No candidates yet.
                 </td>

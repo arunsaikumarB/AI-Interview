@@ -26,7 +26,7 @@ export function speechServiceUrl(): string {
   );
 }
 
-/** Whisper avg_logprob below this → ask candidate to re-record. */
+/** Whisper avg_logprob below this → switch the candidate to typing (no re-record). */
 export const AVG_LOGPROB_MIN = -1.2;
 
 export type TranscribeResult = {

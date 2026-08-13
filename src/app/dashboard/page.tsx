@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Plus } from "lucide-react";
+import {
+  Briefcase,
+  CheckCircle2,
+  Plus,
+  Sparkles,
+  Users,
+  Video,
+} from "lucide-react";
 import { DashboardInterviewActivity } from "@/components/dashboard-interview-activity";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -18,8 +25,13 @@ import {
   type MetricValue,
 } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+};
 
 function greetingFor(date: Date, firstName: string | undefined): string {
   const hour = Number(
@@ -42,34 +54,36 @@ function MetricCard({
   metric,
   hint,
   emptyHint,
+  icon: Icon,
 }: {
   label: string;
   metric: MetricValue;
   hint: string;
   emptyHint: string;
+  icon: typeof Users;
 }) {
   if (!metric.ok) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-          {label}
-        </p>
-        <p className="mt-2 text-3xl font-semibold text-slate-300">—</p>
-        <p className="mt-1 text-xs text-slate-400">Couldn&apos;t load</p>
+      <div className="rounded-[var(--radius-card)] border border-border bg-card p-5 shadow-panel">
+        <div className="flex items-center justify-between">
+          <p className="label-tech">{label}</p>
+          <Icon className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <p className="metric-value mt-3 text-3xl">—</p>
+        <p className="mt-2 text-xs text-muted-foreground">Couldn&apos;t load</p>
       </div>
     );
   }
 
   const empty = metric.value === 0;
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-        {label}
-      </p>
-      <p className="mt-2 text-3xl font-semibold tabular-nums text-slate-900">
-        {metric.value}
-      </p>
-      <p className="mt-1 text-xs text-slate-500">{empty ? emptyHint : hint}</p>
+    <div className="rounded-[var(--radius-card)] border border-border bg-card p-5 shadow-panel">
+      <div className="flex items-center justify-between">
+        <p className="label-tech">{label}</p>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <p className="metric-value mt-3">{metric.value}</p>
+      <p className="mt-2 text-xs text-muted-foreground">{empty ? emptyHint : hint}</p>
     </div>
   );
 }
@@ -91,15 +105,15 @@ export default async function DashboardPage() {
     summary.metrics.activeJobs.value === 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl text-slate-900">Dashboard</h1>
-          <p className="mt-2 text-base font-medium text-slate-800">{greet}</p>
-          <p className="mt-1 text-sm text-slate-500">
-            Here&apos;s what&apos;s happening with your recruitment today.
+          <h1 className="page-title">Overview</h1>
+          <p className="mt-2 text-[15px] font-medium text-foreground">{greet}</p>
+          <p className="page-subtitle">
+            A concise snapshot of your recruitment pipeline.
           </p>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-muted-foreground">
             AI screening is advisory. Pipeline moves stay with your team.
           </p>
         </div>
@@ -126,9 +140,9 @@ export default async function DashboardPage() {
       </div>
 
       {isEmptyOrg ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-6 py-10 text-center">
-          <p className="text-sm font-medium text-slate-900">No candidates yet</p>
-          <p className="mt-1 text-sm text-slate-500">
+        <div className="rounded-[var(--radius-card)] border border-dashed border-border bg-card px-6 py-10 text-center">
+          <p className="text-sm font-medium text-foreground">No candidates yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
             Start by creating a job and adding your first candidate.
           </p>
           {canJobs ? (
@@ -142,41 +156,61 @@ export default async function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="Candidates"
+          label="Total Candidates"
           metric={summary.metrics.candidates}
           hint="Total candidates"
           emptyHint="No candidates yet"
+          icon={Users}
         />
         <MetricCard
           label="Active Jobs"
           metric={summary.metrics.activeJobs}
           hint="Currently hiring"
           emptyHint="No open jobs"
+          icon={Briefcase}
         />
         <MetricCard
           label="Interviews"
           metric={summary.metrics.interviews}
           hint="Scheduled / in progress"
           emptyHint="No interviews yet"
+          icon={Video}
         />
         <MetricCard
           label="Selected"
           metric={summary.metrics.selected}
           hint="Current hiring cycle"
           emptyHint="None selected yet"
+          icon={CheckCircle2}
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-base font-semibold text-slate-900">
-            Interview Activity
-          </h2>
-          <p className="mt-0.5 text-sm text-slate-500">Completed vs in progress</p>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <section className="glass-chart rounded-[var(--radius-card)] border p-5 lg:col-span-2">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-[17px] font-semibold text-foreground">
+                Recruitment Activity
+              </h2>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">
+                Completed vs in-progress interviews
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-chart-primary" />
+                Completed
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-chart-secondary" />
+                In progress
+              </span>
+            </div>
+          </div>
           {!summary.activity.ok ? (
-            <p className="mt-8 text-sm text-slate-400">Couldn&apos;t load activity</p>
+            <p className="mt-8 text-sm text-muted-foreground">Couldn&apos;t load activity</p>
           ) : (
             <DashboardInterviewActivity
               completed={summary.activity.completed}
@@ -185,30 +219,32 @@ export default async function DashboardPage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-base font-semibold text-slate-900">Needs Attention</h2>
-          <p className="mt-0.5 text-sm text-slate-500">Actions that need a recruiter</p>
+        <section className="rounded-[var(--radius-card)] border border-border bg-card p-5 shadow-panel">
+          <h2 className="text-[17px] font-semibold text-foreground">Hiring snapshot</h2>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
+            Actions that need a recruiter
+          </p>
           {!summary.attention.ok ? (
-            <p className="mt-8 text-sm text-slate-400">Couldn&apos;t load attention items</p>
+            <p className="mt-8 text-sm text-muted-foreground">Couldn&apos;t load attention items</p>
           ) : summary.attention.items.length === 0 ? (
             <div className="mt-8">
-              <p className="text-sm font-medium text-slate-800">
+              <p className="text-sm font-medium text-foreground">
                 You&apos;re all caught up.
               </p>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-muted-foreground">
                 No immediate actions required.
               </p>
             </div>
           ) : (
-            <ul className="mt-4 divide-y divide-slate-100">
+            <ul className="mt-4 divide-y divide-border">
               {summary.attention.items.map((item) => (
                 <li key={item.id}>
                   <Link
                     href={item.href}
-                    className="flex items-center justify-between gap-3 py-3 text-sm text-slate-800 transition-colors hover:text-slate-950"
+                    className="flex items-center justify-between gap-3 py-3 text-sm text-foreground transition-colors hover:text-primary"
                   >
                     <span>{item.label}</span>
-                    <span className="text-xs text-slate-400">Open →</span>
+                    <span className="text-xs text-muted-foreground">Open</span>
                   </Link>
                 </li>
               ))}
@@ -217,20 +253,54 @@ export default async function DashboardPage() {
         </section>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-[var(--radius-card)] border border-border bg-card p-5 shadow-panel">
+        <div className="mb-4 flex items-start gap-2">
+          <Sparkles className="mt-0.5 h-4 w-4 text-ai" />
+          <div>
+            <p className="text-[13px] font-medium text-ai">How can I help you?</p>
+            <h2 className="mt-1 text-[17px] font-semibold text-foreground">
+              AI Recruitment Summary
+            </h2>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Counts from your workspace — advisory only, not a hiring decision.
+            </p>
+          </div>
+        </div>
+        {!summary.attention.ok ? (
+          <p className="text-sm text-muted-foreground">Couldn&apos;t load summary</p>
+        ) : summary.attention.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No recruiter attention items right now.
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {summary.attention.items.map((item) => (
+              <Link
+                key={item.id}
+                href={item.href}
+                className="rounded-[16px] border border-border bg-surface-elevated px-4 py-3 text-sm text-foreground transition-colors hover:bg-surface-hover"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-[var(--radius-card)] border border-border bg-card p-5 shadow-panel">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">
+            <h2 className="text-[17px] font-semibold text-foreground">
               Recent Interviews
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               Scores are AI suggestions — recruiter decides
             </p>
           </div>
           {canPipeline ? (
             <Link
               href="/dashboard/interview-links"
-              className="text-sm text-slate-600 underline-offset-2 hover:underline"
+              className="text-sm text-muted-foreground underline-offset-2 hover:underline"
             >
               View all
             </Link>
@@ -238,9 +308,9 @@ export default async function DashboardPage() {
         </div>
 
         {!summary.recent.ok ? (
-          <p className="text-sm text-slate-400">Couldn&apos;t load interviews</p>
+          <p className="text-sm text-muted-foreground">Couldn&apos;t load interviews</p>
         ) : summary.recent.rows.length === 0 ? (
-          <p className="text-sm text-slate-500">No interviews yet.</p>
+          <p className="text-sm text-muted-foreground">No interviews yet.</p>
         ) : (
           <Table>
             <TableHeader>
@@ -258,23 +328,23 @@ export default async function DashboardPage() {
                   <TableCell>
                     <Link
                       href={row.href}
-                      className="font-medium text-slate-900 hover:underline"
+                      className="font-medium text-foreground hover:underline"
                     >
                       {row.candidateName || "—"}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-slate-600">{row.roleTitle}</TableCell>
-                  <TableCell className="text-slate-600">{row.interviewLabel}</TableCell>
+                  <TableCell className="text-muted-foreground">{row.roleTitle}</TableCell>
+                  <TableCell className="text-muted-foreground">{row.interviewLabel}</TableCell>
                   <TableCell>
                     {row.score === null ? (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-muted-foreground">—</span>
                     ) : row.score === "pending" ? (
-                      <span className="text-slate-600">Pending</span>
+                      <span className="text-muted-foreground">Pending</span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 tabular-nums text-slate-900">
+                      <span className="inline-flex items-center gap-1.5 tabular-nums text-foreground">
                         {row.score}
                         <span
-                          className="rounded bg-slate-100 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500"
+                          className="ai-chip"
                           title="AI suggestion — recruiter decides"
                         >
                           AI
@@ -285,10 +355,13 @@ export default async function DashboardPage() {
                   <TableCell>
                     <span
                       className={cn(
-                        "text-sm",
-                        row.statusLabel === "Awaiting Decision"
-                          ? "font-medium text-amber-800"
-                          : "text-slate-600",
+                        "status-pill border-border bg-muted text-muted-foreground",
+                        row.statusLabel === "Awaiting Decision" &&
+                          "border-warning/20 bg-warning/10 text-warning",
+                        row.statusLabel === "In Progress" &&
+                          "border-primary/20 bg-primary/10 text-primary",
+                        row.statusLabel === "Completed" &&
+                          "border-success/20 bg-success/10 text-success",
                       )}
                     >
                       {row.statusLabel}

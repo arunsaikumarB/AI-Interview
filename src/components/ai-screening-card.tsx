@@ -17,12 +17,12 @@ const BREAKDOWN_LABELS: Record<keyof ScreeningResult["breakdown"], string> = {
 };
 
 const ACTION_STYLE: Record<string, string> = {
-  SHORTLIST: "bg-emerald-100 text-emerald-800",
-  REVIEW: "bg-amber-100 text-amber-900",
-  REJECT: "bg-rose-100 text-rose-800",
-  YES: "bg-emerald-100 text-emerald-800",
-  MAYBE: "bg-amber-100 text-amber-900",
-  NO: "bg-rose-100 text-rose-800",
+  SHORTLIST: "bg-success/15 text-success",
+  REVIEW: "bg-warning/15 text-warning",
+  REJECT: "bg-destructive/15 text-destructive",
+  YES: "bg-success/15 text-success",
+  MAYBE: "bg-warning/15 text-warning",
+  NO: "bg-destructive/15 text-destructive",
 };
 
 export type ScreeningCardEvaluation = {
@@ -77,11 +77,11 @@ export function AIScreeningCard({
   const scores = evaluation?.scores;
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+    <section className="space-y-4 rounded-xl border border-border bg-card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-medium text-slate-900">AI Screening</h2>
-          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-amber-700">
+          <h2 className="text-lg font-medium text-foreground">AI Screening</h2>
+          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-warning">
             AI suggestion — recruiter decides
           </p>
         </div>
@@ -99,8 +99,8 @@ export function AIScreeningCard({
           className={cn(
             "rounded-lg border px-4 py-3 text-sm",
             error.ollamaDown
-              ? "border-amber-300 bg-amber-50 text-amber-950"
-              : "border-rose-200 bg-rose-50 text-rose-900",
+              ? "border-warning/30 bg-warning/10 text-foreground"
+              : "border-destructive/30 bg-destructive/10 text-destructive",
           )}
         >
           <p className="font-medium">
@@ -118,11 +118,11 @@ export function AIScreeningCard({
 
       {loading && !scores ? (
         <div className="space-y-3 animate-pulse">
-          <div className="h-16 w-24 rounded bg-slate-100" />
-          <div className="h-3 rounded bg-slate-100" />
-          <div className="h-3 rounded bg-slate-100" />
-          <div className="h-3 w-2/3 rounded bg-slate-100" />
-          <p className="text-sm text-slate-500">
+          <div className="h-16 w-24 rounded bg-muted" />
+          <div className="h-3 rounded bg-muted" />
+          <div className="h-3 rounded bg-muted" />
+          <div className="h-3 w-2/3 rounded bg-muted" />
+          <p className="text-sm text-muted-foreground">
             Running advisory resume match…
           </p>
         </div>
@@ -132,10 +132,10 @@ export function AIScreeningCard({
         <>
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Overall match</p>
-              <p className="font-display text-5xl font-semibold text-slate-900">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Overall match</p>
+              <p className="font-display text-5xl font-semibold text-foreground">
                 {Math.round(scores.overall)}
-                <span className="text-2xl text-slate-400">%</span>
+                <span className="text-2xl text-muted-foreground">%</span>
               </p>
             </div>
             <Badge
@@ -143,7 +143,7 @@ export function AIScreeningCard({
                 "mb-2",
                 ACTION_STYLE[scores.recommendedAction] ??
                   ACTION_STYLE[evaluation!.recommendation] ??
-                  "bg-slate-100 text-slate-800",
+                  "bg-muted text-foreground",
               )}
             >
               {scores.recommendedAction}
@@ -170,27 +170,27 @@ export function AIScreeningCard({
           />
           <ListBlock title="Concerns" items={scores.concerns} tone="bad" />
 
-          <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+          <div className="rounded-lg border border-border bg-muted/30 p-3">
             <button
               type="button"
-              className="text-sm font-medium text-slate-800 underline"
+              className="text-sm font-medium text-foreground underline"
               onClick={() => setReasoningOpen((v) => !v)}
             >
               {reasoningOpen ? "Hide full reasoning" : "Show full reasoning"}
             </button>
             {reasoningOpen ? (
-              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
+              <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
                 {evaluation!.reasoning}
               </p>
             ) : null}
           </div>
 
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted-foreground">
             {formatDateTime(evaluation!.createdAt)} · advisory only
           </p>
         </>
       ) : !loading && !error ? (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           No screening result yet. Run AI screening to get an advisory match score.
         </p>
       ) : null}
@@ -203,12 +203,12 @@ function BreakdownRow({ label, value }: { label: string; value: number }) {
   return (
     <div>
       <div className="mb-1 flex justify-between text-sm">
-        <span className="text-slate-600">{label}</span>
-        <span className="font-medium text-slate-900">{Math.round(pct)}</span>
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium text-foreground">{Math.round(pct)}</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+      <div className="h-2 overflow-hidden rounded-full bg-border">
         <div
-          className="h-full rounded-full bg-slate-800 transition-all duration-500"
+          className="h-full rounded-full bg-primary transition-all duration-500"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -227,17 +227,17 @@ function ListBlock({
 }) {
   const border =
     tone === "good"
-      ? "border-emerald-100"
+      ? "border-success/30"
       : tone === "warn"
-        ? "border-amber-100"
-        : "border-rose-100";
+        ? "border-warning/30"
+        : "border-destructive/30";
   return (
     <div className={cn("rounded-lg border p-3", border)}>
-      <p className="text-sm font-medium text-slate-900">{title}</p>
+      <p className="text-sm font-medium text-foreground">{title}</p>
       {items.length === 0 ? (
-        <p className="mt-1 text-sm text-slate-500">None noted.</p>
+        <p className="mt-1 text-sm text-muted-foreground">None noted.</p>
       ) : (
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
           {items.map((item) => (
             <li key={item}>{item}</li>
           ))}

@@ -71,6 +71,9 @@ export function CreateInterviewDialog({
   const [proctoringMode, setProctoringMode] = useState<
     "OFF" | "STANDARD" | "ENHANCED"
   >("STANDARD");
+  const [integrityMode, setIntegrityMode] = useState<"STANDARD" | "STRICT">(
+    "STANDARD",
+  );
   const [mode, setMode] = useState<"TEXT" | "VOICE">("TEXT");
   const [created, setCreated] = useState<CreatedLink | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
@@ -171,6 +174,7 @@ export function CreateInterviewDialog({
     setDurationMinutes(DEFAULT_DURATION_MINUTES);
     setLinkExpiresInDays(DEFAULT_LINK_EXPIRE_DAYS);
     setProctoringMode("STANDARD");
+    setIntegrityMode("STANDARD");
     setMode("TEXT");
     if (!preselectedApplicationId) setApplicationId("");
   }
@@ -202,6 +206,7 @@ export function CreateInterviewDialog({
           mode,
           proctoringEnabled: proctoringMode !== "OFF",
           proctoringMode,
+          integrityMode,
           linkExpiresInDays,
           durationMinutes,
         }),
@@ -365,8 +370,47 @@ export function CreateInterviewDialog({
                 </div>
 
                 <fieldset className="space-y-2">
-                  <legend className="text-sm font-medium text-slate-900">Proctoring</legend>
-                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <legend className="text-sm font-medium text-foreground">
+                    Interview Integrity
+                  </legend>
+                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                    <input
+                      type="radio"
+                      name="integrity"
+                      className="mt-1"
+                      checked={integrityMode === "STANDARD"}
+                      onChange={() => setIntegrityMode("STANDARD")}
+                    />
+                    <span>
+                      <span className="font-medium text-foreground">Standard</span>
+                      <span className="block text-xs text-muted-foreground">
+                        Browser integrity signals are recorded.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                    <input
+                      type="radio"
+                      name="integrity"
+                      className="mt-1"
+                      checked={integrityMode === "STRICT"}
+                      onChange={() => {
+                        setIntegrityMode("STRICT");
+                        if (proctoringMode === "OFF") setProctoringMode("STANDARD");
+                      }}
+                    />
+                    <span>
+                      <span className="font-medium text-foreground">Strict</span>
+                      <span className="block text-xs text-muted-foreground">
+                        Repeated integrity violations may end the interview.
+                      </span>
+                    </span>
+                  </label>
+                </fieldset>
+
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium text-foreground">Proctoring</legend>
+                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm">
                     <input
                       type="radio"
                       name="proctoring"
@@ -375,13 +419,13 @@ export function CreateInterviewDialog({
                       onChange={() => setProctoringMode("STANDARD")}
                     />
                     <span>
-                      <span className="font-medium text-slate-900">Standard</span>
-                      <span className="block text-xs text-slate-500">
+                      <span className="font-medium text-foreground">Standard</span>
+                      <span className="block text-xs text-muted-foreground">
                         Browser signals only
                       </span>
                     </span>
                   </label>
-                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm">
                     <input
                       type="radio"
                       name="proctoring"
@@ -390,13 +434,13 @@ export function CreateInterviewDialog({
                       onChange={() => setProctoringMode("ENHANCED")}
                     />
                     <span>
-                      <span className="font-medium text-slate-900">Enhanced</span>
-                      <span className="block text-xs text-slate-500">
+                      <span className="font-medium text-foreground">Enhanced</span>
+                      <span className="block text-xs text-muted-foreground">
                         Browser signals + secondary camera pairing (human review)
                       </span>
                     </span>
                   </label>
-                  <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+                  <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground/90">
                     <input
                       type="checkbox"
                       className="mt-0.5"
@@ -410,15 +454,15 @@ export function CreateInterviewDialog({
                 </fieldset>
 
                 {applications.length === 0 ? (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     No active applications yet. Add a candidate to a job first.
                   </p>
                 ) : null}
 
                 {loading ? (
-                  <p className="w-full text-sm text-slate-600 sm:order-first sm:mr-auto">
+                  <p className="w-full text-sm text-muted-foreground sm:order-first sm:mr-auto">
                     Generating AI interview plan with local Ollama… {loadingElapsedSec}s
-                    <span className="mt-1 block text-xs text-slate-500">
+                    <span className="mt-1 block text-xs text-muted-foreground">
                       On CPU this often takes 1–3 minutes. Keep this dialog open.
                     </span>
                   </p>
@@ -451,22 +495,22 @@ export function CreateInterviewDialog({
               </DialogHeader>
               <div className="space-y-3 pt-2 text-sm">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     Candidate
                   </p>
-                  <p className="font-medium text-slate-900">{created.candidateName}</p>
+                  <p className="font-medium text-foreground">{created.candidateName}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Job</p>
-                  <p className="font-medium text-slate-900">{created.jobTitle}</p>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Job</p>
+                  <p className="font-medium text-foreground">{created.jobTitle}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Status</p>
-                  <p className="font-medium text-slate-900">Active</p>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Status</p>
+                  <p className="font-medium text-foreground">Active</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Expires</p>
-                  <p className="font-medium text-slate-900">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Expires</p>
+                  <p className="font-medium text-foreground">
                     {created.tokenExpiresAt
                       ? formatDate(created.tokenExpiresAt)
                       : "—"}
@@ -493,7 +537,7 @@ export function CreateInterviewDialog({
                     Send Email
                   </Button>
                 </div>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   You can review the AI plan anytime from the Interview Links table.
                 </p>
                 <div className="flex justify-end">

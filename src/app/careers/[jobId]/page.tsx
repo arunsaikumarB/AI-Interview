@@ -42,9 +42,9 @@ export default async function CareerJobPage({ params }: Props) {
   return (
     <article className="space-y-8">
       <div>
-        <p className="text-sm text-slate-500">{job.organization.name}</p>
-        <h1 className="mt-1 font-display text-4xl text-slate-900">{job.title}</h1>
-        <p className="mt-3 text-sm text-slate-600">
+        <p className="text-sm text-muted-foreground">{job.organization.name}</p>
+        <h1 className="mt-1 font-sans text-4xl font-semibold tracking-tight text-foreground">{job.title}</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
           {[
             job.department?.name,
             job.location,
@@ -55,13 +55,13 @@ export default async function CareerJobPage({ params }: Props) {
             .join(" · ")}
         </p>
         {job.skills.length > 0 ? (
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-muted-foreground">
             Skills: {job.skills.join(", ")}
           </p>
         ) : null}
       </div>
 
-      <div className="prose prose-slate max-w-none whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+      <div className="prose max-w-none whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
         {job.description}
       </div>
 

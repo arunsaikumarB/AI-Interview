@@ -5,8 +5,8 @@ export default function PortalHomePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-3xl text-slate-900">Candidate portal</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="page-title">Candidate portal</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Track applications and join interviews. Internal scores stay with the hiring team.
         </p>
       </div>

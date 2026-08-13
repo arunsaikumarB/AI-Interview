@@ -63,7 +63,7 @@ export function JobCandidatesTable({ rows }: { rows: JobCandidateRow[] }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-900">Candidates</h2>
+        <h2 className="text-base font-semibold text-foreground">Candidates</h2>
       </div>
       <div className="flex flex-wrap gap-2">
         <Input
@@ -95,9 +95,9 @@ export function JobCandidatesTable({ rows }: { rows: JobCandidateRow[] }) {
         </select>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <div className="overflow-x-auto rounded-xl border border-border">
         <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-500">
+          <thead className="bg-muted/40 text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">Candidate</th>
               <th className="px-4 py-3 font-medium">Experience</th>
@@ -109,40 +109,40 @@ export function JobCandidatesTable({ rows }: { rows: JobCandidateRow[] }) {
           </thead>
           <tbody>
             {filtered.map((r) => (
-              <tr key={r.applicationId} className="border-t border-slate-100">
+              <tr key={r.applicationId} className="border-t border-border">
                 <td className="px-4 py-3">
                   <Link
                     href={`/dashboard/candidates/${r.candidateId}?applicationId=${r.applicationId}`}
-                    className="font-medium text-slate-900 hover:underline"
+                    className="font-medium text-foreground hover:underline"
                   >
                     {r.name}
                   </Link>
-                  <p className="text-xs text-slate-500">{r.email}</p>
+                  <p className="text-xs text-muted-foreground">{r.email}</p>
                 </td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="px-4 py-3 text-muted-foreground">
                   {r.experience} yr{r.experience === 1 ? "" : "s"}
                 </td>
                 <td className="px-4 py-3">
                   {r.aiMatch == null ? (
-                    <span className="text-slate-400">—</span>
+                    <span className="text-muted-foreground">—</span>
                   ) : (
                     <div>
-                      <span className="tabular-nums text-slate-900">
+                      <span className="tabular-nums text-foreground">
                         {Math.round(r.aiMatch)}%
                       </span>
-                      <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                         AI Match
                       </p>
                     </div>
                   )}
                 </td>
-                <td className="px-4 py-3 text-slate-700">
+                <td className="px-4 py-3 text-foreground/90">
                   {STAGE_LABELS[r.stage]}
                 </td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="px-4 py-3 text-muted-foreground">
                   {interviewLabel(r.interviewStatus)}
                 </td>
-                <td className="px-4 py-3 text-slate-500">
+                <td className="px-4 py-3 text-muted-foreground">
                   {formatDate(r.updatedAt)}
                 </td>
               </tr>
@@ -151,7 +151,7 @@ export function JobCandidatesTable({ rows }: { rows: JobCandidateRow[] }) {
               <tr>
                 <td
                   colSpan={6}
-                  className="px-4 py-10 text-center text-slate-500"
+                  className="px-4 py-10 text-center text-muted-foreground"
                 >
                   No candidates match these filters.
                 </td>

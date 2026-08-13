@@ -15,8 +15,13 @@ import {
   JOB_STATUS_LABELS,
 } from "@/lib/recruiting-ui";
 import { cn } from "@/lib/utils";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Jobs & Candidates",
+};
 
 type Search = {
   q?: string;
@@ -92,10 +97,10 @@ export default async function JobsPage({
       <RecruitingSubnav />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl text-slate-900">
+          <h1 className="page-title">
             Jobs &amp; Candidates
           </h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-muted-foreground">
             Manage open roles and review applicants.
           </p>
         </div>
@@ -114,9 +119,9 @@ export default async function JobsPage({
       </Suspense>
 
       {rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-6 py-12 text-center">
-          <p className="text-sm font-medium text-slate-900">No jobs yet</p>
-          <p className="mt-1 text-sm text-slate-500">
+        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-6 py-12 text-center">
+          <p className="text-sm font-medium text-foreground">No jobs yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
             Create your first job to start receiving candidates.
           </p>
           {canCreate ? (
@@ -129,9 +134,9 @@ export default async function JobsPage({
           ) : null}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500">
+            <thead className="bg-muted/40 text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 font-medium">Job</th>
                 <th className="px-4 py-3 font-medium">Applications</th>
@@ -143,28 +148,28 @@ export default async function JobsPage({
             </thead>
             <tbody>
               {rows.map((job) => (
-                <tr key={job.id} className="border-t border-slate-100">
+                <tr key={job.id} className="border-t border-border">
                   <td className="px-4 py-3">
                     <Link
                       href={`/dashboard/jobs/${job.id}`}
-                      className="font-medium text-slate-900 hover:underline"
+                      className="font-medium text-foreground hover:underline"
                     >
                       {job.title}
                     </Link>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-muted-foreground">
                       {job.location ?? "—"}
                     </p>
                   </td>
-                  <td className="px-4 py-3 tabular-nums text-slate-700">
+                  <td className="px-4 py-3 tabular-nums text-foreground/90">
                     {job.applications}
-                    <span className="ml-1 text-xs text-slate-400">
+                    <span className="ml-1 text-xs text-muted-foreground">
                       application{job.applications === 1 ? "" : "s"}
                     </span>
                   </td>
-                  <td className="px-4 py-3 tabular-nums text-slate-700">
+                  <td className="px-4 py-3 tabular-nums text-foreground/90">
                     {job.inInterview}
                   </td>
-                  <td className="px-4 py-3 tabular-nums text-slate-700">
+                  <td className="px-4 py-3 tabular-nums text-foreground/90">
                     {job.selected}
                   </td>
                   <td className="px-4 py-3">
@@ -172,7 +177,7 @@ export default async function JobsPage({
                       {JOB_STATUS_LABELS[job.status]}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {formatDate(job.updatedAt)}
                   </td>
                 </tr>

@@ -95,10 +95,10 @@ export function PortalProfileForm({
         </Button>
       </form>
 
-      <form onSubmit={onResume} className="space-y-4 border-t border-slate-200 pt-8">
+      <form onSubmit={onResume} className="space-y-4 border-t border-border pt-8">
         <div>
-          <h2 className="text-lg font-medium text-slate-900">Resume</h2>
-          <p className="mt-1 text-sm text-slate-500">
+          <h2 className="text-lg font-medium text-foreground">Resume</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             {initial.hasResume
               ? `On file${initial.resumeTextLength ? ` · ${initial.resumeTextLength} chars extracted` : ""}`
               : "No resume uploaded yet"}

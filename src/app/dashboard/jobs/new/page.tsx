@@ -14,12 +14,12 @@ export default async function NewJobPage() {
       <div>
         <Link
           href="/dashboard/jobs"
-          className="text-sm text-slate-500 hover:underline"
+          className="text-sm text-muted-foreground hover:underline"
         >
           ← Jobs &amp; Candidates
         </Link>
-        <h1 className="mt-2 font-display text-3xl text-slate-900">Create Job</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Create Job</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Add an open role. AI tools stay optional — you control every hiring step.
         </p>
       </div>

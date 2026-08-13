@@ -1,4 +1,4 @@
-# AI Recruitment OS — full local stack
+# Logisoft HireOS — full local stack
 #   docker compose --env-file .env.docker --env-file .env up -d --build
 #   ./scripts/setup-pilot.ps1   (or setup-pilot.sh)
 #
@@ -89,8 +89,13 @@ services:
       OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
       SPEECH_SERVICE_URL: http://speech:8001
       STORAGE_ROOT: /storage
-      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-AI Recruitment OS}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Logisoft HireOS}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      # Host LAN IPv4 for phone QR pairing (Docker cannot detect Wi‑Fi itself).
+      PUBLIC_LAN_IP: ${PUBLIC_LAN_IP:-}
+      APP_HOST_PORT: ${APP_HOST_PORT:-3000}
+      PUBLIC_HTTPS_URL: ${PUBLIC_HTTPS_URL:-}
+      PUBLIC_HTTPS_PORT: ${PUBLIC_HTTPS_PORT:-3443}
       RUN_SEED: ${RUN_SEED:-false}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-}
@@ -101,6 +106,24 @@ services:
       - "${APP_HOST_PORT:-3000}:3000"
     volumes:
       - app_storage:/storage
+
+  # Local HTTPS terminator so phones can use getUserMedia (Secure Context).
+  # QR uses https://<LAN>:3443 — accept the self-signed warning once on the phone.
+  https-proxy:
+    image: caddy:2-alpine
+    container_name: aros-https
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      PUBLIC_LAN_IP: ${PUBLIC_LAN_IP:?Set PUBLIC_LAN_IP in .env (npm run db:ensure)}
+      PUBLIC_HTTPS_PORT: ${PUBLIC_HTTPS_PORT:-3443}
+      UPSTREAM: app:3000
+    ports:
+      - "${PUBLIC_HTTPS_PORT:-3443}:443"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
 
 volumes:
   ats_pgdata:

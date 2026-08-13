@@ -1,4 +1,4 @@
-# Packaging — pilot stack
+# Logisoft HireOS — packaging (pilot stack)
 
 One command path for a self-hosted pilot: **Postgres + Ollama + speech-service + Next.js app**.
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
 
-type LogRow = {
+export type CommunicationLogRow = {
   id: string;
   status: string;
   subject: string | null;
@@ -14,8 +14,14 @@ type LogRow = {
   toAddress: string;
 };
 
-export function CommunicationHistory({ candidateId }: { candidateId: string }) {
-  const [logs, setLogs] = useState<LogRow[]>([]);
+export function CommunicationHistory({
+  candidateId,
+  initialLogs,
+}: {
+  candidateId: string;
+  initialLogs?: CommunicationLogRow[];
+}) {
+  const [logs, setLogs] = useState<CommunicationLogRow[]>(initialLogs ?? []);
   const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,18 +34,33 @@ export function CommunicationHistory({ candidateId }: { candidateId: string }) {
     })();
   }, [candidateId]);
 
+  if (logs.length === 0) {
+    return <p className="text-sm text-muted-foreground">No communication yet.</p>;
+  }
+
+  const latest = logs[0];
+
   return (
-    <section className="space-y-3">
-      <h2 className="text-lg font-medium text-slate-900">Communication</h2>
-      {logs.length === 0 ? (
-        <p className="text-sm text-slate-500">No emails logged yet.</p>
-      ) : (
-        <ul className="space-y-2">
+    <div className="space-y-3">
+      <dl className="space-y-2 text-sm">
+        <div>
+          <dt className="text-[12px] text-muted-foreground">Last communication</dt>
+          <dd className="font-medium text-foreground">
+            {latest.subject ?? "(no subject)"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[12px] text-muted-foreground">Emails</dt>
+          <dd className="font-medium text-foreground">{logs.length}</dd>
+        </div>
+      </dl>
+      <details className="group">
+        <summary className="cursor-pointer text-sm font-medium text-primary hover:underline">
+          View communication
+        </summary>
+        <ul className="mt-3 space-y-1.5">
           {logs.map((l) => (
-            <li
-              key={l.id}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-            >
+            <li key={l.id} className="text-sm">
               <button
                 type="button"
                 className="flex w-full flex-wrap items-center gap-2 text-left"
@@ -48,30 +69,30 @@ export function CommunicationHistory({ candidateId }: { candidateId: string }) {
                 <Badge
                   className={
                     l.status === "SENT"
-                      ? "bg-emerald-100 text-emerald-900"
+                      ? "bg-success/15 text-success"
                       : l.status === "FAILED"
-                        ? "bg-rose-100 text-rose-900"
-                        : "bg-amber-100 text-amber-950"
+                        ? "bg-destructive/15 text-destructive"
+                        : "bg-warning/15 text-foreground"
                   }
                 >
                   {l.status}
                 </Badge>
-                <span className="font-medium text-slate-900">
+                <span className="font-medium text-foreground">
                   {l.subject ?? "(no subject)"}
                 </span>
-                <span className="text-xs text-slate-400">
+                <span className="text-[12px] text-muted-foreground">
                   {formatDateTime(l.sentAt ?? l.createdAt)}
                 </span>
               </button>
               {openId === l.id ? (
-                <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+                <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-muted/40 p-3 text-xs text-foreground/90">
                   {l.body}
                 </pre>
               ) : null}
             </li>
           ))}
         </ul>
-      )}
-    </section>
+      </details>
+    </div>
   );
 }

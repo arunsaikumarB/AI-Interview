@@ -1,4 +1,4 @@
-# AI Recruitment OS
+# Logisoft HireOS
 
 ## Hard rules
 - 100% local/self-hosted. NEVER suggest Supabase, Firebase, Vercel, Netlify, cloud DBs, cloud storage, or OpenAI API.

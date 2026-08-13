@@ -30,8 +30,8 @@ export function DraftEmailChip({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm">
-        <span className="text-slate-600">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm">
+        <span className="text-muted-foreground">
           Draft {CATEGORY_LABELS[category]} email?
         </span>
         <Button size="sm" onClick={() => setOpen(true)}>

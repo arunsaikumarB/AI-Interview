@@ -44,16 +44,16 @@ export type InterviewLinkRow = {
 function statusClass(status: InterviewLinkDisplayStatus): string {
   switch (status) {
     case "Active":
-      return "bg-slate-100 text-slate-800";
+      return "bg-muted text-foreground";
     case "In Progress":
-      return "bg-blue-50 text-blue-900";
+      return "bg-primary/10 text-primary";
     case "Completed":
-      return "bg-emerald-50 text-emerald-900";
+      return "bg-success/10 text-success";
     case "Expired":
     case "Cancelled":
-      return "bg-slate-50 text-slate-500";
+      return "bg-muted/40 text-muted-foreground";
     default:
-      return "bg-slate-100 text-slate-700";
+      return "bg-muted text-foreground/90";
   }
 }
 
@@ -101,8 +101,8 @@ export function InterviewLinksPanel({
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="font-display text-3xl text-slate-900">Interview Links</h1>
-            <p className="mt-2 text-sm text-slate-500">
+            <h1 className="page-title">Interview Links</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
               Create and manage candidate interview links.
             </p>
           </div>
@@ -111,12 +111,12 @@ export function InterviewLinksPanel({
             triggerLabel="+ Create Interview"
           />
         </div>
-        <div className="rounded-xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center">
-          <h2 className="text-lg font-semibold text-slate-900">Interview Links</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+        <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center">
+          <h2 className="text-lg font-semibold text-foreground">Interview Links</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
             No interview links yet.
           </p>
-          <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
             Create an interview link to invite a candidate to an AI interview.
           </p>
           <div className="mt-6 flex justify-center">
@@ -134,8 +134,8 @@ export function InterviewLinksPanel({
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl text-slate-900">Interview Links</h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <h1 className="page-title">Interview Links</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             Create and manage candidate interview links.
           </p>
         </div>
@@ -153,9 +153,9 @@ export function InterviewLinksPanel({
         <InterviewLinksToolbar />
       </Suspense>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50/80 text-xs font-medium uppercase tracking-wide text-slate-500">
+          <thead className="border-b border-border bg-muted/30 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">Candidate</th>
               <th className="px-4 py-3 font-medium">Job</th>
@@ -168,7 +168,7 @@ export function InterviewLinksPanel({
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-border">
             {rows.map((r) => {
               const canCopy =
                 r.displayStatus === "Active" || r.displayStatus === "In Progress";
@@ -181,12 +181,12 @@ export function InterviewLinksPanel({
                 canCopy || r.status === "SCHEDULED" || canReport;
 
               return (
-                <tr key={r.id} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-3 font-medium text-slate-900">
+                <tr key={r.id} className="hover:bg-primary/[0.06]">
+                  <td className="px-4 py-3 font-medium text-foreground">
                     {r.candidateName}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{r.jobTitle}</td>
-                  <td className="px-4 py-3 text-slate-700">AI Interview</td>
+                  <td className="px-4 py-3 text-foreground/90">{r.jobTitle}</td>
+                  <td className="px-4 py-3 text-foreground/90">AI Interview</td>
                   <td className="px-4 py-3">
                     <span
                       className={cn(
@@ -197,10 +197,10 @@ export function InterviewLinksPanel({
                       {r.displayStatus}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {r.tokenExpiresAt ? formatDate(r.tokenExpiresAt) : "—"}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {formatDate(r.createdAt)}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -280,7 +280,7 @@ export function InterviewLinksPanel({
           </tbody>
         </table>
         {rows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-slate-500">
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
             No interview links match your filters.
           </p>
         ) : null}

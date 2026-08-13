@@ -2,11 +2,9 @@ import { createReadStream } from "fs";
 import { stat } from "fs/promises";
 import { Readable } from "stream";
 import { prisma } from "@/lib/db";
-import { SpeechError, synthesizeSpeech } from "@/lib/speech";
-import {
-  resolveStoragePath,
-  saveInterviewAudio,
-} from "@/lib/storage";
+import { SpeechError } from "@/lib/speech";
+import { ensureQuestionTts } from "@/lib/question-tts";
+import { resolveStoragePath } from "@/lib/storage";
 
 type Ctx = { params: { token: string; sequence: string } };
 
@@ -48,9 +46,14 @@ export async function GET(_request: Request, { params }: Ctx) {
   let relativePath = question.ttsPath;
 
   if (!relativePath) {
-    let wav: Buffer;
     try {
-      wav = await synthesizeSpeech(question.question);
+      relativePath = await ensureQuestionTts({
+        sessionId: session.id,
+        questionId: question.id,
+        sequence,
+        text: question.question,
+        existingPath: question.ttsPath,
+      });
     } catch (err) {
       if (err instanceof SpeechError) {
         return Response.json(
@@ -63,18 +66,6 @@ export async function GET(_request: Request, { params }: Ctx) {
       }
       throw err;
     }
-
-    const stored = await saveInterviewAudio({
-      sessionId: session.id,
-      fileName: `q${sequence}.wav`,
-      data: wav,
-    });
-    relativePath = stored.relativePath;
-
-    await prisma.interviewQuestion.update({
-      where: { id: question.id },
-      data: { ttsPath: relativePath },
-    });
   }
 
   const absolute = resolveStoragePath(relativePath);

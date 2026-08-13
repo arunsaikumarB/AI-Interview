@@ -1,20 +1,32 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { canManagePipeline } from "@/lib/auth/rbac";
 import { Badge } from "@/components/ui/badge";
-import { InterviewReport } from "@/components/interview-report";
-import { ProctoringReportSection } from "@/components/proctoring-report";
+import {
+  InterviewAiEvaluation,
+  InterviewTranscript,
+  RecruiterDecisionPanel,
+} from "@/components/interview-report";
+import { InterviewReviewSummary } from "@/components/interview-review-summary";
+import { IntegritySignalsSummary } from "@/components/integrity-signals-summary";
+import { SecondaryCameraReview } from "@/components/secondary-camera-review";
 import { CandidateAskedSection } from "@/components/candidate-asked-section";
 import {
   AnswerEvaluationSchema,
   FinalResultSchema,
 } from "@/lib/ai/interview";
+import { finalizeSecondaryRecording } from "@/lib/secondary-recording-server";
 
 type Ctx = { params: { id: string } };
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Interview",
+};
 
 export default async function InterviewReportPage({ params }: Ctx) {
   const session = await getSession();
@@ -54,6 +66,38 @@ export default async function InterviewReportPage({ params }: Ctx) {
     interview.application.job.organizationId !== session.organizationId
   ) {
     notFound();
+  }
+
+  let recordingPath = interview.secondaryRecordingPath;
+  let recordingStatus = interview.secondaryRecordingStatus;
+  let recordingDurationMs = interview.secondaryRecordingDurationMs;
+  let recordingHasGap = interview.secondaryRecordingHasGap;
+  let recordingInterruptedMs = interview.secondaryRecordingInterruptedMs;
+  if (
+    !recordingPath &&
+    interview.secondaryRecordingId &&
+    (recordingStatus === "FAILED" ||
+      recordingStatus === "INTERRUPTED" ||
+      recordingStatus === "RECORDING" ||
+      recordingStatus === "FINALIZING")
+  ) {
+    const salvaged = await finalizeSecondaryRecording(interview.id);
+    recordingPath = salvaged.path;
+    recordingStatus = salvaged.status;
+    if (salvaged.path) {
+      const refreshed = await prisma.interviewSession.findUnique({
+        where: { id: interview.id },
+        select: {
+          secondaryRecordingDurationMs: true,
+          secondaryRecordingHasGap: true,
+          secondaryRecordingInterruptedMs: true,
+        },
+      });
+      recordingDurationMs = refreshed?.secondaryRecordingDurationMs ?? recordingDurationMs;
+      recordingHasGap = refreshed?.secondaryRecordingHasGap ?? recordingHasGap;
+      recordingInterruptedMs =
+        refreshed?.secondaryRecordingInterruptedMs ?? recordingInterruptedMs;
+    }
   }
 
   const overall = interview.aiEvaluations[0];
@@ -106,14 +150,14 @@ export default async function InterviewReportPage({ params }: Ctx) {
       <div>
         <Link
           href={`/dashboard/candidates/${interview.application.candidate.id}?applicationId=${interview.applicationId}`}
-          className="inline-flex items-center text-sm font-medium text-slate-600 hover:text-slate-900 hover:underline"
+          className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
         >
           ← Back to candidate
         </Link>
-        <h1 className="mt-2 font-display text-3xl text-slate-900">
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">
           Interview report
         </h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-muted-foreground">
           {interview.application.candidate.firstName}{" "}
           {interview.application.candidate.lastName} ·{" "}
           {interview.application.job.title}
@@ -121,15 +165,57 @@ export default async function InterviewReportPage({ params }: Ctx) {
         <div className="mt-2 flex flex-wrap gap-2">
           <Badge variant="secondary">{interview.status}</Badge>
           <Badge variant="secondary">{interview.interviewType}</Badge>
-          <Badge className="bg-amber-100 text-amber-900">
+          <Badge className="bg-warning/15 text-warning">
             AI suggestion — recruiter decides
           </Badge>
         </div>
       </div>
 
-      <ProctoringReportSection
-        enabled={interview.proctoringEnabled}
-        cameraConsent={interview.proctoringCameraConsent}
+      <InterviewReviewSummary
+        candidateName={`${interview.application.candidate.firstName} ${interview.application.candidate.lastName}`}
+        role={interview.application.job.title}
+        interviewType={interview.interviewType}
+        deliveryMode={interview.deliveryMode}
+        durationMs={
+          interview.startedAt && interview.endedAt
+            ? interview.endedAt.getTime() - interview.startedAt.getTime()
+            : recordingDurationMs
+        }
+        status={interview.status}
+        aiRecommendation={overall?.recommendation ?? null}
+        currentStage={interview.application.stage}
+        proctoringMode={interview.proctoringMode}
+        secondaryDeviceStatus={interview.secondaryDeviceStatus}
+        recordingStatus={recordingStatus}
+        hasRecording={Boolean(recordingPath)}
+      />
+
+      <SecondaryCameraReview
+        interviewId={interview.id}
+        status={recordingStatus}
+        durationMs={recordingDurationMs}
+        interruptedMs={recordingInterruptedMs}
+        hasGap={recordingHasGap}
+        hasPath={Boolean(recordingPath)}
+        recordingStartedAt={
+          interview.secondaryRecordingStartedAt?.toISOString() ??
+          interview.startedAt?.toISOString() ??
+          null
+        }
+        placementConfirmed={Boolean(interview.secondaryPlacementConfirmedAt)}
+        secondaryDeviceStatus={interview.secondaryDeviceStatus}
+        events={interview.proctoring.map((e) => ({
+          id: e.id,
+          type: e.type,
+          timestamp: e.timestamp.toISOString(),
+          meta: e.meta,
+        }))}
+      />
+
+      <IntegritySignalsSummary
+        integrityMode={interview.integrityMode}
+        status={interview.status}
+        terminatedReason={interview.integrityTerminatedReason}
         events={interview.proctoring.map((e) => ({
           id: e.id,
           type: e.type,
@@ -140,13 +226,11 @@ export default async function InterviewReportPage({ params }: Ctx) {
 
       <CandidateAskedSection items={candidateAsked} />
 
-      <InterviewReport
-        applicationId={interview.applicationId}
-        candidateId={interview.application.candidate.id}
+      <InterviewTranscript interviewId={interview.id} transcript={transcript} />
+
+      <InterviewAiEvaluation
         interviewId={interview.id}
         interviewStatus={interview.status}
-        currentStage={interview.application.stage}
-        transcript={transcript}
         overall={
           overall && finalResult
             ? {
@@ -158,6 +242,12 @@ export default async function InterviewReportPage({ params }: Ctx) {
               }
             : null
         }
+      />
+
+      <RecruiterDecisionPanel
+        applicationId={interview.applicationId}
+        candidateId={interview.application.candidate.id}
+        currentStage={interview.application.stage}
       />
     </div>
   );

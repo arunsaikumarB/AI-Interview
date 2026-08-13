@@ -78,9 +78,9 @@ export function ScreenAllButton({ jobId }: { jobId: string }) {
         {running ? progress ?? "Screening…" : "Screen all applicants"}
       </Button>
       {running && progress ? (
-        <p className="max-w-xs text-right text-xs text-slate-500">{progress}</p>
+        <p className="max-w-xs text-right text-xs text-muted-foreground">{progress}</p>
       ) : (
-        <p className="text-xs text-slate-400">AI suggestion only — stages unchanged</p>
+        <p className="text-xs text-muted-foreground">AI suggestion only — stages unchanged</p>
       )}
     </div>
   );

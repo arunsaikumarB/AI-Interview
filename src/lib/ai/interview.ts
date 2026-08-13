@@ -685,7 +685,8 @@ Rules:
 - One question at a time, conversational tone; may reference candidate's own words.
 - Never reveal scores to the candidate in the question text.
 - nextQuestion is null ONLY when nextAction is CONCLUDE.
-- Force CONCLUDE when questionsAsked+1 >= maxQuestions.`;
+- Force CONCLUDE when questionsAsked+1 >= maxQuestions.
+- Keep answerEvaluation.reasoning and actionReasoning under 40 words. At most 2 short strings per array.`;
 
 export async function nextTurn(params: {
   plan: InterviewPlan;
@@ -705,7 +706,9 @@ export async function nextTurn(params: {
     TURN_RESULT_JSON_SCHEMA,
   ].join("\n\n");
 
-  const { data, model, raw } = await chatJSON(TURN_SYSTEM, user, TurnResultSchema);
+  const { data, model, raw } = await chatJSON(TURN_SYSTEM, user, TurnResultSchema, {
+    numPredict: 700,
+  });
 
   const lastAnswer = params.turns[params.turns.length - 1].answerText;
   const enforced = enforceTurnRules({
@@ -751,7 +754,9 @@ export async function nextTurnWithState(params: {
     TURN_RESULT_JSON_SCHEMA,
   ].join("\n\n");
 
-  const { data, model, raw } = await chatJSON(TURN_SYSTEM, user, TurnResultSchema);
+  const { data, model, raw } = await chatJSON(TURN_SYSTEM, user, TurnResultSchema, {
+    numPredict: 700,
+  });
   const lastAnswer = params.turns[params.turns.length - 1].answerText;
   const enforced = enforceTurnRules({
     modelResult: data,

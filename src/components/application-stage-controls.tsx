@@ -5,14 +5,18 @@ import { useRouter } from "next/navigation";
 import type { PipelineStage } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { STAGE_LABELS, PIPELINE_FLOW } from "@/lib/constants";
+import { stageBadgeClass } from "@/lib/candidate-detail-ui";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export function ApplicationStageControls({
   applicationId,
   currentStage,
+  decisionNote,
 }: {
   applicationId: string;
   currentStage: PipelineStage;
+  decisionNote?: string | null;
 }) {
   const router = useRouter();
   const [moving, setMoving] = useState(false);
@@ -26,6 +30,7 @@ export function ApplicationStageControls({
     flowIndex >= 0 && flowIndex < PIPELINE_FLOW.length - 1
       ? PIPELINE_FLOW[flowIndex + 1]
       : null;
+  const canShortlist = currentStage !== "SHORTLISTED" && currentStage !== "SELECTED";
 
   async function move(toStage: PipelineStage, rationale?: string) {
     const needsNote = toStage === "SELECTED" || toStage === "REJECTED";
@@ -56,28 +61,45 @@ export function ApplicationStageControls({
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-900/10 bg-slate-50 p-5">
+    <section id="decision" className="space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-slate-900">
+        <h2 className="text-[17px] font-semibold text-foreground">
           Recruiter Decision
         </h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Current stage:{" "}
-          <span className="font-medium text-slate-800">
-            {STAGE_LABELS[stage]}
-          </span>
-          . AI suggestions never change the stage — you do.
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          AI suggestions never automatically change the hiring stage.
         </p>
       </div>
 
+      <div>
+        <p className="text-[12px] text-muted-foreground">Current stage</p>
+        <p
+          className={cn(
+            "mt-1 inline-flex rounded-full px-2.5 py-0.5 text-sm font-semibold uppercase tracking-wide",
+            stageBadgeClass(currentStage),
+          )}
+        >
+          {STAGE_LABELS[currentStage]}
+        </p>
+      </div>
+
+      {decisionNote ? (
+        <div>
+          <p className="text-[12px] text-muted-foreground">Decision note</p>
+          <p className="mt-1 text-sm leading-snug text-foreground">
+            “{decisionNote}”
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-end gap-2">
-        <div className="space-y-1">
-          <label className="text-xs text-slate-500" htmlFor="stage-select">
+        <div className="min-w-[8rem] flex-1 space-y-1">
+          <label className="text-[12px] text-muted-foreground" htmlFor="stage-select">
             Move to stage
           </label>
           <select
             id="stage-select"
-            className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
+            className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm"
             value={stage}
             onChange={(e) => setStage(e.target.value as PipelineStage)}
           >
@@ -98,7 +120,7 @@ export function ApplicationStageControls({
       </div>
 
       <div className="space-y-1">
-        <label className="text-xs text-slate-500" htmlFor="decision-note">
+        <label className="text-[12px] text-muted-foreground" htmlFor="decision-note">
           Note (required for Select / Reject)
         </label>
         <textarea
@@ -112,6 +134,16 @@ export function ApplicationStageControls({
       </div>
 
       <div className="flex flex-wrap gap-2">
+        {canShortlist ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={moving}
+            onClick={() => move("SHORTLISTED", "Shortlisted by recruiter")}
+          >
+            Shortlist
+          </Button>
+        ) : null}
         {nextStage ? (
           <Button
             size="sm"
@@ -121,7 +153,7 @@ export function ApplicationStageControls({
               move(nextStage, `Advanced to ${STAGE_LABELS[nextStage]}`)
             }
           >
-            Move to {STAGE_LABELS[nextStage]}
+            Advance
           </Button>
         ) : null}
         <Button

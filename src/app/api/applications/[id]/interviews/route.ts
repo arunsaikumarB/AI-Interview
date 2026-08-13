@@ -33,6 +33,8 @@ const bodySchema = z.object({
   proctoringEnabled: z.boolean().default(false),
   /** OFF | STANDARD | ENHANCED — Enhanced enables secondary-camera pairing. */
   proctoringMode: z.enum(["OFF", "STANDARD", "ENHANCED"]).optional(),
+  /** STANDARD | STRICT — Strict may end the interview after repeated browser signals. */
+  integrityMode: z.enum(["STANDARD", "STRICT"]).default("STANDARD"),
   /** Link validity from creation. */
   linkExpiresInDays: z.union([z.literal(1), z.literal(3), z.literal(7)]).default(3),
   /** Wall-clock session length after start. */
@@ -153,9 +155,14 @@ export async function POST(request: Request, { params }: Ctx) {
     });
 
     const accessToken = createAccessToken();
-    const proctoringMode =
+    let proctoringMode =
       body.proctoringMode ??
       (body.proctoringEnabled ? "STANDARD" : "OFF");
+    const integrityMode = body.integrityMode === "STRICT" ? "STRICT" : "STANDARD";
+    // Strict integrity needs browser signal collectors — enable at least STANDARD proctoring.
+    if (integrityMode === "STRICT" && proctoringMode === "OFF") {
+      proctoringMode = "STANDARD";
+    }
     const proctoringEnabled =
       proctoringMode === "STANDARD" || proctoringMode === "ENHANCED";
 
@@ -166,6 +173,7 @@ export async function POST(request: Request, { params }: Ctx) {
         deliveryMode: body.mode,
         proctoringEnabled,
         proctoringMode,
+        integrityMode,
         status: "SCHEDULED",
         interviewType: body.interviewType,
         maxQuestions: body.maxQuestions,
@@ -189,6 +197,7 @@ export async function POST(request: Request, { params }: Ctx) {
           deliveryMode: body.mode,
           proctoringEnabled,
           proctoringMode,
+          integrityMode,
           maxQuestions: body.maxQuestions,
           durationMinutes: body.durationMinutes,
           linkExpiresInDays: body.linkExpiresInDays,
@@ -214,6 +223,7 @@ export async function POST(request: Request, { params }: Ctx) {
         tokenExpiresAt: interview.tokenExpiresAt,
         proctoringEnabled: interview.proctoringEnabled,
         proctoringMode: interview.proctoringMode,
+        integrityMode: interview.integrityMode,
       },
       candidateLink,
       planMeta: {

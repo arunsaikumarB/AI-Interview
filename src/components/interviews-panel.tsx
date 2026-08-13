@@ -42,10 +42,10 @@ export function InterviewsPanel({ applicationId }: { applicationId: string }) {
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-medium text-slate-900">Interviews</h2>
+        <h2 className="text-lg font-medium text-foreground">Interviews</h2>
         <Link
           href={`/dashboard/interview-links?create=1&applicationId=${applicationId}`}
-          className="inline-flex h-9 items-center rounded-lg bg-slate-900 px-3 text-sm text-white hover:bg-slate-800"
+          className="inline-flex h-9 items-center rounded-lg bg-primary/15 px-3 text-sm text-foreground hover:bg-muted"
         >
           Create Interview Link
         </Link>
@@ -54,14 +54,14 @@ export function InterviewsPanel({ applicationId }: { applicationId: string }) {
         {rows.map((r) => (
           <li
             key={r.id}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
           >
             <div>
-              <p className="font-medium text-slate-900">
+              <p className="font-medium text-foreground">
                 {r.mode ?? r.deliveryMode ?? "TEXT"} · {r.interviewType} · max{" "}
                 {r.maxQuestions}
               </p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 {formatDateTime(r.createdAt)}
               </p>
             </div>
@@ -72,7 +72,7 @@ export function InterviewsPanel({ applicationId }: { applicationId: string }) {
               </Button>
               <Link
                 href={`/dashboard/interviews/${r.id}`}
-                className="inline-flex h-7 items-center rounded-lg px-2 text-sm text-slate-700 hover:bg-slate-100"
+                className="inline-flex h-7 items-center rounded-lg px-2 text-sm text-foreground/90 hover:bg-muted"
               >
                 Report
               </Link>
@@ -80,7 +80,7 @@ export function InterviewsPanel({ applicationId }: { applicationId: string }) {
           </li>
         ))}
         {rows.length === 0 ? (
-          <p className="text-sm text-slate-500">No interviews yet.</p>
+          <p className="text-sm text-muted-foreground">No interviews yet.</p>
         ) : null}
       </ul>
     </section>

@@ -3,7 +3,6 @@ import { getSession } from "@/lib/auth/session";
 import { AuthError, canManagePipeline, requireStaff } from "@/lib/auth/rbac";
 import { handleApiError, jsonCreated } from "@/lib/api";
 import { saveUpload } from "@/lib/storage";
-import { extractResumeText } from "@/lib/resume/parse";
 import { embedCandidate } from "@/lib/ai/embeddings";
 import {
   isAllowedResumeFile,
@@ -67,6 +66,7 @@ export async function POST(request: Request) {
     let resumeText: string | null = null;
     let parseError: string | null = null;
     try {
+      const { extractResumeText } = await import("@/lib/resume/parse");
       resumeText = await extractResumeText({
         buffer,
         mimeType: file.type || "application/octet-stream",

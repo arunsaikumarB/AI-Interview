@@ -1,4 +1,4 @@
-# AI Recruitment OS — Next.js (standalone)
+# Logisoft HireOS — Next.js (standalone)
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
@@ -50,6 +50,10 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/dist/docker ./dist/docker
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
+# Resume PDF parsing (pdf-parse → pdfjs-dist). Standalone trace omits worker files.
+COPY --from=builder /app/node_modules/pdf-parse ./node_modules/pdf-parse
+COPY --from=builder /app/node_modules/pdfjs-dist ./node_modules/pdfjs-dist
+COPY --from=builder /app/node_modules/mammoth ./node_modules/mammoth
 COPY docker/app/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && chown -R nextjs:nodejs /app
 

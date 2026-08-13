@@ -8,6 +8,8 @@ const bodySchema = z.object({
   acknowledged: z.literal(true),
   /** Explicit camera choice — stored as-is; never inferred later. */
   cameraConsent: z.boolean(),
+  /** Required for Enhanced — secondary video + room audio recording. */
+  recordingConsent: z.boolean().optional(),
 });
 
 /**
@@ -31,7 +33,7 @@ export async function POST(request: Request, { params }: Ctx) {
       { status: 403 },
     );
   }
-  if (session.status === "COMPLETED" || session.status === "CANCELLED") {
+  if (session.status === "COMPLETED" || session.status === "CANCELLED" || session.status === "TERMINATED") {
     return Response.json({ error: "Interview is not available" }, { status: 400 });
   }
 
@@ -48,12 +50,25 @@ export async function POST(request: Request, { params }: Ctx) {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  if (session.proctoringMode === "ENHANCED" && !body.recordingConsent) {
+    return Response.json(
+      {
+        error:
+          "Enhanced recording consent is required for secondary camera interviews",
+      },
+      { status: 400 },
+    );
+  }
+
   const consentAt = new Date();
   await prisma.interviewSession.update({
     where: { id: session.id },
     data: {
       proctoringConsentAt: consentAt,
       proctoringCameraConsent: body.cameraConsent,
+      ...(body.recordingConsent
+        ? { secondaryRecordingConsentAt: consentAt }
+        : {}),
     },
   });
 
@@ -65,6 +80,7 @@ export async function POST(request: Request, { params }: Ctx) {
         kind: "PROCTORING_CONSENT",
         sessionId: session.id,
         cameraConsent: body.cameraConsent,
+        recordingConsent: Boolean(body.recordingConsent),
         tabAndPasteSignals: true,
         consentedAt: consentAt.toISOString(),
         advisoryOnly: true,
@@ -75,6 +91,7 @@ export async function POST(request: Request, { params }: Ctx) {
   return jsonOk({
     consentedAt: consentAt.toISOString(),
     cameraConsent: body.cameraConsent,
+    recordingConsent: Boolean(body.recordingConsent),
     consent: body.cameraConsent
       ? "full (incl. camera)"
       : "signals only (camera declined)",

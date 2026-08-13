@@ -97,8 +97,8 @@ B.S. Computer Science
 async function main() {
   const org = await prisma.organization.upsert({
     where: { slug: "acme-hiring" },
-    update: { name: "Acme Hiring", companyName: "Acme Hiring" },
-    create: { name: "Acme Hiring", slug: "acme-hiring", companyName: "Acme Hiring" },
+    update: { name: "Logi Hiring", companyName: "Logi Hiring" },
+    create: { name: "Logi Hiring", slug: "acme-hiring", companyName: "Logi Hiring" },
   });
 
   const engineering = await prisma.department.upsert({
@@ -179,7 +179,7 @@ async function main() {
       title: "Full-Stack Engineer",
       skills: ["TypeScript", "Next.js", "PostgreSQL", "Prisma"],
       description:
-        "Build our self-hosted AI Recruitment OS. Own Next.js features, Prisma models, and Ollama-backed screening.",
+        "Build our self-hosted Logisoft HireOS. Own Next.js features, Prisma models, and Ollama-backed screening.",
       mustHave: ["TypeScript", "Next.js App Router", "PostgreSQL"],
       niceToHave: ["Ollama", "pgvector"],
     },
@@ -378,7 +378,7 @@ async function main() {
         stage,
         status,
         source: i % 2 === 0 ? "career_site" : "referral",
-        coverNote: "Interested in joining Acme Hiring.",
+        coverNote: "Interested in joining Logi Hiring.",
         timelineEvents: {
           create: {
             type: "APPLICATION_CREATED",

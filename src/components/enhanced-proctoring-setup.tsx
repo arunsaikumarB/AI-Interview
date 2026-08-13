@@ -23,6 +23,12 @@ type StatusPayload = {
   pairExpiresAt: string | null;
   placementConfirmed: boolean;
   livePreviewAvailable?: boolean;
+  reachableFromPhone?: boolean;
+  requiresHttpsTrust?: boolean;
+  frameFresh?: boolean;
+  recordingStatus?: string;
+  recordingLabel?: string;
+  recordingHasGap?: boolean;
   diagnostics?: {
     lastFrameAgeMs: number | null;
     lastHeartbeatAgeMs: number | null;
@@ -33,20 +39,43 @@ type StatusPayload = {
 
 function statusTone(status: PairStatus): string {
   if (status === "CONNECTED") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-900";
+    return "border-ai/30 bg-ai/10 text-foreground";
   }
   if (status === "STALE" || status === "RECONNECTING" || status === "CONNECTING") {
-    return "border-amber-200 bg-amber-50 text-amber-950";
+    return "border-warning/30 bg-warning/10 text-foreground";
   }
-  if (status === "DISCONNECTED" || status === "ENDED") {
-    return "border-slate-200 bg-slate-50 text-slate-700";
-  }
-  return "border-slate-200 bg-slate-50 text-slate-800";
+  return "border-border bg-muted/40 text-foreground";
+}
+
+function recordingTone(status?: string): string {
+  if (status === "RECORDING") return "text-ai";
+  if (status === "READY" || status === "SAVED") return "text-success";
+  if (status === "INTERRUPTED" || status === "FINALIZING") return "text-warning";
+  if (status === "FAILED") return "text-destructive";
+  return "text-muted-foreground";
+}
+
+function PlacementGuideOverlay() {
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 flex flex-col justify-between p-3 text-[10px] font-medium uppercase tracking-[0.12em] text-foreground/80"
+      aria-hidden
+    >
+      <div className="rounded-md border border-dashed border-primary/35 bg-background/20 px-2 py-1 text-center backdrop-blur-[1px]">
+        Surrounding workspace
+      </div>
+      <div className="mx-auto w-[55%] rounded-lg border border-primary/50 bg-background/15 px-2 py-6 text-center backdrop-blur-[1px]">
+        Candidate
+      </div>
+      <div className="rounded-md border border-dashed border-primary/35 bg-background/20 px-2 py-1 text-center backdrop-blur-[1px]">
+        Laptop / desk / keyboard
+      </div>
+    </div>
+  );
 }
 
 /**
- * Host Enhanced Proctoring setup — QR + live preview + confirm.
- * Evidence-only status copy (never cheating claims).
+ * Host Enhanced Proctoring — QR + placement gate + recording status.
  */
 export function EnhancedProctoringSetup({
   token,
@@ -56,14 +85,19 @@ export function EnhancedProctoringSetup({
   onReady: () => void;
 }) {
   const [status, setStatus] = useState<PairStatus>("NONE");
-  const [label, setLabel] = useState("Secondary camera not paired yet");
+  const [label, setLabel] = useState("Waiting for phone");
   const [pairUrl, setPairUrl] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [placementConfirmed, setPlacementConfirmed] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [frameFresh, setFrameFresh] = useState(false);
+  const [recordingLabel, setRecordingLabel] = useState<string | null>(null);
+  const [recordingStatus, setRecordingStatus] = useState<string | null>(null);
+  const [recordingHasGap, setRecordingHasGap] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [localhostWarn, setLocalhostWarn] = useState(false);
+  const [httpsTrustHint, setHttpsTrustHint] = useState(false);
   const [diag, setDiag] = useState<StatusPayload["diagnostics"] | null>(null);
 
   const showDiag =
@@ -82,12 +116,25 @@ export function EnhancedProctoringSetup({
     setLabel(data.label ?? data.status);
     setPairUrl(data.pairUrl);
     setPlacementConfirmed(Boolean(data.placementConfirmed));
+    setFrameFresh(Boolean(data.frameFresh));
+    setRecordingLabel(data.recordingLabel ?? null);
+    setRecordingStatus(data.recordingStatus ?? null);
+    setRecordingHasGap(Boolean(data.recordingHasGap));
     setDiag(data.diagnostics ?? null);
     if (data.pairUrl) {
+      setLocalhostWarn(
+        data.reachableFromPhone === false ||
+          ((data.pairUrl.includes("localhost") ||
+            data.pairUrl.includes("127.0.0.1")) &&
+            !data.pairUrl.startsWith("https://")),
+      );
+      setHttpsTrustHint(
+        Boolean(data.requiresHttpsTrust) || data.pairUrl.startsWith("https://"),
+      );
       const qr = await QRCode.toDataURL(data.pairUrl, {
         margin: 1,
         width: 240,
-        color: { dark: "#0f172a", light: "#ffffff" },
+        color: { dark: "#0B0F17", light: "#ffffff" },
       });
       setQrDataUrl(qr);
     }
@@ -147,19 +194,26 @@ export function EnhancedProctoringSetup({
       setError(data.error ?? "Could not create pairing code");
       return;
     }
-    const origin = window.location.origin;
-    const url = `${origin}/interview/secondary/${data.pairToken}`;
+    const url =
+      typeof data.pairUrl === "string" && data.pairUrl.length > 0
+        ? data.pairUrl
+        : `${window.location.origin}/interview/secondary/${data.pairToken}`;
     setPairUrl(url);
     setStatus(data.status);
-    setLabel(data.label ?? "Waiting for secondary device…");
+    setLabel(data.label ?? "Waiting for phone");
     setPlacementConfirmed(false);
     setLocalhostWarn(
-      origin.includes("localhost") || origin.includes("127.0.0.1"),
+      data.reachableFromPhone === false ||
+        ((url.includes("localhost") || url.includes("127.0.0.1")) &&
+          !url.startsWith("https://")),
+    );
+    setHttpsTrustHint(
+      Boolean(data.requiresHttpsTrust) || url.startsWith("https://"),
     );
     const qr = await QRCode.toDataURL(url, {
       margin: 1,
       width: 240,
-      color: { dark: "#0f172a", light: "#ffffff" },
+      color: { dark: "#0B0F17", light: "#ffffff" },
     });
     setQrDataUrl(qr);
   }
@@ -175,13 +229,22 @@ export function EnhancedProctoringSetup({
     const data = await res.json();
     setBusy(false);
     if (!res.ok) {
-      setError(
-        data.error ??
-          "Confirm placement after the secondary camera connects",
-      );
+      setError(data.error ?? "Could not confirm placement");
       return;
     }
     setPlacementConfirmed(true);
+  }
+
+  async function resetPlacement() {
+    setBusy(true);
+    await fetch(`/api/interview/${token}/proctoring/secondary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reset_placement" }),
+    });
+    setBusy(false);
+    setPlacementConfirmed(false);
+    await refreshStatus();
   }
 
   async function disconnect() {
@@ -197,18 +260,27 @@ export function EnhancedProctoringSetup({
     await refreshStatus();
   }
 
+  const placementReady =
+    status === "CONNECTED" && frameFresh && Boolean(previewUrl);
+
   return (
-    <div className="mx-auto max-w-lg space-y-5 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+    <div className="mx-auto max-w-lg space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm">
       <div>
-        <p className="text-xs uppercase tracking-wide text-slate-400">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          Logisoft HireOS
+        </p>
+        <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
           Enhanced proctoring
         </p>
-        <h1 className="mt-1 font-display text-3xl text-slate-900">
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">
           Pair secondary camera
         </h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Use a phone or tablet as a second camera angle for human review. This
-          is not AI cheating detection.
+        <p className="mt-2 text-sm text-muted-foreground">
+          Position your phone so the candidate, interview computer, keyboard/desk,
+          and a substantial part of the surrounding workspace are visible. Leave
+          it still. Quiet room, only the candidate in frame. Look only at the
+          laptop camera — looking at this phone ends the interview. Video and
+          room audio are recorded for human review only (not AI scoring).
         </p>
       </div>
 
@@ -216,18 +288,22 @@ export function EnhancedProctoringSetup({
         <div className="flex items-center justify-between gap-2">
           <span>Secondary Camera</span>
           {status === "CONNECTED" ? (
-            <span className="text-xs font-semibold uppercase tracking-wide">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ai">
               ● Live
             </span>
           ) : status === "STALE" || status === "RECONNECTING" ? (
-            <span className="text-xs font-semibold uppercase tracking-wide">
-              ⚠ Interrupted
+            <span className="text-xs font-semibold uppercase tracking-wide text-warning">
+              Connection interrupted
             </span>
           ) : null}
         </div>
-        <p className="mt-1 font-normal">
-          {status === "CONNECTED" ? `${label} ✓` : label}
-        </p>
+        <p className="mt-1 font-normal">{label}</p>
+        {recordingLabel ? (
+          <p className={cn("mt-1 text-xs font-normal", recordingTone(recordingStatus ?? undefined))}>
+            {recordingLabel}
+            {recordingHasGap ? " · Recording contains an interruption." : ""}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -245,69 +321,107 @@ export function EnhancedProctoringSetup({
       </div>
 
       {qrDataUrl && pairUrl ? (
-        <div className="space-y-2 rounded-xl border border-slate-200 p-4">
+        <div className="space-y-2 rounded-xl border border-border p-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={qrDataUrl}
             alt="QR code to open secondary camera"
             className="mx-auto h-48 w-48"
           />
-          <p className="break-all text-center text-xs text-slate-500">{pairUrl}</p>
+          <p className="break-all text-center text-xs text-muted-foreground">
+            {pairUrl}
+          </p>
           {localhostWarn ? (
-            <p className="text-xs text-amber-800">
-              This URL uses localhost. A phone on another device cannot open it.
-              Open this interview via your LAN IP or set NEXT_PUBLIC_APP_URL,
-              then refresh the QR code.
+            <p className="text-xs text-warning">
+              Could not build a phone-reachable URL. Run{" "}
+              <code className="text-foreground">npm run db:ensure</code> then{" "}
+              <code className="text-foreground">npm run https:up</code>, and
+              refresh the QR code.
             </p>
-          ) : null}
+          ) : httpsTrustHint ? (
+            <p className="text-xs text-muted-foreground">
+              Phone camera needs HTTPS. Scan this QR, tap Advanced → Proceed on
+              the certificate warning once, then Allow camera & microphone.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Phone must be on the same Wi‑Fi. Scan the QR or open the URL above.
+            </p>
+          )}
         </div>
       ) : null}
 
       {status === "CONNECTED" ||
       status === "STALE" ||
       status === "RECONNECTING" ? (
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-slate-900">Live preview</p>
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-foreground">
+            {placementConfirmed
+              ? "Camera placement ready"
+              : "Checking camera placement"}
+          </p>
+          <div className="relative overflow-hidden rounded-xl border border-border bg-muted">
             {previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={previewUrl}
                 alt="Secondary camera live preview"
-                className="aspect-video w-full object-contain bg-slate-950"
+                className="aspect-video w-full object-contain bg-background"
               />
             ) : (
-              <p className="px-4 py-10 text-center text-sm text-slate-500">
+              <p className="px-4 py-10 text-center text-sm text-muted-foreground">
                 {status === "STALE"
                   ? "Connection interrupted — waiting for frames…"
-                  : "Connected — waiting for first preview frame…"}
+                  : "Connecting camera — waiting for first preview frame…"}
               </p>
             )}
+            {previewUrl && !placementConfirmed ? <PlacementGuideOverlay /> : null}
           </div>
-          <p className="text-xs text-slate-500">
-            Preview is ephemeral (not saved as a recording). Place the phone to
-            show your desk / side view, then confirm.
-          </p>
+
           {!placementConfirmed ? (
-            <Button
-              onClick={confirmPlacement}
-              disabled={busy || status !== "CONNECTED"}
-            >
-              Confirm placement
-            </Button>
+            <>
+              <p className="text-sm text-foreground/90">
+                {placementReady
+                  ? "Placement looks ready. Review the preview and confirm that the candidate, interview computer, desk, and surrounding workspace are visible, and the phone will stay fixed."
+                  : "Wait for a stable live preview, then leave the phone still so framing matches the guide."}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={confirmPlacement}
+                  disabled={busy || !placementReady}
+                >
+                  Confirm Placement
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={resetPlacement}
+                  disabled={busy}
+                >
+                  Reposition Phone
+                </Button>
+              </div>
+            </>
           ) : (
-            <p className="text-sm text-emerald-800">Placement confirmed</p>
+            <div className="space-y-2">
+              <p className="text-sm text-success">
+                Placement confirmed — recording will start when the interview
+                begins.
+              </p>
+              <Button variant="outline" size="sm" onClick={resetPlacement}>
+                Reposition Phone
+              </Button>
+            </div>
           )}
         </div>
       ) : null}
 
       {showDiag && diag ? (
-        <pre className="overflow-auto rounded-lg bg-slate-900 p-3 text-[10px] text-slate-100">
+        <pre className="overflow-auto rounded-lg bg-primary/15 p-3 text-[10px] text-foreground">
           {JSON.stringify(diag, null, 2)}
         </pre>
       ) : null}
 
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <Button
         className="w-full"

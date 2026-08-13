@@ -4,8 +4,13 @@ import { getSession } from "@/lib/auth/session";
 import { canManagePipeline, orgScopeWhere } from "@/lib/auth/rbac";
 import { interviewLinkDisplayStatus } from "@/lib/interview-links";
 import { prisma } from "@/lib/db";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Interview Links",
+};
 
 type Search = {
   q?: string;

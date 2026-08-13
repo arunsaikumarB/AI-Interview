@@ -1,10 +1,15 @@
+import type { Metadata } from "next";
 import { InterviewRoom } from "@/components/interview-room";
+
+export const metadata: Metadata = {
+  title: "Interview",
+};
 
 type Ctx = { params: { token: string } };
 
 export default function PublicInterviewPage({ params }: Ctx) {
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#e8eef7_0%,_#f7f5f1_45%,_#f3efe8_100%)] px-4 py-8">
+    <div className="app-canvas min-h-screen px-4 py-8">
       <InterviewRoom token={params.token} />
     </div>
   );

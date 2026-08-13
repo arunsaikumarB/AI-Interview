@@ -58,20 +58,20 @@ export function ProctoringReportSection({
         : "Consent: not recorded";
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+    <section className="space-y-4 rounded-xl border border-border bg-card p-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-medium text-slate-900">
+          <h2 className="text-lg font-medium text-foreground">
             Proctoring signals
           </h2>
-          <p className="mt-1 text-xs text-slate-500">{consentLine}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{consentLine}</p>
         </div>
         {level ? (
           <Badge
             className={cn(
-              level === "LOW" && "bg-emerald-100 text-emerald-900",
-              level === "MEDIUM" && "bg-amber-100 text-amber-950",
-              level === "HIGH" && "bg-rose-100 text-rose-900",
+              level === "LOW" && "bg-success/15 text-success",
+              level === "MEDIUM" && "bg-warning/15 text-foreground",
+              level === "HIGH" && "bg-destructive/15 text-destructive",
             )}
           >
             Indicative: {level}
@@ -81,13 +81,13 @@ export function ProctoringReportSection({
         )}
       </div>
 
-      <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+      <p className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         Indicative only — review the timeline; signals are not evidence of
         cheating.
       </p>
 
       {events.length === 0 ? (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           No proctoring events recorded for this session.
         </p>
       ) : (
@@ -105,13 +105,13 @@ export function ProctoringReportSection({
             {events.map((e) => (
               <li
                 key={e.id}
-                className="flex flex-wrap gap-2 border-t border-slate-100 pt-2 text-slate-700"
+                className="flex flex-wrap gap-2 border-t border-border pt-2 text-foreground/90"
               >
-                <span className="font-mono text-xs text-slate-400">
+                <span className="font-mono text-xs text-muted-foreground">
                   {formatDateTime(e.timestamp)}
                 </span>
                 <span className="font-medium">{e.type}</span>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-muted-foreground">
                   {formatMeta(e.meta)}
                 </span>
               </li>

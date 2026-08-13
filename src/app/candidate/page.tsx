@@ -7,10 +7,10 @@ export default async function CandidateHomePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-slate-900">
+        <h1 className="page-title">
           Welcome{session ? `, ${session.name}` : ""}
         </h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-muted-foreground">
           Browse open roles and track your applications. Interview proctoring records signals only —
           humans review outcomes.
         </p>
@@ -18,13 +18,13 @@ export default async function CandidateHomePage() {
       <div className="flex flex-wrap gap-3">
         <Link
           href="/candidate/jobs"
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white"
+          className="rounded-lg bg-primary/15 px-4 py-2 text-sm text-foreground"
         >
           Browse jobs
         </Link>
         <Link
           href="/candidate/applications"
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700"
+          className="rounded-lg border border-border px-4 py-2 text-sm text-foreground/90"
         >
           My applications
         </Link>

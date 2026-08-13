@@ -3,8 +3,13 @@ import { getSession } from "@/lib/auth/session";
 import { canAdministerUsers } from "@/lib/auth/rbac";
 import { AdminConsole } from "@/components/admin-console";
 import { SettingsSubnav } from "@/components/settings-subnav";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Settings",
+};
 
 export default async function AdminPage() {
   const session = await getSession();
@@ -16,8 +21,8 @@ export default async function AdminPage() {
     <div className="space-y-6">
       <SettingsSubnav showUsers />
       <div>
-        <h1 className="font-display text-3xl text-slate-900">Admin</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="page-title">Admin</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Users, departments, and organization settings. Recruiters cannot access this area.
         </p>
       </div>

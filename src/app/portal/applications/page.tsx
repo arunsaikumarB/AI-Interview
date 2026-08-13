@@ -4,8 +4,8 @@ export default function PortalApplicationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-3xl text-slate-900">My applications</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">My applications</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Status labels are high-level only — detailed evaluations stay with recruiters.
         </p>
       </div>

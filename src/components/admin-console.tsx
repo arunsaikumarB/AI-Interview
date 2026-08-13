@@ -209,7 +209,7 @@ export function AdminConsole({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+      <div className="flex flex-wrap gap-2 border-b border-border pb-3">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -217,8 +217,8 @@ export function AdminConsole({
             onClick={() => setTab(t.id)}
             className={
               tab === t.id
-                ? "rounded-lg bg-slate-900 px-3 py-1.5 text-sm text-white"
-                : "rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                ? "rounded-lg bg-primary/15 px-3 py-1.5 text-sm text-foreground"
+                : "rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
             }
           >
             {t.label}
@@ -228,8 +228,8 @@ export function AdminConsole({
 
       {tab === "users" ? (
         <div className="space-y-8">
-          <form onSubmit={createUser} className="max-w-xl space-y-3 rounded-xl border border-slate-200 p-4">
-            <h2 className="font-medium text-slate-900">Invite / create staff user</h2>
+          <form onSubmit={createUser} className="max-w-xl space-y-3 rounded-xl border border-border p-4">
+            <h2 className="font-medium text-foreground">Invite / create staff user</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="name">Name</Label>
@@ -277,16 +277,16 @@ export function AdminConsole({
             </div>
             <Button type="submit">Create user</Button>
             {tempPassword ? (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              <p className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-foreground">
                 Temporary password (shown once):{" "}
                 <code className="font-mono font-semibold">{tempPassword}</code>
               </p>
             ) : null}
           </form>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <div className="overflow-x-auto rounded-xl border border-border">
             <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-500">
+              <thead className="bg-muted/40 text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 font-medium">Name</th>
                   <th className="px-4 py-3 font-medium">Role</th>
@@ -297,15 +297,15 @@ export function AdminConsole({
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <tr key={u.id} className="border-t border-slate-100">
+                  <tr key={u.id} className="border-t border-border">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-slate-900">{u.name}</p>
-                      <p className="text-xs text-slate-500">{u.email}</p>
+                      <p className="font-medium text-foreground">{u.name}</p>
+                      <p className="text-xs text-muted-foreground">{u.email}</p>
                     </td>
                     <td className="px-4 py-3">
                       {actorRole === "SUPER_ADMIN" ? (
                         <select
-                          className="rounded border border-slate-200 px-2 py-1 text-xs"
+                          className="rounded border border-border px-2 py-1 text-xs"
                           value={u.role}
                           onChange={(e) => void changeRole(u, e.target.value)}
                         >
@@ -319,7 +319,7 @@ export function AdminConsole({
                         <Badge variant="secondary">{ROLE_LABELS[u.role]}</Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="px-4 py-3 text-muted-foreground">
                       {u.department?.name ?? "—"}
                     </td>
                     <td className="px-4 py-3">
@@ -355,11 +355,11 @@ export function AdminConsole({
             {departments.map((d) => (
               <li
                 key={d.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-4 py-3"
               >
                 <div>
-                  <p className="font-medium text-slate-900">{d.name}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="font-medium text-foreground">{d.name}</p>
+                  <p className="text-xs text-muted-foreground">
                     {d._count?.users ?? 0} users · {d._count?.jobs ?? 0} jobs
                   </p>
                 </div>
@@ -401,11 +401,11 @@ export function AdminConsole({
               name="companyName"
               defaultValue={org.companyName || org.name}
             />
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               Used as {"{{companyName}}"} in communication templates.
             </p>
           </div>
-          <p className="text-xs text-slate-500">Slug: {org.slug}</p>
+          <p className="text-xs text-muted-foreground">Slug: {org.slug}</p>
           <Button type="submit">Save organization</Button>
         </form>
       ) : null}

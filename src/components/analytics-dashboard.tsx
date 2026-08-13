@@ -12,10 +12,11 @@ import {
   YAxis,
 } from "recharts";
 import type { AnalyticsPayload } from "@/lib/analytics";
+import { useChartTheme } from "@/lib/chart-theme";
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-500">
+    <p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
       {children}
     </p>
   );
@@ -31,10 +32,10 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-3">
+    <section className="glass-chart space-y-3 rounded-[var(--radius-card)] border p-5">
       <div>
-        <h2 className="text-lg font-medium text-slate-900">{title}</h2>
-        {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+        <h2 className="text-[17px] font-semibold text-foreground">{title}</h2>
+        {subtitle ? <p className="mt-1 text-[13px] text-muted-foreground">{subtitle}</p> : null}
       </div>
       {children}
     </section>
@@ -47,6 +48,7 @@ function fmtDays(n: number | null) {
 }
 
 export function AnalyticsDashboard() {
+  const chart = useChartTheme();
   const [data, setData] = useState<AnalyticsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<
@@ -97,10 +99,10 @@ export function AnalyticsDashboard() {
   }
 
   if (error) {
-    return <p className="text-sm text-rose-600">{error}</p>;
+    return <p className="text-sm text-destructive">{error}</p>;
   }
   if (!data) {
-    return <p className="text-sm text-slate-500">Loading analytics…</p>;
+    return <p className="text-sm text-muted-foreground">Loading analytics…</p>;
   }
 
   const maxFunnel = Math.max(1, ...data.funnel.stages.map((s) => s.count));
@@ -118,16 +120,22 @@ export function AnalyticsDashboard() {
           <div className="space-y-2">
             {data.funnel.stages.map((s) => (
               <div key={s.stage} className="grid grid-cols-[8rem_1fr_auto] items-center gap-3 text-sm">
-                <span className="text-slate-600">{s.label}</span>
-                <div className="h-7 overflow-hidden rounded bg-slate-100">
+                <span className="text-muted-foreground">{s.label}</span>
+                <div className="h-7 overflow-hidden rounded-md bg-muted/60 ring-1 ring-border">
                   <div
-                    className="flex h-full items-center bg-slate-800 px-2 text-xs text-white transition-all"
-                    style={{ width: `${Math.max(s.count > 0 ? 8 : 0, (s.count / maxFunnel) * 100)}%` }}
+                    className="flex h-full min-w-0 items-center bg-primary px-2 text-xs font-medium text-primary-foreground transition-all"
+                    style={{
+                      width: `${
+                        s.count <= 0
+                          ? 0
+                          : Math.max(12, (s.count / maxFunnel) * 100)
+                      }%`,
+                    }}
                   >
                     {s.count > 0 ? s.count : ""}
                   </div>
                 </div>
-                <span className="w-24 text-right tabular-nums text-slate-500">
+                <span className="w-24 text-right tabular-nums text-muted-foreground">
                   {s.count}
                   {s.conversionFromPrev != null ? (
                     <span className="ml-1 text-xs">({s.conversionFromPrev}%)</span>
@@ -135,7 +143,7 @@ export function AnalyticsDashboard() {
                 </span>
               </div>
             ))}
-            <p className="text-xs text-slate-500">Total applications: {data.funnel.total}</p>
+            <p className="text-xs text-muted-foreground">Total applications: {data.funnel.total}</p>
           </div>
         )}
       </Section>
@@ -153,25 +161,25 @@ export function AnalyticsDashboard() {
           ).map(([label, metric]) => (
             <div
               key={label}
-              className="rounded-xl border border-slate-200 bg-white/60 p-4"
+              className="rounded-xl border border-border bg-card/60 p-4"
             >
-              <p className="text-sm font-medium text-slate-900">{label}</p>
+              <p className="text-sm font-medium text-foreground">{label}</p>
               {metric.n === 0 ? (
-                <p className="mt-3 text-sm text-slate-500">
+                <p className="mt-3 text-sm text-muted-foreground">
                   No qualifying transitions yet (n=0).
                 </p>
               ) : (
                 <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
                   <div>
-                    <dt className="text-xs text-slate-500">Median</dt>
-                    <dd className="font-medium tabular-nums">{fmtDays(metric.medianDays)}</dd>
+                    <dt className="text-xs text-muted-foreground">Median</dt>
+                    <dd className="metric-value text-xl">{fmtDays(metric.medianDays)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-slate-500">Average</dt>
-                    <dd className="font-medium tabular-nums">{fmtDays(metric.avgDays)}</dd>
+                    <dt className="text-xs text-muted-foreground">Average</dt>
+                    <dd className="metric-value text-xl">{fmtDays(metric.avgDays)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-slate-500">n</dt>
+                    <dt className="text-xs text-muted-foreground">n</dt>
                     <dd className="font-medium tabular-nums">{metric.n}</dd>
                   </div>
                 </dl>
@@ -185,9 +193,9 @@ export function AnalyticsDashboard() {
         {sortedJobs.length === 0 ? (
           <Empty>No jobs in this organization yet.</Empty>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <div className="overflow-x-auto rounded-xl border border-border">
             <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-500">
+              <thead className="bg-muted/40 text-muted-foreground">
                 <tr>
                   {(
                     [
@@ -201,7 +209,7 @@ export function AnalyticsDashboard() {
                     <th key={key} className="px-4 py-3 font-medium">
                       <button
                         type="button"
-                        className="hover:text-slate-900"
+                        className="hover:text-foreground"
                         onClick={() => toggleSort(key)}
                       >
                         {label}
@@ -213,8 +221,8 @@ export function AnalyticsDashboard() {
               </thead>
               <tbody>
                 {sortedJobs.map((j) => (
-                  <tr key={j.jobId} className="border-t border-slate-100">
-                    <td className="px-4 py-3 font-medium text-slate-900">{j.title}</td>
+                  <tr key={j.jobId} className="border-t border-border">
+                    <td className="px-4 py-3 font-medium text-foreground">{j.title}</td>
                     <td className="px-4 py-3 tabular-nums">{j.applications}</td>
                     <td className="px-4 py-3 tabular-nums">{j.inInterview}</td>
                     <td className="px-4 py-3 tabular-nums">{j.selected}</td>
@@ -238,10 +246,10 @@ export function AnalyticsDashboard() {
               ["Resume screen", data.scoreDistribution.resumeScreen],
             ] as const
           ).map(([label, dist]) => (
-            <div key={label} className="rounded-xl border border-slate-200 p-4">
-              <p className="mb-2 text-sm font-medium text-slate-900">
+            <div key={label} className="rounded-xl border border-border p-4">
+              <p className="mb-2 text-sm font-medium text-foreground">
                 {label}{" "}
-                <span className="font-normal text-slate-500">(n={dist.n})</span>
+                <span className="font-normal text-muted-foreground">(n={dist.n})</span>
               </p>
               {dist.n === 0 ? (
                 <Empty>No scores in this category yet.</Empty>
@@ -249,11 +257,45 @@ export function AnalyticsDashboard() {
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={dist.buckets}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={50} />
-                      <YAxis allowDecimals={false} width={28} tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <Bar dataKey="count" fill="#1e293b" radius={[3, 3, 0, 0]} />
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        vertical={false}
+                        stroke={chart.grid}
+                      />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 10, fill: chart.axis }}
+                        interval={0}
+                        angle={-30}
+                        textAnchor="end"
+                        height={50}
+                        axisLine={{ stroke: chart.axisLine }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        width={28}
+                        tick={{ fontSize: 11, fill: chart.axis }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: chart.tooltipBg,
+                          border: `1px solid ${chart.tooltipBorder}`,
+                          borderRadius: 8,
+                          color: chart.tooltipText,
+                        }}
+                      />
+                      <Bar
+                        dataKey="count"
+                        fill={
+                          label === "Resume screen"
+                            ? chart.seriesAi
+                            : chart.series
+                        }
+                        radius={[3, 3, 0, 0]}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -264,7 +306,7 @@ export function AnalyticsDashboard() {
       </Section>
 
       <Section title="AI vs human decisions">
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+        <p className="rounded-lg border border-ai/25 bg-ai/10 px-3 py-2 text-sm text-foreground">
           {data.aiVsHuman.caption}
         </p>
         {data.aiVsHuman.n === 0 ? (
@@ -276,9 +318,9 @@ export function AnalyticsDashboard() {
           </Empty>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted-foreground">
               Agreement rate:{" "}
-              <strong className="text-slate-900">
+              <strong className="text-foreground">
                 {data.aiVsHuman.agreementRate ?? "—"}%
               </strong>{" "}
               (n={data.aiVsHuman.n}
@@ -292,26 +334,26 @@ export function AnalyticsDashboard() {
                 <thead>
                   <tr>
                     <th className="p-2" />
-                    <th className="p-2 font-medium text-slate-600">Human selected</th>
-                    <th className="p-2 font-medium text-slate-600">Human rejected</th>
+                    <th className="p-2 font-medium text-muted-foreground">Human selected</th>
+                    <th className="p-2 font-medium text-muted-foreground">Human rejected</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <th className="p-2 text-left font-medium text-slate-600">AI positive</th>
-                    <td className="border border-slate-200 bg-emerald-50 p-4 text-lg tabular-nums">
+                    <th className="p-2 text-left font-medium text-muted-foreground">AI positive</th>
+                    <td className="border border-border bg-success/10 p-4 font-display text-lg tabular-nums">
                       {m.aiPositiveHumanSelected}
                     </td>
-                    <td className="border border-slate-200 bg-rose-50 p-4 text-lg tabular-nums">
+                    <td className="border border-border bg-destructive/10 p-4 font-display text-lg tabular-nums">
                       {m.aiPositiveHumanRejected}
                     </td>
                   </tr>
                   <tr>
-                    <th className="p-2 text-left font-medium text-slate-600">AI negative</th>
-                    <td className="border border-slate-200 bg-rose-50 p-4 text-lg tabular-nums">
+                    <th className="p-2 text-left font-medium text-muted-foreground">AI negative</th>
+                    <td className="border border-border bg-destructive/10 p-4 font-display text-lg tabular-nums">
                       {m.aiNegativeHumanSelected}
                     </td>
-                    <td className="border border-slate-200 bg-emerald-50 p-4 text-lg tabular-nums">
+                    <td className="border border-border bg-success/10 p-4 font-display text-lg tabular-nums">
                       {m.aiNegativeHumanRejected}
                     </td>
                   </tr>
@@ -320,34 +362,34 @@ export function AnalyticsDashboard() {
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-slate-900">Disagreements</h3>
+              <h3 className="text-sm font-medium text-foreground">Disagreements</h3>
               {data.aiVsHuman.disagreements.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-500">No disagreement cases in the matrix.</p>
+                <p className="mt-2 text-sm text-muted-foreground">No disagreement cases in the matrix.</p>
               ) : (
                 <ul className="mt-2 space-y-2">
                   {data.aiVsHuman.disagreements.map((d) => (
                     <li
                       key={d.applicationId}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
                     >
                       <span>
-                        <span className="font-medium text-slate-900">{d.candidateName}</span>
-                        <span className="text-slate-500"> · {d.jobTitle}</span>
-                        <span className="block text-xs text-slate-500">
+                        <span className="font-medium text-foreground">{d.candidateName}</span>
+                        <span className="text-muted-foreground"> · {d.jobTitle}</span>
+                        <span className="block text-xs text-muted-foreground">
                           AI {d.aiRecommendation} ({d.aiSide}) vs human {d.humanStage}
                         </span>
                       </span>
                       {d.interviewId ? (
                         <Link
                           href={`/dashboard/interviews/${d.interviewId}`}
-                          className="text-slate-900 underline"
+                          className="text-foreground underline"
                         >
                           Interview report
                         </Link>
                       ) : (
                         <Link
                           href={`/dashboard/candidates?applicationId=${d.applicationId}`}
-                          className="text-slate-500 underline"
+                          className="text-muted-foreground underline"
                         >
                           Application
                         </Link>
@@ -361,8 +403,8 @@ export function AnalyticsDashboard() {
         )}
       </Section>
 
-      <footer className="border-t border-slate-200 pt-4 text-xs text-slate-500">
-        <p className="font-medium text-slate-600">AI provenance</p>
+      <footer className="border-t border-border pt-4 text-xs text-muted-foreground">
+        <p className="font-medium text-muted-foreground">AI provenance</p>
         {data.provenance.length === 0 ? (
           <p className="mt-1">No evaluations in view yet.</p>
         ) : (

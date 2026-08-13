@@ -17,18 +17,18 @@ type Row = {
 
 function StatusIcon({ status }: { status: CheckStatus }) {
   if (status === "checking") {
-    return <Loader2 className="size-4 animate-spin text-slate-400" aria-hidden />;
+    return <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden />;
   }
   if (status === "ready") {
-    return <Check className="size-4 text-emerald-600" aria-hidden />;
+    return <Check className="size-4 text-success" aria-hidden />;
   }
   if (status === "failed") {
-    return <X className="size-4 text-rose-600" aria-hidden />;
+    return <X className="size-4 text-destructive" aria-hidden />;
   }
   if (status === "skipped") {
-    return <Circle className="size-3.5 text-slate-400" aria-hidden />;
+    return <Circle className="size-3.5 text-muted-foreground" aria-hidden />;
   }
-  return <Circle className="size-3.5 text-slate-300" aria-hidden />;
+  return <Circle className="size-3.5 text-muted-foreground" aria-hidden />;
 }
 
 function statusLabel(status: CheckStatus): string {
@@ -329,46 +329,49 @@ export function PreInterviewSystemCheck({
   const canContinue = requiredOk && cameraOk;
 
   return (
-    <div className="mx-auto max-w-lg space-y-5 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+    <div className="mx-auto max-w-lg space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm">
       <div>
-        <h1 className="font-display text-3xl text-slate-900">Before you begin</h1>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          Logisoft HireOS
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Before you begin</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Let&apos;s quickly check your device so your interview can run smoothly.
         </p>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-muted-foreground">
           {isVoice
             ? "Voice interview — microphone and speaker are required."
             : "Text interview — no microphone or camera needed."}
         </p>
       </div>
 
-      <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+      <ul className="divide-y divide-border rounded-xl border border-border">
         {rows.map((row) => (
           <li
             key={row.id}
             className="flex items-start justify-between gap-3 px-4 py-3 text-sm"
           >
             <div className="min-w-0">
-              <p className="font-medium text-slate-900">
+              <p className="font-medium text-foreground">
                 {row.label}
                 {!row.required ? (
-                  <span className="ml-1 text-xs font-normal text-slate-400">
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
                     (optional)
                   </span>
                 ) : null}
               </p>
               {row.detail ? (
-                <p className="mt-0.5 text-xs text-slate-500">{row.detail}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{row.detail}</p>
               ) : null}
             </div>
             <div
               className={cn(
                 "flex shrink-0 items-center gap-1.5 text-xs font-medium",
-                row.status === "ready" && "text-emerald-700",
-                row.status === "failed" && "text-rose-700",
-                row.status === "pending" && "text-slate-500",
-                row.status === "skipped" && "text-slate-500",
-                row.status === "checking" && "text-slate-500",
+                row.status === "ready" && "text-success",
+                row.status === "failed" && "text-destructive",
+                row.status === "pending" && "text-muted-foreground",
+                row.status === "skipped" && "text-muted-foreground",
+                row.status === "checking" && "text-muted-foreground",
               )}
             >
               <StatusIcon status={row.status} />
@@ -379,12 +382,12 @@ export function PreInterviewSystemCheck({
       </ul>
 
       {isVoice ? (
-        <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+        <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
           <div>
-            <p className="mb-1 text-xs text-slate-500">Microphone level</p>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+            <p className="mb-1 text-xs text-muted-foreground">Microphone level</p>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-slate-800 transition-[width]"
+                className="h-full rounded-full bg-ai transition-[width]"
                 style={{ width: `${Math.round(level * 100)}%` }}
               />
             </div>
@@ -419,7 +422,7 @@ export function PreInterviewSystemCheck({
           </div>
           {testUrl ? (
             <div className="space-y-1">
-              <p className="text-xs text-slate-500">Playback your test recording</p>
+              <p className="text-xs text-muted-foreground">Playback your test recording</p>
               <audio src={testUrl} controls className="w-full" />
             </div>
           ) : null}
@@ -449,7 +452,7 @@ export function PreInterviewSystemCheck({
         </div>
       ) : null}
 
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <Button
         className="w-full"
@@ -462,7 +465,7 @@ export function PreInterviewSystemCheck({
       {isVoice && onUseText ? (
         <button
           type="button"
-          className="w-full text-center text-sm text-slate-500 underline"
+          className="w-full text-center text-sm text-muted-foreground underline"
           onClick={onUseText}
         >
           Use text instead

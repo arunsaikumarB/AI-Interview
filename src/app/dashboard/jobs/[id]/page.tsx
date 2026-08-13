@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -22,6 +23,10 @@ import {
   JOB_STATUS_LABELS,
 } from "@/lib/recruiting-ui";
 import { cn } from "@/lib/utils";
+
+export const metadata: Metadata = {
+  title: "Jobs & Candidates",
+};
 
 type Ctx = {
   params: { id: string };
@@ -117,16 +122,16 @@ export default async function JobDetailPage({ params, searchParams }: Ctx) {
         <div>
           <Link
             href="/dashboard/jobs"
-            className="text-sm text-slate-500 hover:underline"
+            className="text-sm text-muted-foreground hover:underline"
           >
             ← Jobs &amp; Candidates
           </Link>
-          <h1 className="mt-2 font-display text-3xl text-slate-900">{job.title}</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{job.title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{JOB_STATUS_LABELS[job.status]}</Badge>
-            {meta ? <p className="text-sm text-slate-500">{meta}</p> : null}
+            {meta ? <p className="text-sm text-muted-foreground">{meta}</p> : null}
           </div>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-muted-foreground">
             AI screening is advisory. Pipeline moves stay with your team.
           </p>
         </div>
@@ -159,12 +164,12 @@ export default async function JobDetailPage({ params, searchParams }: Ctx) {
         ].map((m) => (
           <div
             key={m.label}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+            className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm"
           >
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {m.label}
             </p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
               {m.value}
             </p>
           </div>
@@ -175,9 +180,9 @@ export default async function JobDetailPage({ params, searchParams }: Ctx) {
 
       {tab === "candidates" ? (
         candidateRows.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-300 px-6 py-10 text-center">
-            <p className="text-sm font-medium text-slate-900">No applicants yet</p>
-            <p className="mt-1 text-sm text-slate-500">
+          <div className="rounded-xl border border-dashed border-border px-6 py-10 text-center">
+            <p className="text-sm font-medium text-foreground">No applicants yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
               Candidates who apply to this role will appear here.
             </p>
           </div>
@@ -188,7 +193,7 @@ export default async function JobDetailPage({ params, searchParams }: Ctx) {
 
       {tab === "pipeline" ? (
         <div className="space-y-3">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted-foreground">
             Drag cards to move stages. AI never auto-advances — every move is a
             human action.
           </p>
@@ -198,58 +203,58 @@ export default async function JobDetailPage({ params, searchParams }: Ctx) {
 
       {tab === "details" ? (
         <div className="space-y-6">
-          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-900">Job Details</h2>
+          <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <h2 className="text-base font-semibold text-foreground">Job Details</h2>
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
               <div>
-                <dt className="text-xs text-slate-500">Job Title</dt>
-                <dd className="text-slate-900">{job.title}</dd>
+                <dt className="text-xs text-muted-foreground">Job Title</dt>
+                <dd className="text-foreground">{job.title}</dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">Department</dt>
-                <dd className="text-slate-900">{job.department?.name ?? "—"}</dd>
+                <dt className="text-xs text-muted-foreground">Department</dt>
+                <dd className="text-foreground">{job.department?.name ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">Location</dt>
-                <dd className="text-slate-900">{job.location ?? "—"}</dd>
+                <dt className="text-xs text-muted-foreground">Location</dt>
+                <dd className="text-foreground">{job.location ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">Employment Type</dt>
-                <dd className="text-slate-900">
+                <dt className="text-xs text-muted-foreground">Employment Type</dt>
+                <dd className="text-foreground">
                   {EMPLOYMENT_TYPE_LABELS[job.employmentType]}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">Status</dt>
-                <dd className="text-slate-900">{JOB_STATUS_LABELS[job.status]}</dd>
+                <dt className="text-xs text-muted-foreground">Status</dt>
+                <dd className="text-foreground">{JOB_STATUS_LABELS[job.status]}</dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">Created</dt>
-                <dd className="text-slate-900">{formatDate(job.createdAt)}</dd>
+                <dt className="text-xs text-muted-foreground">Created</dt>
+                <dd className="text-foreground">{formatDate(job.createdAt)}</dd>
               </div>
               <div className="sm:col-span-2">
-                <dt className="text-xs text-slate-500">Skills</dt>
-                <dd className="text-slate-900">
+                <dt className="text-xs text-muted-foreground">Skills</dt>
+                <dd className="text-foreground">
                   {job.skills.length ? job.skills.join(" · ") : "—"}
                 </dd>
               </div>
               <div className="sm:col-span-2">
-                <dt className="text-xs text-slate-500">Description</dt>
-                <dd className="mt-1 whitespace-pre-wrap text-slate-700">
+                <dt className="text-xs text-muted-foreground">Description</dt>
+                <dd className="mt-1 whitespace-pre-wrap text-foreground/90">
                   {job.description}
                 </dd>
               </div>
               {(criteria.mustHave?.length || criteria.niceToHave?.length) ? (
                 <div className="sm:col-span-2 grid gap-3 sm:grid-cols-2">
                   <div>
-                    <dt className="text-xs text-slate-500">Must-have</dt>
-                    <dd className="mt-1 text-slate-700">
+                    <dt className="text-xs text-muted-foreground">Must-have</dt>
+                    <dd className="mt-1 text-foreground/90">
                       {(criteria.mustHave ?? []).join(", ") || "—"}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-slate-500">Nice-to-have</dt>
-                    <dd className="mt-1 text-slate-700">
+                    <dt className="text-xs text-muted-foreground">Nice-to-have</dt>
+                    <dd className="mt-1 text-foreground/90">
                       {(criteria.niceToHave ?? []).join(", ") || "—"}
                     </dd>
                   </div>
@@ -267,7 +272,7 @@ export default async function JobDetailPage({ params, searchParams }: Ctx) {
 
           {canEdit ? (
             <section className="space-y-3">
-              <h2 className="text-base font-semibold text-slate-900">Edit Job</h2>
+              <h2 className="text-base font-semibold text-foreground">Edit Job</h2>
               <JobForm
                 initial={{
                   id: job.id,

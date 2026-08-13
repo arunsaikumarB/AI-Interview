@@ -33,7 +33,7 @@ export function ApplyButton({ jobId }: { jobId: string }) {
       <Button onClick={apply} disabled={loading}>
         {loading ? "Applying…" : "Apply"}
       </Button>
-      {message ? <p className="mt-1 text-xs text-slate-500">{message}</p> : null}
+      {message ? <p className="mt-1 text-xs text-muted-foreground">{message}</p> : null}
     </div>
   );
 }

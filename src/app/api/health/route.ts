@@ -27,7 +27,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: dbOk && ollama.ok,
-    service: "AI Recruitment OS",
+    service: "Logisoft HireOS",
     selfHosted: provider === "local",
     aiProvider: provider,
     database: { ok: dbOk, error: dbError },

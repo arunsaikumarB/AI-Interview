@@ -38,6 +38,16 @@ export async function POST(request: Request, { params }: Ctx) {
   if (session.tokenExpiresAt && session.tokenExpiresAt < new Date()) {
     return Response.json({ error: "This interview link has expired. Please contact the recruiter." }, { status: 410 });
   }
+  if (session.status === "TERMINATED") {
+    return Response.json(
+      {
+        error: "Interview ended by integrity policy",
+        terminated: true,
+        status: "TERMINATED",
+      },
+      { status: 410 },
+    );
+  }
   if (session.status !== "IN_PROGRESS") {
     return Response.json({ error: "Interview is not in progress" }, { status: 400 });
   }

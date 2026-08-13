@@ -7,6 +7,7 @@ import {
   parsePlan,
   sessionEndsAt,
 } from "@/lib/ai/interview-session";
+import { prefetchQuestionTts } from "@/lib/question-tts";
 
 type Ctx = { params: { token: string } };
 
@@ -31,8 +32,28 @@ export const POST = withApiHandler<Ctx>(async (_request, { params }) => {
   if (session.status === "COMPLETED") {
     return Response.json({ error: "Interview already completed" }, { status: 400 });
   }
+  if (session.status === "TERMINATED") {
+    return Response.json(
+      {
+        error: "Interview ended by integrity policy",
+        terminated: true,
+        status: "TERMINATED",
+      },
+      { status: 410 },
+    );
+  }
   if (session.status === "CANCELLED") {
     return Response.json({ error: "Interview cancelled" }, { status: 410 });
+  }
+
+  if (
+    session.integrityMode === "STRICT" &&
+    !session.integrityConsentAt
+  ) {
+    return Response.json(
+      { error: "Please acknowledge interview integrity requirements first" },
+      { status: 403 },
+    );
   }
 
   if (session.status === "IN_PROGRESS" && session.questions[0]) {
@@ -86,6 +107,13 @@ export const POST = withApiHandler<Ctx>(async (_request, { params }) => {
     });
 
     return question;
+  });
+
+  prefetchQuestionTts({
+    sessionId: session.id,
+    questionId: q.id,
+    sequence: q.sequence,
+    text: q.question,
   });
 
   const endsAt = sessionEndsAt(startedAt, session.durationMinutes);

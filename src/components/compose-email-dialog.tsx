@@ -164,17 +164,17 @@ export function ComposeEmailDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 sm:items-center">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+      <div className="glass-modal max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border p-5">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h2 className="text-lg font-medium text-slate-900">Compose email</h2>
-            <p className="text-xs text-slate-500">To: {toEmail}</p>
+            <h2 className="text-lg font-medium text-foreground">Compose email</h2>
+            <p className="text-xs text-muted-foreground">To: {toEmail}</p>
           </div>
           <Badge
             className={
               mailMode === "smtp"
-                ? "bg-emerald-100 text-emerald-900"
-                : "bg-amber-100 text-amber-950"
+                ? "bg-success/15 text-success"
+                : "bg-warning/15 text-foreground"
             }
           >
             {mailMode === "smtp" ? "SMTP" : "Clipboard mode"}
@@ -182,20 +182,20 @@ export function ComposeEmailDialog({
         </div>
 
         {mailMode === "clipboard" ? (
-          <p className="mt-2 text-xs text-amber-800">
+          <p className="mt-2 text-xs text-warning">
             No SMTP_HOST configured — Send creates a DRAFT log; use copy buttons.
           </p>
         ) : null}
 
         {linkWarning && category === "interview_invite" ? (
-          <p className="mt-2 text-xs text-amber-800">{linkWarning}</p>
+          <p className="mt-2 text-xs text-warning">{linkWarning}</p>
         ) : null}
 
         <div className="mt-4 space-y-3">
           <div className="space-y-1">
             <Label>Template</Label>
             <select
-              className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+              className="h-9 w-full rounded-lg border border-border bg-input-background px-3 text-sm text-foreground"
               value={templateId}
               onChange={(e) => {
                 const t = templates.find((x) => x.id === e.target.value);
@@ -229,14 +229,14 @@ export function ComposeEmailDialog({
           </div>
 
           {blocked ? (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               Missing variables — resolve before send:{" "}
               {missing.map((m) => `{{${m}}}`).join(", ") || "see ⚠️MISSING markers"}
             </p>
           ) : null}
 
           {clipboardResult ? (
-            <div className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap gap-2 rounded-lg border border-border bg-muted/40 p-3">
               <Button
                 size="sm"
                 variant="outline"

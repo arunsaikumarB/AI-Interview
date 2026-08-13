@@ -47,6 +47,11 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
     cameraConsent: session.proctoringCameraConsent,
     secondaryDeviceStatus: session.secondaryDeviceStatus,
     secondaryPlacementConfirmed: Boolean(session.secondaryPlacementConfirmedAt),
+    integrityMode: session.integrityMode === "STRICT" ? "STRICT" : "STANDARD",
+    integrityConsentAt: session.integrityConsentAt,
+    integrityViolationCount: session.integrityViolationCount,
+    integrityPasteCount: session.integrityPasteCount,
+    integrityTerminatedReason: session.integrityTerminatedReason,
     maxQuestions: session.maxQuestions,
     durationMinutes: session.durationMinutes,
     endsAt: endsAt?.toISOString() ?? null,
@@ -58,5 +63,6 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
         ? "This is a voice interview. You can also type answers if needed. One question at a time."
         : "This is a text interview. Answer thoughtfully — take your time. You will see one question at a time.",
     concluded: session.status === "COMPLETED",
+    terminated: session.status === "TERMINATED",
   });
 });

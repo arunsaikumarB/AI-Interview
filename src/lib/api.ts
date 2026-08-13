@@ -48,7 +48,10 @@ export function handleApiError(err: unknown) {
   }
   if (isDatabaseUnavailable(err)) {
     console.error("[api] Database unavailable:", err);
-    return jsonError("Database unavailable", 503);
+    return jsonError(
+      "Database unavailable — run `npm run db:ensure` (starts Docker Postgres), then refresh.",
+      503,
+    );
   }
   console.error(err);
   return jsonError(

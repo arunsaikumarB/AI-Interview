@@ -6,12 +6,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { PreInterviewSystemCheck } from "@/components/pre-interview-system-check";
 import { ProctoringConsent } from "@/components/proctoring-consent";
 import { EnhancedProctoringSetup } from "@/components/enhanced-proctoring-setup";
+import { IntegrityNotice } from "@/components/integrity-notice";
+import {
+  FullscreenRequiredGate,
+  IntegrityTerminatedScreen,
+  IntegrityWarningDialog,
+} from "@/components/integrity-ui";
 import { CandidateQuestions } from "@/components/candidate-questions";
 import {
   createProctoringCollector,
   type ProctoringClientType,
   type ProctoringCollector,
 } from "@/lib/proctoring";
+import {
+  createIntegrityEpisodeController,
+  type IntegrityEpisodeController,
+} from "@/lib/integrity-episode";
+import { STRICT_POLICY } from "@/lib/integrity";
 import { cn } from "@/lib/utils";
 
 const FOCUS_NUDGE_COPY =
@@ -39,6 +50,8 @@ type Info = {
   proctoringMode?: string;
   proctoringConsentAt?: string | null;
   secondaryPlacementConfirmed?: boolean;
+  integrityMode?: "STANDARD" | "STRICT";
+  integrityConsentAt?: string | null;
 };
 
 function formatRemaining(ms: number): string {
@@ -69,11 +82,17 @@ export function InterviewRoom({ token }: { token: string }) {
   const [answerMode, setAnswerMode] = useState<AnswerMode>("voice");
   const [recording, setRecording] = useState(false);
   const [recordLevel, setRecordLevel] = useState(0);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [transcriptFailed, setTranscriptFailed] = useState(false);
   const [heardLabel, setHeardLabel] = useState<string | null>(null);
   const [proctoringConsented, setProctoringConsented] = useState(false);
+  const [integrityConsented, setIntegrityConsented] = useState(false);
+  const [fullscreenReady, setFullscreenReady] = useState(false);
+  const [integrityWarning, setIntegrityWarning] = useState<{
+    message: string;
+    warningNumber: number;
+    warningOf: number;
+  } | null>(null);
+  const [integrityTerminated, setIntegrityTerminated] = useState(false);
   const [cameraAllowed, setCameraAllowed] = useState(false);
   const [focusNudge, setFocusNudge] = useState<string | null>(null);
   const [postPhase, setPostPhase] = useState<"questions" | "thanks" | null>(null);
@@ -88,11 +107,14 @@ export function InterviewRoom({ token }: { token: string }) {
   const levelRaf = useRef(0);
   const questionAudioRef = useRef<HTMLAudioElement | null>(null);
   const proctorRef = useRef<ProctoringCollector | null>(null);
+  const integrityRef = useRef<IntegrityEpisodeController | null>(null);
   const camStreamRef = useRef<MediaStream | null>(null);
   const hiddenSinceRef = useRef<number | null>(null);
   const nudgeCountRef = useRef(0);
   const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voiceModeRef = useRef(false);
+  const currentRef = useRef(current);
+  currentRef.current = current;
 
   const sessionIsVoice = info?.mode === "VOICE" && !preferText;
   const useVoiceUi = sessionIsVoice && answerMode === "voice";
@@ -109,6 +131,35 @@ export function InterviewRoom({ token }: { token: string }) {
 
   const handleProctorEvent = useCallback(
     (type: ProctoringClientType, meta?: Record<string, unknown>) => {
+      const strict = info?.integrityMode === "STRICT";
+      const episode = integrityRef.current;
+
+      if (strict && episode) {
+        if (type === "TAB_BLUR" || (type === "WINDOW_SWITCH" && meta?.kind === "blur")) {
+          episode.onLoss();
+          return;
+        }
+        if (
+          type === "TAB_FOCUS" ||
+          (type === "WINDOW_SWITCH" && meta?.kind === "focus")
+        ) {
+          episode.onReturn();
+          return;
+        }
+        if (type === "FULLSCREEN_EXIT") {
+          episode.reportImmediate("FULLSCREEN_EXIT");
+          return;
+        }
+        if (type === "COPY_PASTE") {
+          const len =
+            typeof meta?.pastedLength === "number" ? meta.pastedLength : 0;
+          episode.reportImmediate("PASTE", { pastedLength: len });
+          return;
+        }
+        return;
+      }
+
+      // STANDARD: soft nudge only — never terminate from the client.
       if (type === "TAB_BLUR" || (type === "WINDOW_SWITCH" && meta?.kind === "blur")) {
         hiddenSinceRef.current = Date.now();
         return;
@@ -135,7 +186,7 @@ export function InterviewRoom({ token }: { token: string }) {
         });
       }
     },
-    [token],
+    [token, info?.integrityMode],
   );
 
   const loadState = useCallback(async () => {
@@ -183,6 +234,9 @@ export function InterviewRoom({ token }: { token: string }) {
             concluded: data.concluded,
           },
     );
+    if (data.terminated || data.status === "TERMINATED") {
+      setIntegrityTerminated(true);
+    }
   }, [token]);
 
   useEffect(() => {
@@ -200,13 +254,25 @@ export function InterviewRoom({ token }: { token: string }) {
         proctoringMode: data.proctoringMode ?? "OFF",
         proctoringConsentAt: data.proctoringConsentAt ?? null,
         secondaryPlacementConfirmed: Boolean(data.secondaryPlacementConfirmed),
+        integrityMode: data.integrityMode === "STRICT" ? "STRICT" : "STANDARD",
+        integrityConsentAt: data.integrityConsentAt ?? null,
       });
       setConcluded(Boolean(data.concluded));
+      if (data.terminated || data.status === "TERMINATED") {
+        setIntegrityTerminated(true);
+        setSystemCheckReady(true);
+        setEnhancedSetupReady(true);
+        setIntegrityConsented(true);
+        setFullscreenReady(true);
+      }
       if (data.proctoringConsentAt) {
         setProctoringConsented(true);
         if (typeof data.cameraConsent === "boolean") {
           setCameraAllowed(data.cameraConsent);
         }
+      }
+      if (data.integrityConsentAt) {
+        setIntegrityConsented(true);
       }
       if (data.secondaryPlacementConfirmed) {
         setEnhancedSetupReady(true);
@@ -216,10 +282,17 @@ export function InterviewRoom({ token }: { token: string }) {
         setAnswerMode("text");
       }
       // Resume / completed: skip system check (session already underway).
-      if (data.status === "IN_PROGRESS" || data.status === "COMPLETED") {
+      if (
+        data.status === "IN_PROGRESS" ||
+        data.status === "COMPLETED" ||
+        data.status === "TERMINATED"
+      ) {
         setSystemCheckReady(true);
         setEnhancedSetupReady(true);
-        await loadState();
+        setFullscreenReady(true);
+        if (data.status === "IN_PROGRESS" || data.status === "COMPLETED") {
+          await loadState();
+        }
       } else {
         try {
           if (sessionStorage.getItem(`aros-syscheck-${token}`) === "1") {
@@ -256,13 +329,91 @@ export function InterviewRoom({ token }: { token: string }) {
     });
   }, [concluded, token]);
 
+  // Strict integrity episode controller (server-authoritative warnings / terminate)
+  useEffect(() => {
+    if (
+      info?.integrityMode !== "STRICT" ||
+      !integrityConsented ||
+      info.status !== "IN_PROGRESS" ||
+      integrityTerminated ||
+      concluded
+    ) {
+      integrityRef.current?.dispose();
+      integrityRef.current = null;
+      return;
+    }
+
+    const controller = createIntegrityEpisodeController({
+      token,
+      enabled: true,
+      onResult: (result) => {
+        if (result.terminated) {
+          setIntegrityTerminated(true);
+          setInfo((prev) =>
+            prev ? { ...prev, status: "TERMINATED" } : prev,
+          );
+          setIntegrityWarning(null);
+          return;
+        }
+        if (result.showWarning) {
+          const message =
+            result.kind === "PASTE"
+              ? "External paste was detected in the interview window."
+              : result.kind === "FULLSCREEN_EXIT"
+                ? "Fullscreen was exited."
+                : "Your interview window lost focus.";
+          setIntegrityWarning({
+            message,
+            warningNumber: result.warningNumber,
+            warningOf: result.warningOf,
+          });
+        }
+      },
+    });
+    integrityRef.current = controller;
+    return () => {
+      controller.dispose();
+      integrityRef.current = null;
+    };
+  }, [
+    info?.integrityMode,
+    info?.status,
+    integrityConsented,
+    integrityTerminated,
+    concluded,
+    token,
+  ]);
+
+  // Poll server status while interview is active (Strict + Enhanced terminate)
+  useEffect(() => {
+    if (info?.status !== "IN_PROGRESS" || integrityTerminated) {
+      return;
+    }
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/interview/${token}`);
+        const data = await res.json();
+        if (data.status === "TERMINATED" || data.terminated) {
+          setIntegrityTerminated(true);
+          setInfo((prev) =>
+            prev ? { ...prev, status: "TERMINATED" } : prev,
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+    }, 8_000);
+    return () => clearInterval(id);
+  }, [info?.status, integrityTerminated, token]);
+
   // Start / stop proctoring collectors while IN_PROGRESS
   useEffect(() => {
     if (
       !info?.proctoringEnabled ||
       !proctoringConsented ||
       info.status !== "IN_PROGRESS" ||
-      concluded
+      concluded ||
+      integrityTerminated
     ) {
       return;
     }
@@ -309,6 +460,7 @@ export function InterviewRoom({ token }: { token: string }) {
     cameraAllowed,
     token,
     concluded,
+    integrityTerminated,
     handleProctorEvent,
   ]);
 
@@ -372,13 +524,40 @@ export function InterviewRoom({ token }: { token: string }) {
     };
   }, [useVoiceUi, activeSequence, activeQuestionText, token, thinking]);
 
-  async function recordConsent(cameraConsent: boolean) {
+  async function recordIntegrityConsent() {
+    const res = await fetch(`/api/interview/${token}/integrity/consent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ acknowledged: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error ?? "Consent failed");
+    }
+    setIntegrityConsented(true);
+    setInfo((prev) =>
+      prev
+        ? {
+            ...prev,
+            integrityConsentAt: data.consentedAt ?? new Date().toISOString(),
+          }
+        : prev,
+    );
+  }
+
+  async function recordConsent(
+    cameraConsent: boolean,
+    recordingConsent = false,
+  ) {
     const res = await fetch(`/api/interview/${token}/proctoring/consent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+        body: JSON.stringify({
         acknowledged: true,
         cameraConsent,
+        ...(info?.proctoringMode === "ENHANCED" || recordingConsent
+          ? { recordingConsent: true }
+          : {}),
       }),
     });
     const data = await res.json();
@@ -404,6 +583,13 @@ export function InterviewRoom({ token }: { token: string }) {
     const data = await res.json();
     setThinking(false);
     if (!res.ok) {
+      if (data.terminated || res.status === 410) {
+        setIntegrityTerminated(true);
+        setInfo((prev) =>
+          prev ? { ...prev, status: "TERMINATED" } : prev,
+        );
+        return;
+      }
       setError(data.error ?? "Could not start");
       return;
     }
@@ -473,6 +659,11 @@ export function InterviewRoom({ token }: { token: string }) {
       return;
     }
     if (!res.ok) {
+      if (data.terminated || data.status === "TERMINATED") {
+        setIntegrityTerminated(true);
+        await loadState();
+        return;
+      }
       setError(data.error ?? "Submit failed");
       return;
     }
@@ -510,8 +701,6 @@ export function InterviewRoom({ token }: { token: string }) {
 
   async function startRecording() {
     setTranscriptFailed(false);
-    setPreviewUrl(null);
-    setPreviewBlob(null);
     setHeardLabel(null);
     chunks.current = [];
     const stream = await ensureMic();
@@ -550,9 +739,8 @@ export function InterviewRoom({ token }: { token: string }) {
       cancelAnimationFrame(levelRaf.current);
       setRecordLevel(0);
       const blob = new Blob(chunks.current, { type: "audio/webm" });
-      setPreviewBlob(blob);
-      setPreviewUrl(URL.createObjectURL(blob));
       setRecording(false);
+      void sendAudioBlob(blob);
     };
     rec.start();
     setRecording(true);
@@ -564,19 +752,14 @@ export function InterviewRoom({ token }: { token: string }) {
     }
   }
 
-  function rerecord() {
-    setPreviewUrl(null);
-    setPreviewBlob(null);
-    setTranscriptFailed(false);
-  }
-
-  async function sendAudio() {
-    if (!previewBlob || !current) return;
+  async function sendAudioBlob(blob: Blob) {
+    const q = currentRef.current;
+    if (!blob || !q) return;
     setThinking(true);
     setError(null);
     setTranscriptFailed(false);
     const form = new FormData();
-    form.append("audio", previewBlob, `a${current.sequence}.webm`);
+    form.append("audio", blob, `a${q.sequence}.webm`);
     const res = await fetch(`/api/interview/${token}/answer-audio`, {
       method: "POST",
       body: form,
@@ -585,14 +768,14 @@ export function InterviewRoom({ token }: { token: string }) {
     setThinking(false);
 
     if (res.status === 503 && data.speechDown) {
-      setError("Speech service is offline. Switch to typing or retry shortly.");
+      setAnswerMode("text");
+      setError("Speech service is offline. Continue by typing your answer.");
       return;
     }
 
     if (data.transcriptFailed) {
+      setAnswerMode("text");
       setTranscriptFailed(true);
-      setPreviewUrl(null);
-      setPreviewBlob(null);
       return;
     }
 
@@ -603,8 +786,6 @@ export function InterviewRoom({ token }: { token: string }) {
           ? "AI is offline — your answer was saved. Retry when ready."
           : "AI is busy — your answer was saved. Retry processing.",
       );
-      setPreviewUrl(null);
-      setPreviewBlob(null);
       await loadState();
       return;
     }
@@ -616,8 +797,6 @@ export function InterviewRoom({ token }: { token: string }) {
 
     const heard = data.transcript as string;
     setHeardLabel(heard);
-    setPreviewUrl(null);
-    setPreviewBlob(null);
 
     if (data.concluded) {
       setConcluded(true);
@@ -627,10 +806,10 @@ export function InterviewRoom({ token }: { token: string }) {
     }
 
     setTurns((prev) => [
-      ...prev.filter((t) => t.sequence !== current.sequence),
+      ...prev.filter((t) => t.sequence !== q.sequence),
       {
-        sequence: current.sequence,
-        question: current.question,
+        sequence: q.sequence,
+        question: q.question,
         answerText: heard,
       },
     ]);
@@ -648,7 +827,7 @@ export function InterviewRoom({ token }: { token: string }) {
 
   if (error && !info) {
     return (
-      <div className="mx-auto max-w-lg rounded-xl border border-rose-200 bg-rose-50 p-6 text-rose-900">
+      <div className="mx-auto max-w-lg rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-destructive">
         <p className="font-medium">Unable to open interview</p>
         <p className="mt-2 text-sm">{error}</p>
       </div>
@@ -656,7 +835,11 @@ export function InterviewRoom({ token }: { token: string }) {
   }
 
   if (!info) {
-    return <p className="text-center text-sm text-slate-500">Loading interview…</p>;
+    return <p className="text-center text-sm text-muted-foreground">Loading interview…</p>;
+  }
+
+  if (integrityTerminated || info.status === "TERMINATED") {
+    return <IntegrityTerminatedScreen />;
   }
 
   if (concluded || info.status === "COMPLETED") {
@@ -666,13 +849,16 @@ export function InterviewRoom({ token }: { token: string }) {
       );
     }
     return (
-      <div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h1 className="font-display text-3xl text-slate-900">Thank you</h1>
-        <p className="mt-3 text-slate-600">
+      <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          Logisoft HireOS
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Thank you</h1>
+        <p className="mt-3 text-muted-foreground">
           Your interview for <strong>{info.jobTitle}</strong> is complete. The team will get
           back to you.
         </p>
-        <p className="mt-6 text-sm text-slate-400">You can close this tab.</p>
+        <p className="mt-6 text-sm text-muted-foreground">You can close this tab.</p>
       </div>
     );
   }
@@ -714,16 +900,27 @@ export function InterviewRoom({ token }: { token: string }) {
     info.proctoringEnabled &&
     !proctoringConsented &&
     info.status !== "COMPLETED" &&
-    info.status !== "CANCELLED"
+    info.status !== "CANCELLED" &&
+    info.status !== "TERMINATED"
   ) {
     return (
       <ProctoringConsent
         enhanced={info.proctoringMode === "ENHANCED"}
-        onContinue={async (allowCamera) => {
-          await recordConsent(allowCamera);
+        onContinue={async (allowCamera, recordingConsent) => {
+          await recordConsent(allowCamera, recordingConsent);
         }}
       />
     );
+  }
+
+  if (
+    info.integrityMode === "STRICT" &&
+    !integrityConsented &&
+    info.status !== "COMPLETED" &&
+    info.status !== "CANCELLED" &&
+    info.status !== "TERMINATED"
+  ) {
+    return <IntegrityNotice onContinue={recordIntegrityConsent} />;
   }
 
   if (
@@ -746,6 +943,21 @@ export function InterviewRoom({ token }: { token: string }) {
     );
   }
 
+  if (
+    info.integrityMode === "STRICT" &&
+    STRICT_POLICY.requireFullscreen &&
+    !fullscreenReady &&
+    info.status === "SCHEDULED"
+  ) {
+    return (
+      <FullscreenRequiredGate
+        onEntered={() => {
+          setFullscreenReady(true);
+        }}
+      />
+    );
+  }
+
   const answeredTurns = turns.filter((t) => t.answerText != null);
   const unansweredFromState = turns.find((t) => t.answerText == null);
   const activeQuestion =
@@ -759,20 +971,23 @@ export function InterviewRoom({ token }: { token: string }) {
 
   if (info.status === "SCHEDULED" && !activeQuestion) {
     return (
-      <div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <p className="text-sm uppercase tracking-wide text-slate-400">
+      <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 shadow-sm">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          Logisoft HireOS
+        </p>
+        <p className="mt-2 text-sm uppercase tracking-wide text-muted-foreground">
           {info.mode === "VOICE" ? "Voice interview" : "Text interview"}
         </p>
-        <h1 className="mt-2 font-display text-3xl text-slate-900">{info.jobTitle}</h1>
-        <p className="mt-4 text-slate-600">
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{info.jobTitle}</h1>
+        <p className="mt-4 text-muted-foreground">
           Hi {info.candidateFirstName}. You&apos;ll get about {info.maxQuestions} questions
           {info.durationMinutes ? ` within ${info.durationMinutes} minutes` : ""}.
           {info.mode === "VOICE"
-            ? " Answer by voice — typing is always available."
+            ? " Answer by voice. You may switch to typing once — you cannot switch back to voice, and you cannot re-record."
             : " Answer in text — take your time."}
         </p>
-        <p className="mt-2 text-sm text-slate-500">{info.instructions}</p>
-        {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+        <p className="mt-2 text-sm text-muted-foreground">{info.instructions}</p>
+        {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
         <Button className="mt-6 w-full" onClick={start} disabled={thinking}>
           {thinking ? "Starting…" : "Start interview"}
         </Button>
@@ -782,23 +997,32 @@ export function InterviewRoom({ token }: { token: string }) {
 
   return (
     <div className="mx-auto flex min-h-[80vh] max-w-2xl flex-col">
+      <IntegrityWarningDialog
+        open={integrityWarning != null}
+        warningNumber={integrityWarning?.warningNumber ?? 1}
+        warningOf={integrityWarning?.warningOf ?? 2}
+        message={
+          integrityWarning?.message ?? "Your interview window lost focus."
+        }
+        onDismiss={() => setIntegrityWarning(null)}
+      />
       {focusNudge ? (
         <div
           role="status"
-          className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          className="mb-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground"
         >
           {focusNudge}
         </div>
       ) : null}
-      <header className="mb-4 border-b border-slate-200 pb-3">
-        <p className="text-xs uppercase tracking-wide text-slate-400">{info.jobTitle}</p>
-        <p className="text-sm text-slate-500">
+      <header className="mb-4 border-b border-border pb-3">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">{info.jobTitle}</p>
+        <p className="text-sm text-muted-foreground">
           Question {activeQuestion?.sequence ?? answeredTurns.length} of ~{info.maxQuestions}
           {info.mode === "VOICE" ? ` · ${useVoiceUi ? "Voice" : "Typing"}` : ""}
           {remainingLabel != null ? ` · ${remainingLabel} left` : ""}
         </p>
         {timeUp && !concluded ? (
-          <p className="mt-1 text-sm text-amber-800">
+          <p className="mt-1 text-sm text-warning">
             Time is up — submit your current answer to finish the interview.
           </p>
         ) : null}
@@ -822,7 +1046,7 @@ export function InterviewRoom({ token }: { token: string }) {
         ))}
         {activeQuestion ? (
           <div key={`seq-${activeQuestion.sequence}-current`} className="space-y-2">
-            <Bubble side="ai" text={activeQuestion.question} />
+            <Bubble side="ai" text={activeQuestion.question} emphasis />
             {useVoiceUi ? (
               <Button size="sm" variant="outline" type="button" onClick={replayQuestion}>
                 Replay question
@@ -834,20 +1058,20 @@ export function InterviewRoom({ token }: { token: string }) {
           </div>
         ) : null}
         {thinking ? (
-          <div className="flex items-center gap-2 text-sm text-slate-500">
+          <div className="flex items-center gap-2 text-sm text-ai">
             <span className="inline-flex gap-1">
               <Dot />
               <Dot delay="150ms" />
               <Dot delay="300ms" />
             </span>
-            AI is thinking… (10–40s)
+            AI is preparing the next question…
           </div>
         ) : null}
         <div ref={bottomRef} />
       </div>
 
       {error || pendingProcessing ? (
-        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+        <div className="mb-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
           <p>
             {error ??
               "AI is still processing your last answer — your text was saved. Retry when ready."}
@@ -878,83 +1102,62 @@ export function InterviewRoom({ token }: { token: string }) {
       ) : null}
 
       {transcriptFailed ? (
-        <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          <p>We couldn&apos;t hear that clearly, please re-record or type your answer</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={rerecord}>
-              Re-record
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setAnswerMode("text");
-                setTranscriptFailed(false);
-              }}
-            >
-              Type answer
-            </Button>
-          </div>
+        <div className="mb-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
+          <p>
+            We couldn&apos;t hear that clearly. Continue by typing your answer —
+            re-recording is not available.
+          </p>
         </div>
       ) : null}
 
       {activeQuestion && !thinking && !pendingProcessing ? (
-        <div className="sticky bottom-0 space-y-2 border-t border-slate-200 bg-[radial-gradient(ellipse_at_top,_#e8eef7_0%,_#f7f5f1_50%)] pt-3">
-          {info.mode === "VOICE" ? (
+        <div className="glass-panel sticky bottom-0 space-y-2 border-t pt-3">
+          {info.mode === "VOICE" && useVoiceUi ? (
             <div className="flex justify-end">
               <button
                 type="button"
-                className="text-xs text-slate-500 underline"
-                onClick={() =>
-                  setAnswerMode((m) => (m === "voice" ? "text" : "voice"))
-                }
+                className="text-xs text-muted-foreground underline"
+                onClick={() => setAnswerMode("text")}
               >
-                {useVoiceUi ? "Switch to typing" : "Switch to voice"}
+                Switch to typing
               </button>
             </div>
           ) : null}
 
           {useVoiceUi ? (
             <>
-              <div className="flex justify-between text-xs text-slate-400">
+              <div className="flex justify-between text-xs text-muted-foreground">
                 <span>
-                  {recording ? `Recording ${formatElapsed(elapsed)}` : "Press to record"}
+                  {recording ? (
+                    <span className="voice-live font-display tabular-nums">
+                      Recording {formatElapsed(elapsed)}
+                    </span>
+                  ) : (
+                    "Press to record"
+                  )}
                 </span>
                 <span>No hard time limit</span>
               </div>
               {recording ? (
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-rose-500 transition-[width]"
+                    className="h-full rounded-full bg-ai transition-[width]"
                     style={{ width: `${Math.round(recordLevel * 100)}%` }}
                   />
                 </div>
               ) : null}
-              {!previewUrl ? (
-                <Button
-                  className="w-full"
-                  variant={recording ? "destructive" : "default"}
-                  onClick={recording ? stopRecording : startRecording}
-                >
-                  {recording ? "Stop recording" : "Press to record"}
-                </Button>
-              ) : (
-                <div className="space-y-2">
-                  <audio src={previewUrl} controls className="w-full" />
-                  <div className="flex gap-2">
-                    <Button className="flex-1" onClick={sendAudio}>
-                      Send
-                    </Button>
-                    <Button className="flex-1" variant="outline" onClick={rerecord}>
-                      Re-record
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <Button
+                className="w-full"
+                variant={recording ? "destructive" : "default"}
+                onClick={recording ? stopRecording : startRecording}
+                disabled={thinking}
+              >
+                {recording ? "Stop & send" : "Press to record"}
+              </Button>
             </>
           ) : (
             <>
-              <div className="flex justify-between text-xs text-slate-400">
+              <div className="flex justify-between text-xs text-muted-foreground">
                 <span>Elapsed {formatElapsed(elapsed)}</span>
                 <span>No hard time limit</span>
               </div>
@@ -981,14 +1184,23 @@ export function InterviewRoom({ token }: { token: string }) {
   );
 }
 
-function Bubble({ side, text }: { side: "ai" | "me"; text: string }) {
+function Bubble({
+  side,
+  text,
+  emphasis,
+}: {
+  side: "ai" | "me";
+  text: string;
+  emphasis?: boolean;
+}) {
   return (
     <div
       className={cn(
         "max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
         side === "ai"
-          ? "mr-auto bg-white text-slate-800 shadow-sm ring-1 ring-slate-200"
-          : "ml-auto bg-slate-900 text-white",
+          ? "mr-auto bg-card text-foreground shadow-sm ring-1 ring-white/10"
+          : "ml-auto bg-primary/15 text-foreground",
+        emphasis && "interview-question",
       )}
     >
       {text}
@@ -999,7 +1211,7 @@ function Bubble({ side, text }: { side: "ai" | "me"; text: string }) {
 function Dot({ delay }: { delay?: string }) {
   return (
     <span
-      className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400"
+      className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-ai"
       style={{ animationDelay: delay }}
     />
   );

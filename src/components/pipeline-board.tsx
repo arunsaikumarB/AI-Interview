@@ -72,23 +72,23 @@ function Card({
       {...listeners}
       {...attributes}
       className={cn(
-        "cursor-grab rounded-lg border border-slate-200 bg-white p-3 shadow-sm active:cursor-grabbing",
+        "cursor-grab rounded-lg border border-border bg-card p-3 shadow-sm active:cursor-grabbing",
         (isDragging || dragging) && "opacity-40",
       )}
     >
       <Link
         href={`/dashboard/candidates/${app.candidate.id}?applicationId=${app.id}`}
-        className="font-medium text-slate-900 hover:underline"
+        className="font-medium text-foreground hover:underline"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
         {name}
       </Link>
-      <p className="mt-1 text-xs text-slate-500">{app.job.title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{app.job.title}</p>
       {pct != null ? (
-        <p className="mt-2 text-xs text-slate-600">
+        <p className="mt-2 text-xs text-muted-foreground">
           AI Match {pct}%
-          <span className="ml-1 text-[10px] uppercase tracking-wide text-slate-400">
+          <span className="ml-1 text-[10px] uppercase tracking-wide text-muted-foreground">
             · advisory
           </span>
         </p>
@@ -96,7 +96,7 @@ function Card({
       {onCompose ? (
         <button
           type="button"
-          className="mt-2 text-[11px] text-slate-500 underline"
+          className="mt-2 text-[11px] text-muted-foreground underline"
           onClick={(e) => {
             e.stopPropagation();
             onCompose(app);
@@ -132,16 +132,16 @@ function Column({
         columnRef?.(el);
       }}
       className={cn(
-        "flex w-64 shrink-0 flex-col rounded-xl border border-slate-200 bg-slate-50/80",
-        isOver && "ring-2 ring-slate-400",
-        focused && "ring-2 ring-amber-500/70",
+        "flex w-64 shrink-0 flex-col rounded-xl border border-border bg-muted/30",
+        isOver && "ring-2 ring-primary/40",
+        focused && "ring-2 ring-primary/50",
       )}
     >
-      <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {STAGE_LABELS[stage]}
         </h3>
-        <span className="text-xs text-slate-400">{apps.length}</span>
+        <span className="text-xs text-muted-foreground">{apps.length}</span>
       </div>
       <div className="flex flex-1 flex-col gap-2 p-2">
         {apps.map((app) => (
@@ -239,9 +239,9 @@ export function PipelineBoard({
     });
   }
 
-  if (isLoading) return <p className="text-sm text-slate-500">Loading pipeline…</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading pipeline…</p>;
   if (error || !columns) {
-    return <p className="text-sm text-red-600">Could not load pipeline board.</p>;
+    return <p className="text-sm text-destructive">Could not load pipeline board.</p>;
   }
 
   return (

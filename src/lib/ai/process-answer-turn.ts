@@ -13,6 +13,7 @@ import {
   parsePlan,
   turnsFromQuestions,
 } from "@/lib/ai/interview-session";
+import { prefetchQuestionTts } from "@/lib/question-tts";
 
 /**
  * Process the latest answered question (evaluate + next question / conclude).
@@ -38,7 +39,7 @@ export async function processAnswerTurn(sessionId: string): Promise<{
     },
   });
 
-  if (session.status === "COMPLETED") {
+  if (session.status === "COMPLETED" || session.status === "TERMINATED") {
     return { concluded: true, nextQuestion: null };
   }
 
@@ -167,8 +168,8 @@ export async function processAnswerTurn(sessionId: string): Promise<{
       console.error("finalEvaluation failed", err);
     }
 
-    await prisma.interviewSession.update({
-      where: { id: session.id },
+    await prisma.interviewSession.updateMany({
+      where: { id: session.id, status: "IN_PROGRESS" },
       data: {
         status: "COMPLETED",
         endedAt: new Date(),
@@ -218,6 +219,13 @@ export async function processAnswerTurn(sessionId: string): Promise<{
       competency: nq.competency,
       action: turnResult.nextAction,
     },
+  });
+
+  prefetchQuestionTts({
+    sessionId: session.id,
+    questionId: created.id,
+    sequence: created.sequence,
+    text: created.question,
   });
 
   return {

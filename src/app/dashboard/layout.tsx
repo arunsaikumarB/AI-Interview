@@ -6,7 +6,12 @@ import { getSession } from "@/lib/auth/session";
 import { orgScopeWhere } from "@/lib/auth/rbac";
 import { STAFF_ROLES } from "@/lib/constants";
 import { getAIProvider } from "@/lib/ai/ollama";
-import { prisma } from "@/lib/db";
+import { resolveOrgLabel } from "@/lib/org-display";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+};
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -15,22 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const cloudAi = getAIProvider() === "cloud";
   const scope = orgScopeWhere(session);
-  let orgLabel = "AI Recruitment OS";
-  try {
-    const org = scope.organizationId
-      ? await prisma.organization.findUnique({
-          where: { id: scope.organizationId },
-          select: { name: true, companyName: true },
-        })
-      : await prisma.organization.findFirst({
-          select: { name: true, companyName: true },
-        });
-    if (org) {
-      orgLabel = org.companyName?.trim() || org.name;
-    }
-  } catch {
-    // Banner covers DB offline; keep default label
-  }
+  const orgLabel = await resolveOrgLabel(scope.organizationId);
 
   return (
     <>

@@ -33,7 +33,7 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
       { status: 410 },
     );
   }
-  if (session.status === "CANCELLED" || session.status === "COMPLETED") {
+  if (session.status === "CANCELLED" || session.status === "COMPLETED" || session.status === "TERMINATED") {
     return Response.json({ error: "Interview ended" }, { status: 410 });
   }
   if (
@@ -65,7 +65,18 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
     status,
     label: secondaryStatusLabel(status),
     pairExpiresAt: session.secondaryPairExpiresAt.toISOString(),
+    interviewStatus: session.status,
+    placementConfirmed: Boolean(session.secondaryPlacementConfirmedAt),
+    recordingConsent: Boolean(session.secondaryRecordingConsentAt),
+    recordingStatus: session.secondaryRecordingStatus,
+    recordingId: session.secondaryRecordingId,
+    shouldRecord:
+      session.status === "IN_PROGRESS" &&
+      Boolean(session.secondaryPlacementConfirmedAt) &&
+      Boolean(session.secondaryRecordingConsentAt) &&
+      session.secondaryRecordingStatus !== "SAVED" &&
+      session.secondaryRecordingStatus !== "FAILED",
     message:
-      "This secondary camera provides another angle for human review. It does not run AI cheating detection.",
+      "This secondary camera records the interview environment (video + room audio) for human review. Keep the phone still. Only the candidate should be in frame. Look at the laptop camera, not this phone. The recording is not used for AI scoring.",
   });
 });

@@ -1,8 +1,15 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { CreateInterviewDialog } from "@/components/create-interview-dialog";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  interviewDurationLabel,
+  interviewHumanStatus,
+  interviewTypeLabel,
+} from "@/lib/candidate-detail-ui";
+import { recordingStatusLabel } from "@/lib/secondary-recording-labels";
 import { cn } from "@/lib/utils";
 
 export type InterviewSummary = {
@@ -13,6 +20,14 @@ export type InterviewSummary = {
   recommendation: string | null;
   proctoringEnabled: boolean;
   proctoringEventCount: number;
+  tokenExpiresAt?: string | Date | null;
+  startedAt?: string | Date | null;
+  endedAt?: string | Date | null;
+  secondaryRecordingStatus?: string | null;
+  secondaryRecordingPath?: string | null;
+  tabSwitches?: number;
+  copyPaste?: number;
+  cameraInterruptions?: number;
 };
 
 export type InterviewStatusApplication = {
@@ -24,19 +39,13 @@ export type InterviewStatusApplication = {
   jobTitle: string;
 };
 
-function statusLabel(status: string) {
-  switch (status) {
-    case "SCHEDULED":
-      return "Active";
-    case "IN_PROGRESS":
-      return "In Progress";
-    case "COMPLETED":
-      return "Completed";
-    case "CANCELLED":
-      return "Cancelled";
-    default:
-      return status;
+function statusDotClass(label: string): string {
+  if (label === "Completed") return "bg-success";
+  if (label === "In progress" || label === "Scheduled") return "bg-primary";
+  if (label === "Expired" || label === "Cancelled" || label === "Ended") {
+    return "bg-destructive";
   }
+  return "bg-muted-foreground";
 }
 
 export function InterviewStatusCard({
@@ -47,81 +56,165 @@ export function InterviewStatusCard({
   latest: InterviewSummary | null;
 }) {
   const apps = [application];
+  const human = latest
+    ? interviewHumanStatus({
+        status: latest.status,
+        tokenExpiresAt: latest.tokenExpiresAt,
+      })
+    : "Not started";
+  const duration = latest
+    ? interviewDurationLabel(latest.startedAt, latest.endedAt)
+    : null;
+  const expired = human === "Expired";
+  const completed = latest?.status === "COMPLETED";
+  const inFlight =
+    latest &&
+    (latest.status === "SCHEDULED" || latest.status === "IN_PROGRESS") &&
+    !expired;
+  const canCreateAnother = !latest || expired || completed || !inFlight;
+  const showCreate = !latest || canCreateAnother;
+  const showOpen = Boolean(latest);
+  const recordingLabel =
+    latest?.proctoringEnabled &&
+    (latest.secondaryRecordingStatus || latest.secondaryRecordingPath)
+      ? recordingStatusLabel(
+          latest.secondaryRecordingStatus ?? "NONE",
+          Boolean(latest.secondaryRecordingPath),
+        )
+      : latest?.proctoringEnabled
+        ? "Enabled"
+        : "—";
+
+  const recordingReady =
+    recordingLabel === "Recording available" && Boolean(latest?.id);
 
   return (
-    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-900">Interview</h2>
-        {!latest ? (
+    <section id="interview" className="space-y-4">
+      <div>
+        <h2 className="text-[17px] font-semibold text-foreground">Interview</h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">AI Interview</p>
+      </div>
+
+      {!latest ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">Interview not started.</p>
           <CreateInterviewDialog
             applications={apps}
             triggerLabel="Create Interview Link"
             preselectedApplicationId={application.id}
           />
-        ) : null}
-      </div>
-
-      {!latest ? (
-        <p className="text-sm text-slate-500">
-          No interview yet. Create a link when you&apos;re ready to invite the candidate.
-        </p>
+        </div>
       ) : (
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-slate-900">AI Interview</p>
-          <p className="text-sm text-slate-600">{statusLabel(latest.status)}</p>
-          {latest.status === "COMPLETED" && latest.overallScore != null ? (
-            <p className="text-sm text-slate-800">
-              <span className="text-2xl font-semibold tabular-nums">
-                {latest.overallScore}
-              </span>
-              <span className="text-slate-500"> / 100</span>
-              {latest.recommendation ? (
-                <span className="ml-2 text-slate-600">
-                  · {latest.recommendation.replace(/_/g, " ")}
+        <div className="space-y-4">
+          <dl className="space-y-2.5 text-sm">
+            <Metric
+              label="Status"
+              value={
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className={cn("h-2 w-2 rounded-full", statusDotClass(human))}
+                    aria-hidden
+                  />
+                  {human}
                 </span>
-              ) : null}
-              <span
-                className="ml-2 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500"
-                title="AI suggestion — recruiter decides"
-              >
-                AI
-              </span>
-            </p>
+              }
+            />
+            <Metric label="Duration" value={duration ?? "—"} />
+            <Metric label="Interview type" value={interviewTypeLabel(latest.interviewType)} />
+            <Metric
+              label="AI evaluation"
+              value={
+                completed && latest.overallScore != null
+                  ? `${latest.overallScore} / 100`
+                  : completed
+                    ? "Available"
+                    : "—"
+              }
+            />
+            <Metric
+              label="Proctoring"
+              value={
+                latest.proctoringEnabled
+                  ? latest.proctoringEventCount > 0
+                    ? "Signals recorded"
+                    : "Enabled"
+                  : "—"
+              }
+            />
+            <Metric label="Secondary camera" value={recordingLabel} />
+          </dl>
+
+          {latest.proctoringEnabled ? (
+            <div>
+              <p className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
+                Integrity signals
+              </p>
+              <p className="mt-1 text-sm text-foreground">
+                {latest.tabSwitches ?? 0} tab switches
+              </p>
+              <p className="text-sm text-foreground">
+                {latest.copyPaste ?? 0} copy/paste events
+              </p>
+              <p className="text-sm text-foreground">
+                {latest.cameraInterruptions ?? 0} camera interruption
+                {(latest.cameraInterruptions ?? 0) === 1 ? "" : "s"}
+              </p>
+              <p className="mt-1 text-[13px] text-muted-foreground">
+                Signals for human review.
+              </p>
+            </div>
           ) : null}
-          <div className="flex flex-wrap gap-2 pt-1">
-            {latest.status === "SCHEDULED" ? (
+
+          <div className="flex flex-wrap gap-2">
+            {showOpen ? (
               <Link
-                href={`/dashboard/interviews/${latest.id}/plan`}
+                href={
+                  latest.status === "SCHEDULED"
+                    ? `/dashboard/interviews/${latest.id}/plan`
+                    : `/dashboard/interviews/${latest.id}`
+                }
                 className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
               >
-                Open Interview
+                {completed
+                  ? "View Interview Report"
+                  : inFlight
+                    ? "Open Interview"
+                    : "Review Interview"}
               </Link>
-            ) : (
+            ) : null}
+            {recordingReady ? (
               <Link
                 href={`/dashboard/interviews/${latest.id}`}
                 className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
               >
-                {latest.status === "COMPLETED"
-                  ? "View Interview Report"
-                  : "Open Interview"}
+                Review Recording
               </Link>
-            )}
-            <CreateInterviewDialog
-              applications={apps}
-              triggerLabel="Create Interview Link"
-              preselectedApplicationId={application.id}
-            />
+            ) : null}
+            {showCreate && !inFlight ? (
+              <CreateInterviewDialog
+                applications={apps}
+                triggerLabel="Create Interview Link"
+                preselectedApplicationId={application.id}
+              />
+            ) : null}
           </div>
-          <p className="pt-2 text-xs text-slate-500">
-            Proctoring
-            {latest.proctoringEnabled
-              ? latest.proctoringEventCount > 0
-                ? " · Signals recorded"
-                : " · Enabled"
-              : " · Not enabled"}
-          </p>
         </div>
       )}
     </section>
+  );
+}
+
+function Metric({
+  label,
+  value,
+}: {
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div>
+      <dt className="text-[12px] text-muted-foreground">{label}</dt>
+      <dd className="font-medium text-foreground">{value}</dd>
+    </div>
   );
 }
