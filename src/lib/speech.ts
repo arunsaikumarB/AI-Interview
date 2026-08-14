@@ -81,14 +81,30 @@ export async function transcribeAudio(
   });
   form.append("audio", blob, filename);
 
+  const timeoutMs = Number(process.env.SPEECH_STT_TIMEOUT_MS ?? 60_000);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   let res: Response;
   try {
-    res = await fetch(`${base}/transcribe`, { method: "POST", body: form });
-  } catch {
+    res = await fetch(`${base}/transcribe`, {
+      method: "POST",
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new SpeechError(
+        "SPEECH_UNREACHABLE",
+        `Speech transcription timed out after ${Math.round(timeoutMs / 1000)}s`,
+      );
+    }
     throw new SpeechError(
       "SPEECH_UNREACHABLE",
       `Speech service unreachable at ${base}`,
     );
+  } finally {
+    clearTimeout(timer);
   }
 
   if (!res.ok) {

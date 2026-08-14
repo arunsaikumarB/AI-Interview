@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { jsonOk, withApiHandler } from "@/lib/api";
 import { initialAdaptiveState } from "@/lib/ai/interview";
+import { sanitizePlanForJob } from "@/lib/ai/interview-guard";
 import {
   asJson,
   mapDifficultyToEnum,
@@ -20,6 +21,11 @@ export const POST = withApiHandler<Ctx>(async (_request, { params }) => {
     where: { accessToken: params.token },
     include: {
       questions: { orderBy: { sequence: "asc" }, take: 1 },
+      application: {
+        include: {
+          job: { select: { title: true, description: true, skills: true } },
+        },
+      },
     },
   });
 
@@ -69,7 +75,12 @@ export const POST = withApiHandler<Ctx>(async (_request, { params }) => {
     });
   }
 
-  const plan = parsePlan(session.plan);
+  const plan = sanitizePlanForJob(parsePlan(session.plan), {
+    title: session.application.job.title,
+    description: session.application.job.description,
+    skills: session.application.job.skills,
+    interviewType: session.interviewType,
+  });
   const opening = plan.openingQuestion;
   const startedAt = new Date();
 
@@ -80,6 +91,7 @@ export const POST = withApiHandler<Ctx>(async (_request, { params }) => {
         status: "IN_PROGRESS",
         startedAt,
         adaptiveState: asJson(initialAdaptiveState(opening.difficulty)),
+        plan: asJson(plan),
       },
     });
 

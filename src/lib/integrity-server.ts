@@ -325,7 +325,8 @@ function secondaryTerminateReason(kind: SecondaryIntegrityKind): string {
 
 /**
  * Enhanced secondary-camera environment integrity.
- * Ends InterviewSession only — never Application.stage, never AI prompts.
+ * 3 warnings the candidate must acknowledge and fix; the 4th episode ends
+ * the InterviewSession only — never Application.stage, never AI prompts.
  */
 export async function recordSecondaryIntegrityViolation(params: {
   sessionId: string;
@@ -343,6 +344,7 @@ export async function recordSecondaryIntegrityViolation(params: {
       integrityViolationCount: true,
       integrityPasteCount: true,
       integrityCameraMoveCount: true,
+      integrityPendingWarningKind: true,
       integrityTerminatedReason: true,
       applicationId: true,
       proctoringMode: true,
@@ -352,10 +354,7 @@ export async function recordSecondaryIntegrityViolation(params: {
   if (!session) throw new Error("SESSION_NOT_FOUND");
 
   const mode = parseIntegrityMode(session.integrityMode);
-  const isMove = params.kind === "CAMERA_MOVED";
-  const warningOf = isMove
-    ? SECONDARY_INTEGRITY_POLICY.cameraMoveTerminateAt
-    : 1;
+  const warningOf = SECONDARY_INTEGRITY_POLICY.warningLimit;
 
   const early = (
     overrides: Partial<IntegrityViolationResult> & { status: string },
@@ -365,22 +364,25 @@ export async function recordSecondaryIntegrityViolation(params: {
     recorded: false,
     focusViolations: session.integrityViolationCount,
     pasteViolations: session.integrityPasteCount,
-    warningNumber: isMove ? session.integrityCameraMoveCount : 1,
+    warningNumber: Math.min(
+      Math.max(session.integrityCameraMoveCount, 1),
+      warningOf,
+    ),
     warningOf,
     terminated: session.status === "TERMINATED",
     reason: session.integrityTerminatedReason,
-    showWarning: false,
+    showWarning: Boolean(session.integrityPendingWarningKind),
     ...overrides,
   });
 
   if (session.status === "TERMINATED") {
-    return early({ status: "TERMINATED", terminated: true });
+    return early({ status: "TERMINATED", terminated: true, showWarning: false });
   }
   if (session.status !== "IN_PROGRESS") {
-    return early({ status: session.status, terminated: false });
+    return early({ status: session.status, terminated: false, showWarning: false });
   }
   if (session.proctoringMode !== "ENHANCED") {
-    return early({ status: session.status, terminated: false });
+    return early({ status: session.status, terminated: false, showWarning: false });
   }
 
   if (params.episodeId) {
@@ -428,6 +430,7 @@ export async function recordSecondaryIntegrityViolation(params: {
         integrityViolationCount: true,
         integrityPasteCount: true,
         integrityCameraMoveCount: true,
+        integrityPendingWarningKind: true,
         integrityTerminatedReason: true,
         applicationId: true,
       },
@@ -456,12 +459,25 @@ export async function recordSecondaryIntegrityViolation(params: {
       };
     }
 
-    const nextMoves = isMove
-      ? fresh.integrityCameraMoveCount + 1
-      : fresh.integrityCameraMoveCount;
-    const shouldTerminate = isMove
-      ? nextMoves >= SECONDARY_INTEGRITY_POLICY.cameraMoveTerminateAt
-      : true;
+    // Popup still open — remind, do not consume another chance.
+    if (fresh.integrityPendingWarningKind) {
+      return {
+        cameraMoves: fresh.integrityCameraMoveCount,
+        terminated: false,
+        reason: null,
+        showWarning: true,
+        recorded: false,
+        status: "IN_PROGRESS" as const,
+        warningNumber: Math.min(
+          Math.max(fresh.integrityCameraMoveCount, 1),
+          warningOf,
+        ),
+      };
+    }
+
+    const nextMoves = fresh.integrityCameraMoveCount + 1;
+    const shouldTerminate =
+      nextMoves >= SECONDARY_INTEGRITY_POLICY.terminateAt;
     const reason = shouldTerminate
       ? secondaryTerminateReason(params.kind)
       : null;
@@ -480,6 +496,7 @@ export async function recordSecondaryIntegrityViolation(params: {
         where: { id: session.id, status: "IN_PROGRESS" },
         data: {
           integrityCameraMoveCount: nextMoves,
+          integrityPendingWarningKind: null,
           status: "TERMINATED",
           endedAt: new Date(),
           integrityTerminatedReason: reason,
@@ -523,7 +540,10 @@ export async function recordSecondaryIntegrityViolation(params: {
 
     await tx.interviewSession.update({
       where: { id: session.id },
-      data: { integrityCameraMoveCount: nextMoves },
+      data: {
+        integrityCameraMoveCount: nextMoves,
+        integrityPendingWarningKind: params.kind,
+      },
     });
 
     return {
@@ -533,7 +553,7 @@ export async function recordSecondaryIntegrityViolation(params: {
       showWarning: true,
       recorded: true,
       status: "IN_PROGRESS" as const,
-      warningNumber: nextMoves,
+      warningNumber: Math.min(nextMoves, warningOf),
     };
   });
 
@@ -550,4 +570,18 @@ export async function recordSecondaryIntegrityViolation(params: {
     reason: result.reason,
     showWarning: result.showWarning,
   };
+}
+
+export async function acknowledgeSecondaryWarning(
+  sessionId: string,
+): Promise<{ ok: true; cleared: boolean }> {
+  const updated = await prisma.interviewSession.updateMany({
+    where: {
+      id: sessionId,
+      status: "IN_PROGRESS",
+      integrityPendingWarningKind: { not: null },
+    },
+    data: { integrityPendingWarningKind: null },
+  });
+  return { ok: true, cleared: updated.count === 1 };
 }

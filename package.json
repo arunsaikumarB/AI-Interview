@@ -11,7 +11,7 @@
     "lint": "next lint",
     "db:ensure": "node scripts/ensure-local-db.mjs",
     "https:certs": "node scripts/ensure-local-https.mjs",
-    "https:up": "node scripts/ensure-local-https.mjs && docker compose --env-file .env.docker --env-file .env up -d https-proxy",
+    "https:up": "node scripts/ensure-lan-https-proxy.mjs",
     "db:up": "node scripts/ensure-local-db.mjs",
     "db:down": "docker compose --env-file .env.docker --env-file .env stop postgres",
     "pilot:up": "docker compose --env-file .env.docker --env-file .env up -d --build",

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand-logo";
 
 /**
  * Pre-interview Strict integrity notice.
@@ -30,9 +31,7 @@ export function IntegrityNotice({
 
   return (
     <div className="mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-        Logisoft HireOS
-      </p>
+      <BrandLogo size="header" />
       <p className="text-sm uppercase tracking-wide text-muted-foreground">
         Interview integrity
       </p>

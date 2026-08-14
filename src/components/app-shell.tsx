@@ -26,7 +26,8 @@ import {
 import { ROLE_LABELS } from "@/lib/constants";
 import type { Role } from "@prisma/client";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { DEFAULT_COMPANY_NAME, PRODUCT_NAME } from "@/lib/branding";
+import { BrandLogo } from "@/components/brand-logo";
+import { DEFAULT_COMPANY_NAME } from "@/lib/branding";
 
 type NavItem = {
   href: string;
@@ -181,7 +182,6 @@ function NavSection({
 
 function SidebarBody({
   user,
-  orgLabel,
   pathname,
   onNavigate,
 }: {
@@ -202,13 +202,8 @@ function SidebarBody({
 
   return (
     <>
-      <div className="mb-6 px-2">
-        <p className="truncate font-sans text-[15px] font-semibold tracking-tight text-foreground">
-          {orgLabel}
-        </p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">
-          {PRODUCT_NAME}
-        </p>
+      <div className="mb-5 px-2.5">
+        <BrandLogo size="nav" />
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">

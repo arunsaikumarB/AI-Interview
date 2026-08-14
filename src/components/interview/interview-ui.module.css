@@ -1,0 +1,369 @@
+.root {
+  --orb-size: 160px;
+  --orb-glow: 0.35;
+  --orb-scale-peak: 1.03;
+  --orb-ty: -2px;
+  --orb-rot: 0deg;
+  --drift-dur: 4.5s;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  transition:
+    --orb-glow 0.7s ease-in-out,
+    --orb-scale-peak 0.7s ease-in-out,
+    --orb-ty 0.7s ease-in-out,
+    --orb-rot 0.7s ease-in-out;
+}
+
+@media (min-width: 768px) {
+  .root {
+    --orb-size: 220px;
+  }
+}
+
+.stage {
+  position: relative;
+  width: var(--orb-size);
+  height: var(--orb-size);
+}
+
+.layer {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.aura {
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(37, 99, 235, 0.55) 0%,
+    rgba(29, 78, 216, 0.18) 45%,
+    transparent 70%
+  );
+  filter: blur(40px);
+  opacity: var(--orb-glow);
+  animation: auraPulse 4s ease-in-out infinite;
+  transition: opacity 0.7s ease-in-out;
+}
+
+.blob {
+  inset: -4%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    #60a5fa,
+    #2563eb 45%,
+    #1d4ed8 70%,
+    #0f172a
+  );
+  opacity: 0.55;
+  animation: blobMorph 8s ease-in-out infinite;
+  filter: blur(8px);
+}
+
+.core {
+  inset: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  animation: orbBreathe 3s ease-in-out infinite;
+  transition: transform 0.7s ease-in-out;
+}
+
+.sphere {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    #60a5fa,
+    #2563eb 45%,
+    #1d4ed8 70%,
+    #0f172a
+  );
+}
+
+.drift {
+  position: absolute;
+  left: 18%;
+  top: 22%;
+  width: 46%;
+  height: 38%;
+  border-radius: 50%;
+  background: rgba(191, 219, 254, 0.55);
+  filter: blur(18px);
+  opacity: 0.4;
+  animation: innerDrift 4.5s ease-in-out infinite;
+  animation-duration: var(--drift-dur);
+}
+
+.specular {
+  position: absolute;
+  left: 22%;
+  top: 16%;
+  width: 28%;
+  height: 16%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  filter: blur(6px);
+  opacity: 0.25;
+}
+
+.tint {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.7s ease-in-out;
+  pointer-events: none;
+}
+
+.tintCyan {
+  background: #22d3ee;
+  mix-blend-mode: soft-light;
+}
+
+.tintCalm {
+  background: #1e3a8a;
+  mix-blend-mode: soft-light;
+}
+
+.tintDone {
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.root[data-state="IDLE"] {
+  --orb-scale-peak: 1.03;
+  --orb-ty: -2px;
+  --orb-glow: 0.35;
+  --orb-rot: 0deg;
+}
+.root[data-state="IDLE"] .core {
+  animation-duration: 3s;
+}
+
+.root[data-state="AI_SPEAKING"] {
+  --orb-scale-peak: 1.08;
+  --orb-ty: -3px;
+  --orb-glow: 0.55;
+  --orb-rot: 1deg;
+  --drift-dur: 2.2s;
+}
+.root[data-state="AI_SPEAKING"] .core {
+  animation-duration: 2s;
+}
+.root[data-state="AI_SPEAKING"] .tintCyan {
+  opacity: 0.1;
+}
+
+.root[data-state="THINKING"] {
+  --orb-scale-peak: 1.04;
+  --orb-ty: 0px;
+  --orb-glow: 0.3;
+  --orb-rot: 0deg;
+  --drift-dur: 6s;
+}
+.root[data-state="THINKING"] .core {
+  animation-duration: 3s;
+}
+
+.root[data-state="CANDIDATE_LISTENING"] {
+  --orb-scale-peak: 1.02;
+  --orb-ty: 2px;
+  --orb-glow: 0.3;
+  --orb-rot: 0deg;
+}
+.root[data-state="CANDIDATE_LISTENING"] .core {
+  animation-duration: 3.5s;
+}
+.root[data-state="CANDIDATE_LISTENING"] .tintCalm {
+  opacity: 0.1;
+}
+
+.root[data-state="CANDIDATE_SPEAKING"] {
+  --orb-scale-peak: 1.025;
+  --orb-ty: 2px;
+  --orb-glow: 0.28;
+  --orb-rot: 0deg;
+}
+.root[data-state="CANDIDATE_SPEAKING"] .core {
+  animation-duration: 3.5s;
+}
+.root[data-state="CANDIDATE_SPEAKING"] .tintCalm {
+  opacity: 0.1;
+}
+
+.root[data-state="PROCESSING"] {
+  --orb-scale-peak: 1.05;
+  --orb-ty: 0px;
+  --orb-glow: 0.5;
+  --orb-rot: 0deg;
+}
+.root[data-state="PROCESSING"] .core {
+  animation-duration: 1.75s;
+}
+.root[data-state="PROCESSING"] .tintCyan {
+  opacity: 0.1;
+}
+
+.root[data-state="COMPLETED"] {
+  --orb-scale-peak: 0.98;
+  --orb-ty: 0px;
+  --orb-glow: 0.3;
+  --orb-rot: 0deg;
+}
+.root[data-state="COMPLETED"] .core,
+.root[data-state="COMPLETED"] .aura,
+.root[data-state="COMPLETED"] .blob,
+.root[data-state="COMPLETED"] .drift {
+  animation: none;
+}
+.root[data-state="COMPLETED"] .core {
+  transform: scale(0.98);
+  transition: transform 1.2s ease-in-out;
+}
+.root[data-state="COMPLETED"] .tintDone {
+  opacity: 0.15;
+}
+
+.root[data-reduced="true"] .aura,
+.root[data-reduced="true"] .blob,
+.root[data-reduced="true"] .core,
+.root[data-reduced="true"] .drift {
+  animation: none;
+}
+.root[data-reduced="true"] .core {
+  transform: none;
+  transition: opacity 0.25s ease-in-out;
+}
+.root[data-reduced="true"] .aura {
+  opacity: var(--orb-glow);
+  transition: opacity 0.25s ease-in-out;
+}
+.root[data-reduced="true"] .tint {
+  transition: opacity 0.25s ease-in-out;
+}
+
+.label {
+  margin-top: 0.5rem;
+  min-height: 1.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: hsl(var(--muted-foreground));
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.labelOn {
+  opacity: 1;
+}
+
+.title {
+  margin-top: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: hsl(var(--muted-foreground));
+}
+
+@keyframes orbBreathe {
+  0%,
+  100% {
+    transform: scale(1) translateY(0) rotate(calc(var(--orb-rot) * -1));
+  }
+  50% {
+    transform: scale(var(--orb-scale-peak)) translateY(var(--orb-ty))
+      rotate(var(--orb-rot));
+  }
+}
+
+@keyframes auraPulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes blobMorph {
+  0%,
+  100% {
+    border-radius: 47% 53% 50% 50% / 52% 48% 52% 48%;
+  }
+  33% {
+    border-radius: 52% 48% 46% 54% / 48% 52% 50% 50%;
+  }
+  66% {
+    border-radius: 49% 51% 53% 47% / 51% 49% 47% 53%;
+  }
+}
+
+@keyframes innerDrift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(10px, 6px);
+  }
+}
+
+@keyframes msgIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.msgEnter {
+  animation: msgIn 0.35s ease-out both;
+}
+
+.msgDim {
+  opacity: 0.55;
+  transition: opacity 0.4s ease;
+}
+
+.msgLive {
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
+.micPulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: rgb(239 68 68 / 0.35);
+  animation: micPulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes micPulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aura,
+  .blob,
+  .core,
+  .drift,
+  .msgEnter,
+  .micPulse {
+    animation: none !important;
+  }
+}

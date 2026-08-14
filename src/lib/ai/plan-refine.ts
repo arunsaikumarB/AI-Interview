@@ -42,6 +42,8 @@ Apply ONLY the recruiter's instruction. Do not invent unrelated topics.
 Keep 5-8 topics. Preserve structure. If the instruction is nonsense, unclear,
 or cannot be applied, return the ORIGINAL plan unchanged and set changeSummary
 to ["No changes — instruction could not be applied"].
+Do not add design-tool topics (Figma, Photoshop, Sketch, Adobe XD) unless the
+recruiter explicitly asks for them.
 
 Return ONLY valid JSON matching this exact schema:
 {

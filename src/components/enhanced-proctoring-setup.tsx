@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { BrandLogo } from "@/components/brand-logo";
 
 type PairStatus =
   | "NONE"
@@ -266,9 +267,7 @@ export function EnhancedProctoringSetup({
   return (
     <div className="mx-auto max-w-lg space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm">
       <div>
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          Logisoft HireOS
-        </p>
+        <BrandLogo size="header" />
         <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
           Enhanced proctoring
         </p>
@@ -340,12 +339,16 @@ export function EnhancedProctoringSetup({
             </p>
           ) : httpsTrustHint ? (
             <p className="text-xs text-muted-foreground">
-              Phone camera needs HTTPS. Scan this QR, tap Advanced → Proceed on
-              the certificate warning once, then Allow camera & microphone.
+              Use the same Wi‑Fi as this PC (not mobile data). After scanning,
+              Brave will warn about the local certificate — tap Advanced →
+              Proceed, then Allow camera &amp; microphone. If the phone says
+              the site took too long, approve the Windows Firewall prompt on
+              this PC and reload.
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Phone must be on the same Wi‑Fi. Scan the QR or open the URL above.
+              Phone must be on the same Wi‑Fi as this PC. Scan the QR or open
+              the URL above.
             </p>
           )}
         </div>

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { jsonOk, withApiHandler } from "@/lib/api";
 import { sessionEndsAt } from "@/lib/ai/interview-session";
+import { pendingSecondaryWarningDto } from "@/lib/integrity";
 
 type Ctx = { params: { token: string } };
 
@@ -64,5 +65,6 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
         : "This is a text interview. Answer thoughtfully — take your time. You will see one question at a time.",
     concluded: session.status === "COMPLETED",
     terminated: session.status === "TERMINATED",
+    pendingIntegrityWarning: pendingSecondaryWarningDto(session),
   });
 });

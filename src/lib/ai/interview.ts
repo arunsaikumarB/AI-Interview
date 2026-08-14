@@ -7,6 +7,12 @@ import {
   ensureMinText,
 } from "@/lib/ai/llm-coerce";
 import type { ScreeningResult } from "@/lib/ai/screening";
+import {
+  decideNextTurn,
+  inferInterviewType,
+  sanitizePlanForJob,
+  type JobInterviewScope,
+} from "@/lib/ai/interview-guard";
 
 /**
  * Adaptive AI Interview Engine (TEXT-ONLY).
@@ -296,132 +302,23 @@ export function enforceTurnRules(params: {
   plan: InterviewPlan;
   maxQuestions: number;
   lastAnswerText: string;
+  priorQuestions?: string[];
+  job?: JobInterviewScope;
 }): { result: TurnResult; nextState: AdaptiveState } {
-  const { modelResult, state, plan, maxQuestions, lastAnswerText } = params;
-  let action = modelResult.nextAction;
-  let nextQuestion = modelResult.nextQuestion;
-  let actionReasoning = modelResult.actionReasoning;
-  const evaluation = { ...modelResult.answerEvaluation };
-
-  const questionsAskedAfter = state.questionsAsked + 1;
-  const trimmed = lastAnswerText.trim();
-  const isNonAnswer =
-    trimmed.length < 8 ||
-    /^(i\s*don'?t\s*know|idk|n\/?a|no idea|pass)\.?$/i.test(trimmed);
-
-  if (isNonAnswer) {
-    evaluation.score = Math.min(evaluation.score, 20);
-    if (state.followUpsOnCurrentTopic < MAX_FOLLOW_UPS_PER_TOPIC) {
-      action = "FOLLOW_UP";
-      actionReasoning =
-        "Non-answer detected — one follow-up allowed, then move on.";
-    } else {
-      action = "NEW_TOPIC";
-      actionReasoning =
-        "Non-answer after follow-up cap — advancing to a new topic.";
-    }
-  }
-
-  if (action === "GO_DEEPER" && (isNonAnswer || evaluation.score < 50)) {
-    action = "FOLLOW_UP";
-    actionReasoning =
-      "Weak/non-answer cannot GO_DEEPER — converted to FOLLOW_UP.";
-  }
-
-  if (
-    action === "FOLLOW_UP" &&
-    state.followUpsOnCurrentTopic >= MAX_FOLLOW_UPS_PER_TOPIC
-  ) {
-    action = "NEW_TOPIC";
-    actionReasoning =
-      "Follow-up cap (2) reached — forcing NEW_TOPIC.";
-  }
-
-  if (questionsAskedAfter >= maxQuestions) {
-    action = "CONCLUDE";
-    nextQuestion = null;
-    actionReasoning = `maxQuestions (${maxQuestions}) reached — forcing CONCLUDE.`;
-  }
-
-  if (action === "CONCLUDE") {
-    nextQuestion = null;
-  } else if (!nextQuestion) {
-    // Model omitted question — synthesize from plan
-    const idx = Math.min(state.currentTopicIndex + 1, plan.topics.length - 1);
-    const topic = plan.topics[idx] ?? plan.topics[0];
-    nextQuestion = {
-      question: `Tell me more about your experience with ${topic.name}.`,
-      topic: topic.name,
-      difficulty: topic.targetDifficulty,
-      competency: topic.name,
-    };
-    actionReasoning = `${actionReasoning} (fallback question from plan)`;
-  }
-
-  if (action === "NEW_TOPIC" && nextQuestion) {
-    const nextIdx = Math.min(
-      state.currentTopicIndex + 1,
-      Math.max(0, plan.topics.length - 1),
-    );
-    const planned = plan.topics[nextIdx];
-    if (planned && nextQuestion.topic !== planned.name) {
-      // Prefer plan topic order when model drifts
-      nextQuestion = {
-        ...nextQuestion,
-        topic: planned.name,
-        difficulty: planned.targetDifficulty,
-      };
-      actionReasoning = `${actionReasoning} (aligned to plan topic: ${planned.name})`;
-    }
-  }
-
-  const currentTopicName =
-    plan.topics[state.currentTopicIndex]?.name ??
-    modelResult.answerEvaluation.competency;
-
-  let followUps = state.followUpsOnCurrentTopic;
-  let topicIndex = state.currentTopicIndex;
-  const topicsCovered = [...state.topicsCovered];
-
-  const bumpTopicScore = () => {
-    const existing = topicsCovered.find((t) => t.name === currentTopicName);
-    if (existing) {
-      existing.avgScore = Math.round((existing.avgScore + evaluation.score) / 2);
-    } else {
-      topicsCovered.push({ name: currentTopicName, avgScore: evaluation.score });
-    }
-  };
-
-  if (action === "FOLLOW_UP") {
-    followUps += 1;
-  } else if (action === "NEW_TOPIC") {
-    bumpTopicScore();
-    topicIndex = Math.min(topicIndex + 1, Math.max(0, plan.topics.length - 1));
-    followUps = 0;
-  } else if (action === "GO_DEEPER" || action === "EXPLORE") {
-    bumpTopicScore();
-    followUps = 0;
-  } else if (action === "CONCLUDE") {
-    bumpTopicScore();
-  }
-
-  const nextState: AdaptiveState = {
-    currentTopicIndex: topicIndex,
-    questionsAsked: questionsAskedAfter,
-    followUpsOnCurrentTopic: followUps,
-    topicsCovered,
-    difficulty: nextQuestion?.difficulty ?? state.difficulty,
-    concluded: action === "CONCLUDE",
-  };
-
-  const result: TurnResult = {
-    answerEvaluation: evaluation,
-    nextAction: action,
-    actionReasoning,
-    nextQuestion: action === "CONCLUDE" ? null : nextQuestion,
-  };
-
-  return { result, nextState };
+  return decideNextTurn({
+    state: params.state,
+    plan: params.plan,
+    maxQuestions: params.maxQuestions,
+    lastAnswerText: params.lastAnswerText,
+    priorQuestions: params.priorQuestions ?? [],
+    job: params.job ?? {
+      title: "the role",
+      description: "",
+      skills: [],
+      interviewType: "TECHNICAL",
+    },
+    modelResult: params.modelResult,
+  });
 }
 
 export function mapFinalRecommendation(
@@ -441,6 +338,8 @@ export function buildTurnContext(params: {
   maxQuestions: number;
   interviewType: string;
   jobTitle: string;
+  jobDescription?: string;
+  jobSkills?: string[];
 }): string {
   const recent = params.turns.slice(-6);
   const earlier = params.turns.slice(0, Math.max(0, params.turns.length - 6));
@@ -477,13 +376,21 @@ export function buildTurnContext(params: {
     {
       interviewType: params.interviewType,
       jobTitle: params.jobTitle,
+      jobDescription: (params.jobDescription ?? "").slice(0, 2500),
+      jobSkills: params.jobSkills ?? [],
       maxQuestions: params.maxQuestions,
       questionsAsked: params.state.questionsAsked,
       adaptiveState: params.state,
       plan: params.plan,
+      alreadyAskedQuestions: params.turns.map((t) => t.question),
       earlierTurnSummaries: earlierSummaries,
       recentTurnsVerbatim: recentBlock,
       lastAnswer: recent[recent.length - 1]?.answerText ?? "",
+      rules: [
+        "NEVER repeat or rephrase a question in alreadyAskedQuestions.",
+        "FOLLOW_UP must be a different probe, not the same question again.",
+        "Ask only about the job title, job description, and job skills — not resume-only tools (e.g. Figma) unless those tools are in the JD.",
+      ],
     },
     null,
     2,
@@ -516,10 +423,12 @@ const FINAL_RESULT_JSON_SCHEMA = `{ "overall": <0-100>, "dimensions": { "technic
 const PLAN_SYSTEM = `You are designing an adaptive interview plan for a self-hosted ATS.
 Return ONLY valid JSON matching the schema.
 Rules:
-- Produce 4-6 topics mixing: (1) JD requirements, (2) specific resume projects/claims with fromResume:true, (3) screening focusAreas/gaps.
+- Topics MUST come from the JOB title, job description, and job skills. Resume text is only for validating claims ABOUT those job skills.
+- Do NOT create topics from resume-only skills that are absent from the JD (example: Figma / UX design tools for a Full-Stack Engineer).
+- Produce 4-6 topics: JD requirements first, then at most 1-2 resume projects that map to JD skills (fromResume:true), then screening gaps that are still on-JD.
 - topics MUST be a JSON array of objects with name, why, targetDifficulty (1-5), fromResume (boolean).
-- openingQuestion must be conversational, one question, role-relevant.
-- focusAreas MUST be a JSON array of strings.
+- openingQuestion must be conversational, one question, and on-role for the job title.
+- focusAreas MUST be a JSON array of strings, all on-JD.
 - Never invent resume facts — only use provided resume text.
 - Do not include scores or hiring decisions.`;
 
@@ -527,8 +436,16 @@ export function buildFallbackInterviewPlan(params: {
   jobTitle: string;
   skills: string[];
   focusAreas?: string[];
+  jobDescription?: string;
+  interviewType?: string;
 }): InterviewPlan {
-  const skillTopics = params.skills.slice(0, 3).map((skill) => ({
+  const job: JobInterviewScope = {
+    title: params.jobTitle,
+    description: params.jobDescription ?? "",
+    skills: params.skills,
+    interviewType: params.interviewType ?? "TECHNICAL",
+  };
+  const skillTopics = params.skills.slice(0, 4).map((skill) => ({
     name: skill,
     why: `Required or preferred skill for ${params.jobTitle}`,
     targetDifficulty: 3,
@@ -566,16 +483,19 @@ export function buildFallbackInterviewPlan(params: {
     });
   }
 
-  return {
-    topics,
-    openingQuestion: {
-      question: `Tell me about your experience most relevant to the ${params.jobTitle} role.`,
-      topic: topics[0]!.name,
-      difficulty: 2,
-      competency: "Communication",
+  return sanitizePlanForJob(
+    {
+      topics,
+      openingQuestion: {
+        question: `Tell me about your experience most relevant to the ${params.jobTitle} role.`,
+        topic: topics[0]!.name,
+        difficulty: 2,
+        competency: "Communication",
+      },
+      focusAreas: (params.focusAreas ?? []).slice(0, 12),
     },
-    focusAreas: (params.focusAreas ?? []).slice(0, 12),
-  };
+    job,
+  );
 }
 
 export async function generatePlan(params: {
@@ -591,6 +511,16 @@ export async function generatePlan(params: {
   interviewType: InterviewType;
   screeningFocus?: ScreeningResult | null;
 }): Promise<{ plan: InterviewPlan; model: string; raw: unknown }> {
+  const interviewType = inferInterviewType(
+    params.job.title,
+    params.interviewType,
+  );
+  const jobScope: JobInterviewScope = {
+    title: params.job.title,
+    description: params.job.description,
+    skills: params.job.skills,
+    interviewType,
+  };
   const focusFromScreen =
     params.screeningFocus?.missingRequirements?.length ||
     params.screeningFocus?.concerns?.length
@@ -601,18 +531,18 @@ export async function generatePlan(params: {
       : [];
 
   const user = [
-    `Interview type: ${params.interviewType}`,
+    `Interview type: ${interviewType}`,
     `Job title: ${params.job.title}`,
     `Job description:\n${params.job.description}`,
     `Job skills: ${params.job.skills.join(", ")}`,
     `Experience range: ${params.job.experienceMin}${params.job.experienceMax != null ? `–${params.job.experienceMax}` : "+"} years`,
     `Screening criteria: ${JSON.stringify(params.job.screeningCriteria ?? {})}`,
-    `Latest screening focusAreas/gaps: ${JSON.stringify(focusFromScreen)}`,
+    `Latest screening focusAreas/gaps (keep only if they match the JD): ${JSON.stringify(focusFromScreen)}`,
     `Candidate: ${params.candidate.firstName} ${params.candidate.lastName}`,
-    `Candidate skills: ${params.candidate.skills.join(", ")}`,
+    `Candidate skills (do NOT turn these into topics unless they also appear in job skills/JD): ${params.candidate.skills.join(", ")}`,
     `Candidate experience years: ${params.candidate.experience}`,
     `Candidate summary: ${params.candidate.summary ?? "(none)"}`,
-    `Resume text:\n${params.resumeText.slice(0, 4000) || "(none)"}`,
+    `Resume text (use only to probe JD-relevant claims):\n${params.resumeText.slice(0, 4000) || "(none)"}`,
     "",
     "Return JSON: { topics: [{ name, why, targetDifficulty 1-5, fromResume }], openingQuestion: { question, topic, difficulty, competency }, focusAreas: string[] }",
   ].join("\n");
@@ -632,26 +562,23 @@ export async function generatePlan(params: {
       },
     );
 
-    // Merge screening focus into focusAreas if model omitted them
     const focusAreas = Array.from(
       new Set([...data.focusAreas, ...focusFromScreen].filter(Boolean)),
     );
 
     return {
-      plan: { ...data, focusAreas },
+      plan: sanitizePlanForJob({ ...data, focusAreas }, jobScope),
       model,
       raw,
     };
   } catch (err) {
-    // Never block interview-link creation on slow/noisy local LLM output.
     const message = err instanceof Error ? err.message : "plan generation failed";
     console.warn("[generatePlan] using template fallback:", message);
     const plan = buildFallbackInterviewPlan({
       jobTitle: params.job.title,
-      skills: [
-        ...params.job.skills,
-        ...params.candidate.skills,
-      ],
+      skills: params.job.skills,
+      jobDescription: params.job.description,
+      interviewType,
       focusAreas: focusFromScreen,
     });
     return {
@@ -667,8 +594,8 @@ Return ONLY valid JSON for TurnResult.
 You must BOTH score the latest answer AND choose the next action.
 
 nextAction values:
-- FOLLOW_UP: probe weak/vague/incomplete answer
-- GO_DEEPER: strong answer → harder question same topic
+- FOLLOW_UP: probe weak/vague/incomplete answer with a DIFFERENT question
+- GO_DEEPER: strong answer → harder question same topic (never a rephrase)
 - EXPLORE: candidate mentioned something interesting worth probing
 - NEW_TOPIC: topic covered enough → move on
 - CONCLUDE: interview plan complete or max questions reached
@@ -681,64 +608,56 @@ Scoring anchors (be strict, not generous):
 - empty or "I don't know": score <= 20
 
 Rules:
-- Non-answers: FOLLOW_UP once, then NEW_TOPIC — never GO_DEEPER on non-answers.
+- NEVER repeat or rephrase a question already in alreadyAskedQuestions.
+- FOLLOW_UP must ask something new (trade-offs, ownership, failure mode) — not the same prompt again.
+- Stay on the job title / JD / job skills. Do not ask about design tools (Figma, Photoshop, Sketch, etc.) unless they appear in jobSkills or jobDescription.
+- Non-answers: FOLLOW_UP once with a different probe, then NEW_TOPIC — never GO_DEEPER on non-answers.
+- After a substantial answer, prefer GO_DEEPER or NEW_TOPIC — do not re-ask.
 - One question at a time, conversational tone; may reference candidate's own words.
 - Never reveal scores to the candidate in the question text.
 - nextQuestion is null ONLY when nextAction is CONCLUDE.
 - Force CONCLUDE when questionsAsked+1 >= maxQuestions.
 - Keep answerEvaluation.reasoning and actionReasoning under 40 words. At most 2 short strings per array.`;
 
-export async function nextTurn(params: {
+export type NextTurnParams = {
   plan: InterviewPlan;
   state: AdaptiveState;
   turns: TurnRecord[];
   maxQuestions: number;
   interviewType: string;
   jobTitle: string;
-}): Promise<{ result: TurnResult; model: string; raw: unknown }> {
-  if (params.turns.length === 0) {
-    throw new AIError("VALIDATION", "nextTurn requires at least one answered turn");
-  }
+  jobDescription?: string;
+  jobSkills?: string[];
+};
 
-  const user = [
-    "Evaluate the LATEST answer in recentTurnsVerbatim and choose the next action.",
-    buildTurnContext(params),
-    TURN_RESULT_JSON_SCHEMA,
-  ].join("\n\n");
-
-  const { data, model, raw } = await chatJSON(TURN_SYSTEM, user, TurnResultSchema, {
-    numPredict: 700,
-  });
-
-  const lastAnswer = params.turns[params.turns.length - 1].answerText;
-  const enforced = enforceTurnRules({
-    modelResult: data,
-    state: params.state,
-    plan: params.plan,
-    maxQuestions: params.maxQuestions,
-    lastAnswerText: lastAnswer,
-  });
-
+function jobFromTurnParams(params: NextTurnParams): JobInterviewScope {
   return {
-    result: enforced.result,
-    model,
+    title: params.jobTitle,
+    description: params.jobDescription ?? "",
+    skills: params.jobSkills ?? [],
+    interviewType: params.interviewType,
+  };
+}
+
+export async function nextTurn(params: NextTurnParams): Promise<{
+  result: TurnResult;
+  model: string;
+  raw: unknown;
+}> {
+  const withState = await nextTurnWithState(params);
+  return {
+    result: withState.result,
+    model: withState.model,
     raw: {
-      modelRaw: raw,
-      enforcedState: enforced.nextState,
-      actionReasoning: enforced.result.actionReasoning,
+      modelRaw: withState.raw,
+      enforcedState: withState.nextState,
+      actionReasoning: withState.result.actionReasoning,
     },
   };
 }
 
 /** Like nextTurn but also returns the code-updated adaptive state. */
-export async function nextTurnWithState(params: {
-  plan: InterviewPlan;
-  state: AdaptiveState;
-  turns: TurnRecord[];
-  maxQuestions: number;
-  interviewType: string;
-  jobTitle: string;
-}): Promise<{
+export async function nextTurnWithState(params: NextTurnParams): Promise<{
   result: TurnResult;
   nextState: AdaptiveState;
   model: string;
@@ -748,30 +667,113 @@ export async function nextTurnWithState(params: {
     throw new AIError("VALIDATION", "nextTurn requires at least one answered turn");
   }
 
-  const user = [
-    "Evaluate the LATEST answer in recentTurnsVerbatim and choose the next action.",
-    buildTurnContext(params),
-    TURN_RESULT_JSON_SCHEMA,
-  ].join("\n\n");
+  const lastAnswer = params.turns[params.turns.length - 1]!.answerText;
+  const job = jobFromTurnParams(params);
+  const priorQuestions = params.turns.map((t) => t.question);
 
-  const { data, model, raw } = await chatJSON(TURN_SYSTEM, user, TurnResultSchema, {
-    numPredict: 700,
-  });
-  const lastAnswer = params.turns[params.turns.length - 1].answerText;
-  const enforced = enforceTurnRules({
-    modelResult: data,
-    state: params.state,
-    plan: params.plan,
-    maxQuestions: params.maxQuestions,
-    lastAnswerText: lastAnswer,
-  });
+  const fallback = () =>
+    decideNextTurn({
+      state: params.state,
+      plan: params.plan,
+      maxQuestions: params.maxQuestions,
+      lastAnswerText: lastAnswer,
+      lastTopic: params.turns[params.turns.length - 1]?.topic,
+      priorQuestions,
+      job,
+      modelResult: null,
+    });
 
-  return {
-    result: enforced.result,
-    nextState: enforced.nextState,
-    model,
-    raw,
-  };
+  try {
+    const user = [
+      "Evaluate the LATEST answer in recentTurnsVerbatim and choose the next action.",
+      buildTurnContext(params),
+      TURN_RESULT_JSON_SCHEMA,
+    ].join("\n\n");
+
+    const { data, model, raw } = await chatJSON(
+      TURN_SYSTEM,
+      user,
+      TurnResultSchema,
+      {
+        numPredict: 400,
+        timeoutMs: 35_000,
+        maxAttempts: 1,
+      },
+    );
+    const enforced = enforceTurnRules({
+      modelResult: data,
+      state: params.state,
+      plan: params.plan,
+      maxQuestions: params.maxQuestions,
+      lastAnswerText: lastAnswer,
+      priorQuestions,
+      job,
+    });
+    return {
+      result: enforced.result,
+      nextState: enforced.nextState,
+      model,
+      raw,
+    };
+  } catch (err) {
+    console.warn(
+      "[nextTurnWithState] using deterministic next question:",
+      err instanceof Error ? err.message : err,
+    );
+    const enforced = fallback();
+    return {
+      result: enforced.result,
+      nextState: enforced.nextState,
+      model: "deterministic-guard",
+      raw: { fallback: true },
+    };
+  }
+}
+
+const SCORE_SYSTEM = `You score one interview answer for recruiters in a self-hosted ATS.
+Return ONLY JSON: { "score": 0-100, "competency": string, "strengths": string[],
+"weaknesses": string[], "redFlags": string[], "reasoning": string (min 20 chars) }.
+Be strict. Do not write a next question. Do not mention proctoring.`;
+
+/** Recruiter-facing score — must not block the candidate on the next question. */
+export async function evaluateAnswerOnly(params: {
+  plan: InterviewPlan;
+  interviewType: string;
+  jobTitle: string;
+  jobDescription: string;
+  jobSkills: string[];
+  turns: TurnRecord[];
+}): Promise<{ evaluation: AnswerEvaluation; model: string; raw: unknown }> {
+  if (params.turns.length === 0) {
+    throw new AIError("VALIDATION", "evaluateAnswerOnly requires an answered turn");
+  }
+  const last = params.turns[params.turns.length - 1]!;
+  const user = JSON.stringify(
+    {
+      jobTitle: params.jobTitle,
+      jobDescription: params.jobDescription.slice(0, 2000),
+      jobSkills: params.jobSkills,
+      interviewType: params.interviewType,
+      planTopics: params.plan.topics.map((t) => t.name),
+      question: last.question,
+      topic: last.topic,
+      answer: last.answerText,
+    },
+    null,
+    2,
+  );
+
+  const { data, model, raw } = await chatJSON(
+    SCORE_SYSTEM,
+    user,
+    AnswerEvaluationSchema,
+    {
+      numPredict: 280,
+      timeoutMs: 90_000,
+      maxAttempts: 2,
+    },
+  );
+  return { evaluation: data, model, raw };
 }
 
 const FINAL_SYSTEM = `You are producing an advisory final interview evaluation for recruiters.

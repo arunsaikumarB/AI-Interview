@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, Circle, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BrandLogo } from "@/components/brand-logo";
 
 type CheckStatus = "pending" | "checking" | "ready" | "failed" | "skipped";
 
@@ -331,9 +332,7 @@ export function PreInterviewSystemCheck({
   return (
     <div className="mx-auto max-w-lg space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm">
       <div>
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          Logisoft HireOS
-        </p>
+        <BrandLogo size="header" />
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Before you begin</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Let&apos;s quickly check your device so your interview can run smoothly.

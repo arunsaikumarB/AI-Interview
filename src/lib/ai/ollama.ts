@@ -188,10 +188,15 @@ export async function chatJSON<T>(
     numPredict?: number;
     /** Explicit JSON Schema for Ollama structured outputs. */
     jsonSchema?: Record<string, unknown>;
+    timeoutMs?: number;
+    maxAttempts?: number;
   },
 ): Promise<{ data: T; model: string; raw: unknown }> {
   const model = options?.model ?? OLLAMA_MODEL();
   const temperature = options?.temperature ?? 0.1;
+  const maxAttempts = Math.max(1, options?.maxAttempts ?? 2);
+  const timeoutMs =
+    options?.timeoutMs ?? Number(process.env.OLLAMA_TIMEOUT_MS ?? 240_000);
   const baseUrl = getChatOllamaUrl();
   const headers = chatHeaders(true);
   const format = resolveOllamaFormat(
@@ -201,7 +206,7 @@ export async function chatJSON<T>(
 
   let lastError: string | null = null;
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const userContent =
       attempt === 1 || !lastError
         ? user
@@ -210,20 +215,26 @@ export async function chatJSON<T>(
     const raw = await ollamaFetch<{
       model?: string;
       message?: { content?: string };
-    }>(baseUrl, "/api/chat", {
-      model,
-      stream: false,
-      format,
-      options: {
-        temperature,
-        // Cap plan/turn JSON size so CPU hosts don't run for many minutes.
-        num_predict: options?.numPredict ?? 2048,
+    }>(
+      baseUrl,
+      "/api/chat",
+      {
+        model,
+        stream: false,
+        format,
+        options: {
+          temperature,
+          // Cap plan/turn JSON size so CPU hosts don't run for many minutes.
+          num_predict: options?.numPredict ?? 2048,
+        },
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: userContent },
+        ] satisfies OllamaMessage[],
       },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: userContent },
-      ] satisfies OllamaMessage[],
-    }, headers);
+      headers,
+      timeoutMs,
+    );
 
     const content = raw.message?.content ?? "";
     const usedModel = raw.model ?? model;
@@ -243,12 +254,12 @@ export async function chatJSON<T>(
         lastError = err instanceof Error ? err.message : "Unknown validation error";
       }
 
-      if (attempt === 2) {
+      if (attempt === maxAttempts) {
         throw new AIError(
           err instanceof AIError && err.code === "INVALID_JSON"
             ? "INVALID_JSON"
             : "VALIDATION",
-          `Ollama returned invalid structured output after 2 attempts: ${lastError}`,
+          `Ollama returned invalid structured output after ${maxAttempts} attempt(s): ${lastError}`,
           { lastError, content },
         );
       }

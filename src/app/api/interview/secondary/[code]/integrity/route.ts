@@ -89,7 +89,10 @@ export async function POST(request: Request, { params }: Ctx) {
       },
     });
 
-    return jsonOk(result);
+    return jsonOk({
+      ...result,
+      kind: body.kind,
+    });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return Response.json(

@@ -307,6 +307,28 @@
   :focus-visible {
     @apply outline-none ring-2 ring-ring/35 ring-offset-2 ring-offset-background;
   }
+
+  select:not([multiple]) {
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    color: hsl(var(--foreground));
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    background-size: 1rem 1rem;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  }
+
+  html.light select:not([multiple]) {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  }
+
+  select:not([multiple]) option,
+  select:not([multiple]) optgroup {
+    background-color: #ffffff;
+    color: #0f172a;
+  }
 }
 
 @layer components {
@@ -314,6 +336,37 @@
     position: relative;
     z-index: 1;
     background: transparent;
+  }
+
+  .hero-content {
+    width: min(100%, 47.5rem);
+    margin-inline: auto;
+  }
+
+  .auth-card {
+    width: min(100%, 27.5rem);
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 2.25rem 2.25rem 2.5rem;
+    border-radius: 1.5rem;
+    background: rgba(20, 27, 40, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(20px);
+  }
+
+  .light .auth-card {
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+  }
+
+  @media (min-width: 640px) {
+    .auth-card {
+      padding: 2.5rem;
+    }
   }
 
   .surface-panel,
@@ -587,7 +640,8 @@
   .topbar-search,
   [data-slot="input"],
   [data-slot="textarea"],
-  [data-slot="select-trigger"] {
+  [data-slot="select-trigger"],
+  select:not([multiple]) {
     background-color: var(--glass-control-bg);
     border-color: var(--glass-control-border);
     backdrop-filter: blur(12px) saturate(115%);
@@ -762,4 +816,26 @@
       linear-gradient(90deg, hsl(var(--chart-grid)) 1px, transparent 1px);
     background-size: 48px 48px;
   }
+}
+
+/* Interpolatable orb motion tokens (interview room presentation only). */
+@property --orb-glow {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0.35;
+}
+@property --orb-scale-peak {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1.03;
+}
+@property --orb-ty {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+@property --orb-rot {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 0deg;
 }

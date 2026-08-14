@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { Manrope } from "next/font/google";
+import { Inter } from "next/font/google";
 import { Providers } from "@/components/providers";
 import {
-  DEFAULT_COMPANY_NAME,
   DOCUMENT_TITLE,
   PRODUCT_DESCRIPTION,
   PRODUCT_NAME,
@@ -10,7 +9,7 @@ import {
 } from "@/lib/branding";
 import "./globals.css";
 
-const sans = Manrope({
+const sans = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
   weight: ["400", "500", "600", "700"],
@@ -26,7 +25,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: DOCUMENT_TITLE,
     description: PRODUCT_DESCRIPTION,
-    siteName: DEFAULT_COMPANY_NAME,
+    siteName: PRODUCT_NAME,
   },
   twitter: {
     card: "summary",

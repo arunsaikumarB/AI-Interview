@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { BrandLogo } from "@/components/brand-logo";
 import {
   IntegrityTerminatedScreen,
   IntegrityWarningDialog,
@@ -12,6 +13,7 @@ import {
   MAX_PENDING_CLIENT_CHUNKS,
 } from "@/lib/secondary-recording-client";
 import { createSecondaryIntegrityMonitor } from "@/lib/secondary-integrity-client";
+import { candidateSecondaryFixMessage } from "@/lib/integrity";
 
 type Meta = {
   jobTitle: string;
@@ -24,23 +26,35 @@ type Meta = {
   shouldRecord?: boolean;
   recordingStatus?: string;
   recordingId?: string | null;
+  pendingIntegrityWarning?: {
+    kind: "CAMERA_MOVED" | "PERSON_MISSING" | "EXTRA_PERSON" | "LOOKING_AT_SECONDARY";
+    warningNumber: number;
+    warningOf: number;
+    message: string;
+  } | null;
 };
 
 function pickRecorderMime(): string | undefined {
-  const candidates = [
-    "video/webm;codecs=vp9,opus",
-    "video/webm;codecs=vp8,opus",
-    "video/webm;codecs=vp9",
-    "video/webm",
-    "video/mp4",
-  ];
+  if (typeof MediaRecorder === "undefined") return undefined;
+  const isiOS =
+    typeof navigator !== "undefined" &&
+    /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const candidates = isiOS
+    ? [
+        "video/mp4",
+        "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
+      ]
+    : [
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm;codecs=vp9",
+        "video/webm",
+        "video/mp4",
+      ];
   for (const t of candidates) {
-    if (
-      typeof MediaRecorder !== "undefined" &&
-      MediaRecorder.isTypeSupported(t)
-    ) {
-      return t;
-    }
+    if (MediaRecorder.isTypeSupported(t)) return t;
   }
   return undefined;
 }
@@ -82,6 +96,7 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   const [integrityWarning, setIntegrityWarning] = useState<{
     warningNumber: number;
     warningOf: number;
+    message: string;
   } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -99,6 +114,14 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   const uploadingRef = useRef(false);
   const interruptedAtRef = useRef<number | null>(null);
   const recordingActiveRef = useRef(false);
+  const warningOpenRef = useRef(false);
+  const monitorRef = useRef<ReturnType<
+    typeof createSecondaryIntegrityMonitor
+  > | null>(null);
+  const requestDataTimerRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  warningOpenRef.current = Boolean(integrityWarning);
 
   const stopStreamingOnly = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -143,6 +166,10 @@ export function SecondaryCameraClient({ code }: { code: string }) {
 
   const stopRecorder = useCallback(async (finalize: boolean) => {
     recordingActiveRef.current = false;
+    if (requestDataTimerRef.current) {
+      clearInterval(requestDataTimerRef.current);
+      requestDataTimerRef.current = null;
+    }
     const rec = recorderRef.current;
     recorderRef.current = null;
     if (rec && rec.state !== "inactive") {
@@ -225,6 +252,16 @@ export function SecondaryCameraClient({ code }: { code: string }) {
     recordingActiveRef.current = true;
     interruptedAtRef.current = null;
     rec.start(CHUNK_TIMESLICE_MS);
+    if (requestDataTimerRef.current) clearInterval(requestDataTimerRef.current);
+    requestDataTimerRef.current = setInterval(() => {
+      if (recorderRef.current?.state === "recording") {
+        try {
+          recorderRef.current.requestData();
+        } catch {
+          /* some browsers only emit on stop */
+        }
+      }
+    }, 2000);
     setRecLabel("Secondary camera recording");
   }, [code, flushQueue]);
 
@@ -372,6 +409,16 @@ export function SecondaryCameraClient({ code }: { code: string }) {
           return;
         }
         setMeta(data);
+        if (data.pendingIntegrityWarning) {
+          setIntegrityWarning({
+            warningNumber: data.pendingIntegrityWarning.warningNumber,
+            warningOf: data.pendingIntegrityWarning.warningOf,
+            message: data.pendingIntegrityWarning.message,
+          });
+        } else if (warningOpenRef.current) {
+          setIntegrityWarning(null);
+          monitorRef.current?.resume();
+        }
         if (data.shouldRecord && !recordingActiveRef.current) {
           await startRecorder();
         }
@@ -409,6 +456,7 @@ export function SecondaryCameraClient({ code }: { code: string }) {
     const monitor = createSecondaryIntegrityMonitor({
       code,
       video: videoRef.current,
+      isPaused: () => warningOpenRef.current,
       onResult: (result) => {
         if (result.terminated) {
           setPhoneTerminated(true);
@@ -416,16 +464,21 @@ export function SecondaryCameraClient({ code }: { code: string }) {
           void stopAll(false);
           return;
         }
-        if (result.showWarning && result.kind === "CAMERA_MOVED") {
+        if (result.showWarning && result.kind) {
           setIntegrityWarning({
             warningNumber: result.warningNumber ?? 1,
-            warningOf: result.warningOf ?? 2,
+            warningOf: result.warningOf ?? 3,
+            message: candidateSecondaryFixMessage(result.kind),
           });
         }
       },
     });
+    monitorRef.current = monitor;
     void monitor.start();
-    return () => monitor.stop();
+    return () => {
+      monitor.stop();
+      monitorRef.current = null;
+    };
   }, [
     phoneTerminated,
     connected,
@@ -541,6 +594,9 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   if (error && !meta) {
     return (
       <div className="mx-auto max-w-md rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-destructive">
+        <div className="mb-3 text-foreground">
+          <BrandLogo size="header" />
+        </div>
         <p className="font-medium">Secondary camera connection unavailable.</p>
         <p className="mt-2 text-sm">{error}</p>
       </div>
@@ -549,7 +605,10 @@ export function SecondaryCameraClient({ code }: { code: string }) {
 
   if (!meta) {
     return (
-      <p className="text-center text-sm text-muted-foreground">Loading…</p>
+      <div className="mx-auto max-w-md space-y-3 p-6 text-center">
+        <BrandLogo size="header" />
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
     );
   }
 
@@ -562,15 +621,22 @@ export function SecondaryCameraClient({ code }: { code: string }) {
       <IntegrityWarningDialog
         open={Boolean(integrityWarning)}
         warningNumber={integrityWarning?.warningNumber ?? 1}
-        warningOf={integrityWarning?.warningOf ?? 2}
-        message="The secondary camera moved after placement. Leave the phone still. A second move will end the interview."
-        stayHint="Keep this phone fixed. Look only at the interview laptop."
-        onDismiss={() => setIntegrityWarning(null)}
+        warningOf={integrityWarning?.warningOf ?? 3}
+        message={
+          integrityWarning?.message ??
+          "Please correct the side-camera issue, then tap I’ve fixed this."
+        }
+        stayHint="This stays on screen until you fix it and confirm. You have 3 chances."
+        onDismiss={() => {
+          void fetch(`/api/interview/secondary/${code}/integrity/ack`, {
+            method: "POST",
+          });
+          setIntegrityWarning(null);
+          monitorRef.current?.resume();
+        }}
       />
       <div>
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          Logisoft HireOS
-        </p>
+        <BrandLogo size="header" />
         <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
           Secondary camera
         </p>

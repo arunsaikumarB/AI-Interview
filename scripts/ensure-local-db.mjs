@@ -266,14 +266,14 @@ function syncPublicLanIp() {
 async function main() {
   syncPublicLanIp();
   try {
-    execFileSync("node", [path.join(ROOT, "scripts", "ensure-local-https.mjs")], {
+    execFileSync("node", [path.join(ROOT, "scripts", "ensure-lan-https-proxy.mjs")], {
       cwd: ROOT,
       stdio: "inherit",
       windowsHide: true,
     });
   } catch {
     console.warn(
-      "[db:ensure] HTTPS cert step skipped — run npm run https:certs later for phone camera.",
+      "[db:ensure] HTTPS phone proxy skipped — run npm run https:up later for secondary camera.",
     );
   }
 

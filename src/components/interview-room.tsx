@@ -23,7 +23,11 @@ import {
   type IntegrityEpisodeController,
 } from "@/lib/integrity-episode";
 import { STRICT_POLICY } from "@/lib/integrity";
-import { cn } from "@/lib/utils";
+import { BrandLogo } from "@/components/brand-logo";
+import { AIInterviewOrb } from "@/components/interview/ai-interview-orb";
+import { InterviewMessages, type InterviewChatMessage } from "@/components/interview/interview-messages";
+import { InterviewMicControl } from "@/components/interview/interview-mic-control";
+import { useOrbState, usePrefersReducedMotion } from "@/components/interview/orb-state";
 
 const FOCUS_NUDGE_COPY =
   "Please stay focused on the interview — activity signals are shared with the recruiter.";
@@ -64,6 +68,57 @@ function formatRemaining(ms: number): string {
 
 type AnswerMode = "voice" | "text";
 
+function buildInterviewMessages(opts: {
+  answeredTurns: Turn[];
+  activeQuestion: { sequence: number; question: string } | null;
+  heardLabel: string | null;
+  thinking: boolean;
+  voiceMode: boolean;
+}): InterviewChatMessage[] {
+  const out: InterviewChatMessage[] = [];
+  for (const t of opts.answeredTurns) {
+    out.push({
+      id: `ai-${t.sequence}`,
+      role: "ai",
+      text: t.question,
+      sequence: t.sequence,
+      isCurrentQuestion: false,
+      isLiveAnswer: false,
+    });
+    if (t.answerText) {
+      out.push({
+        id: `me-${t.sequence}`,
+        role: "candidate",
+        text: opts.voiceMode ? `Heard: ${t.answerText}` : t.answerText,
+        sequence: t.sequence,
+        isCurrentQuestion: false,
+        isLiveAnswer: false,
+      });
+    }
+  }
+  if (opts.activeQuestion) {
+    out.push({
+      id: `ai-${opts.activeQuestion.sequence}`,
+      role: "ai",
+      text: opts.activeQuestion.question,
+      sequence: opts.activeQuestion.sequence,
+      isCurrentQuestion: true,
+      isLiveAnswer: false,
+    });
+    if (opts.heardLabel && opts.thinking) {
+      out.push({
+        id: `me-live-${opts.activeQuestion.sequence}`,
+        role: "candidate",
+        text: `Heard: ${opts.heardLabel}`,
+        sequence: opts.activeQuestion.sequence,
+        isCurrentQuestion: false,
+        isLiveAnswer: true,
+      });
+    }
+  }
+  return out;
+}
+
 export function InterviewRoom({ token }: { token: string }) {
   const [info, setInfo] = useState<Info | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +136,7 @@ export function InterviewRoom({ token }: { token: string }) {
   const [preferText, setPreferText] = useState(false);
   const [answerMode, setAnswerMode] = useState<AnswerMode>("voice");
   const [recording, setRecording] = useState(false);
-  const [recordLevel, setRecordLevel] = useState(0);
+  const [, setRecordLevel] = useState(0);
   const [transcriptFailed, setTranscriptFailed] = useState(false);
   const [heardLabel, setHeardLabel] = useState<string | null>(null);
   const [proctoringConsented, setProctoringConsented] = useState(false);
@@ -91,6 +146,7 @@ export function InterviewRoom({ token }: { token: string }) {
     message: string;
     warningNumber: number;
     warningOf: number;
+    source: "strict" | "secondary";
   } | null>(null);
   const [integrityTerminated, setIntegrityTerminated] = useState(false);
   const [cameraAllowed, setCameraAllowed] = useState(false);
@@ -99,7 +155,6 @@ export function InterviewRoom({ token }: { token: string }) {
   const [remainingLabel, setRemainingLabel] = useState<string | null>(null);
   const [timeUp, setTimeUp] = useState(false);
   const startedAt = useRef<number | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const mediaRec = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -119,6 +174,25 @@ export function InterviewRoom({ token }: { token: string }) {
   const sessionIsVoice = info?.mode === "VOICE" && !preferText;
   const useVoiceUi = sessionIsVoice && answerMode === "voice";
   voiceModeRef.current = Boolean(info?.mode === "VOICE");
+
+  const visualQuestion =
+    current ??
+    (() => {
+      const open = turns.find((t) => t.answerText == null);
+      return open ? { sequence: open.sequence, question: open.question } : null;
+    })();
+  const reducedMotion = usePrefersReducedMotion();
+  const { orbState, statusLabel } = useOrbState({
+    concluded: concluded || info?.status === "COMPLETED",
+    status: info?.status,
+    thinking,
+    pendingProcessing,
+    recording,
+    hasActiveQuestion: visualQuestion != null,
+    hasError: Boolean(error),
+    questionSequence: visualQuestion?.sequence ?? null,
+    answeredCount: turns.filter((t) => t.answerText != null).length,
+  });
 
   const finishToThanks = useCallback(() => {
     try {
@@ -264,6 +338,13 @@ export function InterviewRoom({ token }: { token: string }) {
         setEnhancedSetupReady(true);
         setIntegrityConsented(true);
         setFullscreenReady(true);
+      } else if (data.pendingIntegrityWarning) {
+        setIntegrityWarning({
+          message: data.pendingIntegrityWarning.message,
+          warningNumber: data.pendingIntegrityWarning.warningNumber,
+          warningOf: data.pendingIntegrityWarning.warningOf,
+          source: "secondary",
+        });
       }
       if (data.proctoringConsentAt) {
         setProctoringConsented(true);
@@ -366,6 +447,7 @@ export function InterviewRoom({ token }: { token: string }) {
             message,
             warningNumber: result.warningNumber,
             warningOf: result.warningOf,
+            source: "strict",
           });
         }
       },
@@ -384,12 +466,12 @@ export function InterviewRoom({ token }: { token: string }) {
     token,
   ]);
 
-  // Poll server status while interview is active (Strict + Enhanced terminate)
+  // Poll server status while interview is active (Strict + Enhanced terminate / warnings)
   useEffect(() => {
     if (info?.status !== "IN_PROGRESS" || integrityTerminated) {
       return;
     }
-    const id = setInterval(async () => {
+    const tick = async () => {
       try {
         const res = await fetch(`/api/interview/${token}`);
         const data = await res.json();
@@ -398,13 +480,40 @@ export function InterviewRoom({ token }: { token: string }) {
           setInfo((prev) =>
             prev ? { ...prev, status: "TERMINATED" } : prev,
           );
+          setIntegrityWarning(null);
+          return;
+        }
+        const pending = data.pendingIntegrityWarning as
+          | {
+              message: string;
+              warningNumber: number;
+              warningOf: number;
+            }
+          | null
+          | undefined;
+        if (pending) {
+          setIntegrityWarning({
+            message: pending.message,
+            warningNumber: pending.warningNumber,
+            warningOf: pending.warningOf,
+            source: "secondary",
+          });
+        } else {
+          setIntegrityWarning((prev) =>
+            prev?.source === "secondary" ? null : prev,
+          );
         }
       } catch {
         /* ignore */
       }
-    }, 8_000);
+    };
+    void tick();
+    const id = setInterval(
+      () => void tick(),
+      info?.proctoringMode === "ENHANCED" ? 2_000 : 8_000,
+    );
     return () => clearInterval(id);
-  }, [info?.status, integrityTerminated, token]);
+  }, [info?.status, info?.proctoringMode, integrityTerminated, token]);
 
   // Start / stop proctoring collectors while IN_PROGRESS
   useEffect(() => {
@@ -467,10 +576,6 @@ export function InterviewRoom({ token }: { token: string }) {
   useEffect(() => {
     proctorRef.current?.watchPasteTarget(textareaRef.current);
   }, [answerMode, current?.sequence]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [turns, current, thinking, heardLabel]);
 
   const timerKey = current?.sequence ?? turns.find((t) => t.answerText == null)?.sequence;
 
@@ -828,6 +933,9 @@ export function InterviewRoom({ token }: { token: string }) {
   if (error && !info) {
     return (
       <div className="mx-auto max-w-lg rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-destructive">
+        <div className="mb-3 text-foreground">
+          <BrandLogo size="header" />
+        </div>
         <p className="font-medium">Unable to open interview</p>
         <p className="mt-2 text-sm">{error}</p>
       </div>
@@ -835,7 +943,12 @@ export function InterviewRoom({ token }: { token: string }) {
   }
 
   if (!info) {
-    return <p className="text-center text-sm text-muted-foreground">Loading interview…</p>;
+    return (
+      <div className="mx-auto max-w-lg space-y-3 p-6 text-center">
+        <BrandLogo size="header" />
+        <p className="text-sm text-muted-foreground">Loading interview…</p>
+      </div>
+    );
   }
 
   if (integrityTerminated || info.status === "TERMINATED") {
@@ -850,9 +963,7 @@ export function InterviewRoom({ token }: { token: string }) {
     }
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          Logisoft HireOS
-        </p>
+        <BrandLogo size="header" />
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Thank you</h1>
         <p className="mt-3 text-muted-foreground">
           Your interview for <strong>{info.jobTitle}</strong> is complete. The team will get
@@ -972,9 +1083,7 @@ export function InterviewRoom({ token }: { token: string }) {
   if (info.status === "SCHEDULED" && !activeQuestion) {
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 shadow-sm">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          Logisoft HireOS
-        </p>
+        <BrandLogo size="header" />
         <p className="mt-2 text-sm uppercase tracking-wide text-muted-foreground">
           {info.mode === "VOICE" ? "Voice interview" : "Text interview"}
         </p>
@@ -995,83 +1104,99 @@ export function InterviewRoom({ token }: { token: string }) {
     );
   }
 
+  const chatMessages = buildInterviewMessages({
+    answeredTurns,
+    activeQuestion,
+    heardLabel,
+    thinking,
+    voiceMode: info.mode === "VOICE",
+  });
+  const interviewCode = String(
+    activeQuestion?.sequence ?? Math.max(answeredTurns.length, 1),
+  ).padStart(2, "0");
+
   return (
-    <div className="mx-auto flex min-h-[80vh] max-w-2xl flex-col">
+    <div className="relative mx-auto flex h-[calc(100dvh-2rem)] min-h-0 w-full max-w-3xl flex-col overflow-hidden md:h-[calc(100dvh-1.5rem)]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-20 size-64 -translate-x-1/2 rounded-full bg-[#2563EB]/[0.06]"
+      />
       <IntegrityWarningDialog
         open={integrityWarning != null}
         warningNumber={integrityWarning?.warningNumber ?? 1}
-        warningOf={integrityWarning?.warningOf ?? 2}
+        warningOf={integrityWarning?.warningOf ?? 3}
         message={
           integrityWarning?.message ?? "Your interview window lost focus."
         }
-        onDismiss={() => setIntegrityWarning(null)}
+        stayHint={
+          integrityWarning?.source === "secondary"
+            ? "This stays on screen until you fix it and confirm. You have 3 chances."
+            : "Please remain on the interview screen for the rest of the interview."
+        }
+        onDismiss={() => {
+          if (integrityWarning?.source === "secondary") {
+            void fetch(`/api/interview/${token}/integrity/ack`, {
+              method: "POST",
+            });
+          }
+          setIntegrityWarning(null);
+        }}
       />
       {focusNudge ? (
         <div
           role="status"
-          className="mb-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground"
+          className="relative z-10 mb-2 shrink-0 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground"
         >
           {focusNudge}
         </div>
       ) : null}
-      <header className="mb-4 border-b border-border pb-3">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">{info.jobTitle}</p>
-        <p className="text-sm text-muted-foreground">
-          Question {activeQuestion?.sequence ?? answeredTurns.length} of ~{info.maxQuestions}
-          {info.mode === "VOICE" ? ` · ${useVoiceUi ? "Voice" : "Typing"}` : ""}
-          {remainingLabel != null ? ` · ${remainingLabel} left` : ""}
-        </p>
-        {timeUp && !concluded ? (
-          <p className="mt-1 text-sm text-warning">
-            Time is up — submit your current answer to finish the interview.
-          </p>
-        ) : null}
-      </header>
 
-      <div className="flex-1 space-y-4 overflow-y-auto pb-4">
-        {answeredTurns.map((t) => (
-          <div key={`seq-${t.sequence}`} className="space-y-2">
-            <Bubble side="ai" text={t.question} />
-            {t.answerText ? (
-              <Bubble
-                side="me"
-                text={
-                  info.mode === "VOICE" && t.answerText
-                    ? `Heard: ${t.answerText}`
-                    : t.answerText
-                }
-              />
-            ) : null}
-          </div>
-        ))}
-        {activeQuestion ? (
-          <div key={`seq-${activeQuestion.sequence}-current`} className="space-y-2">
-            <Bubble side="ai" text={activeQuestion.question} emphasis />
-            {useVoiceUi ? (
-              <Button size="sm" variant="outline" type="button" onClick={replayQuestion}>
-                Replay question
-              </Button>
-            ) : null}
-            {heardLabel && thinking ? (
-              <Bubble side="me" text={`Heard: ${heardLabel}`} />
-            ) : null}
-          </div>
-        ) : null}
-        {thinking ? (
-          <div className="flex items-center gap-2 text-sm text-ai">
-            <span className="inline-flex gap-1">
-              <Dot />
-              <Dot delay="150ms" />
-              <Dot delay="300ms" />
-            </span>
-            AI is preparing the next question…
-          </div>
-        ) : null}
-        <div ref={bottomRef} />
+      <header className="relative z-10 flex shrink-0 items-start justify-between gap-4 pb-2">
+        <div className="min-w-0">
+          <BrandLogo size="mark" />
+          <p className="mt-1 truncate text-[11px] text-muted-foreground">
+            {info.jobTitle}
+          </p>
+        </div>
+        <div className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+          <p>
+            Interview {interviewCode}
+            {info.mode === "VOICE" ? ` · ${useVoiceUi ? "Voice" : "Typing"}` : ""}
+          </p>
+          {remainingLabel != null ? (
+            <p className="mt-0.5">{remainingLabel}</p>
+          ) : null}
+        </div>
+      </header>
+      {timeUp && !concluded ? (
+        <p className="relative z-10 mb-2 shrink-0 text-sm text-warning">
+          Time is up — submit your current answer to finish the interview.
+        </p>
+      ) : null}
+
+      <div className="relative z-10 flex shrink-0 justify-center py-1 md:py-2">
+        <AIInterviewOrb
+          state={orbState}
+          reducedMotion={reducedMotion}
+          statusLabel={statusLabel}
+        />
       </div>
 
+      <InterviewMessages
+        messages={chatMessages}
+        reducedMotion={reducedMotion}
+        resumeHistory={answeredTurns.length > 0}
+        replayButton={
+          useVoiceUi && activeQuestion ? (
+            <Button size="sm" variant="outline" type="button" onClick={replayQuestion}>
+              Replay question
+            </Button>
+          ) : undefined
+        }
+      />
+
       {error || pendingProcessing ? (
-        <div className="mb-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
+        <div className="relative z-10 mb-2 shrink-0 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
           <p>
             {error ??
               "AI is still processing your last answer — your text was saved. Retry when ready."}
@@ -1102,7 +1227,7 @@ export function InterviewRoom({ token }: { token: string }) {
       ) : null}
 
       {transcriptFailed ? (
-        <div className="mb-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
+        <div className="relative z-10 mb-2 shrink-0 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
           <p>
             We couldn&apos;t hear that clearly. Continue by typing your answer —
             re-recording is not available.
@@ -1111,12 +1236,12 @@ export function InterviewRoom({ token }: { token: string }) {
       ) : null}
 
       {activeQuestion && !thinking && !pendingProcessing ? (
-        <div className="glass-panel sticky bottom-0 space-y-2 border-t pt-3">
+        <div className="relative z-10 mt-2 shrink-0 space-y-3 rounded-2xl p-4">
           {info.mode === "VOICE" && useVoiceUi ? (
             <div className="flex justify-end">
               <button
                 type="button"
-                className="text-xs text-muted-foreground underline"
+                className="text-xs text-muted-foreground underline outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => setAnswerMode("text")}
               >
                 Switch to typing
@@ -1125,38 +1250,18 @@ export function InterviewRoom({ token }: { token: string }) {
           ) : null}
 
           {useVoiceUi ? (
-            <>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>
-                  {recording ? (
-                    <span className="voice-live font-display tabular-nums">
-                      Recording {formatElapsed(elapsed)}
-                    </span>
-                  ) : (
-                    "Press to record"
-                  )}
-                </span>
-                <span>No hard time limit</span>
-              </div>
-              {recording ? (
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-ai transition-[width]"
-                    style={{ width: `${Math.round(recordLevel * 100)}%` }}
-                  />
-                </div>
-              ) : null}
-              <Button
-                className="w-full"
-                variant={recording ? "destructive" : "default"}
-                onClick={recording ? stopRecording : startRecording}
-                disabled={thinking}
-              >
-                {recording ? "Stop & send" : "Press to record"}
-              </Button>
-            </>
+            <div className="flex flex-col items-center gap-2">
+              <InterviewMicControl
+                recording={recording}
+                thinking={thinking}
+                reducedMotion={reducedMotion}
+                elapsedLabel={formatElapsed(elapsed)}
+                onToggle={recording ? stopRecording : startRecording}
+              />
+              <p className="text-[11px] text-muted-foreground">No hard time limit</p>
+            </div>
           ) : (
-            <>
+            <div className="glass-panel space-y-3 rounded-2xl p-4">
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>Elapsed {formatElapsed(elapsed)}</span>
                 <span>No hard time limit</span>
@@ -1168,52 +1273,20 @@ export function InterviewRoom({ token }: { token: string }) {
                 rows={4}
                 placeholder="Type your answer…"
                 disabled={thinking}
+                className="min-h-28 resize-y"
               />
               <Button
-                className="w-full"
+                className="h-11 w-full"
                 onClick={submitText}
                 disabled={!answer.trim() || thinking}
               >
                 Submit answer
               </Button>
-            </>
+            </div>
           )}
         </div>
       ) : null}
     </div>
-  );
-}
-
-function Bubble({
-  side,
-  text,
-  emphasis,
-}: {
-  side: "ai" | "me";
-  text: string;
-  emphasis?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
-        side === "ai"
-          ? "mr-auto bg-card text-foreground shadow-sm ring-1 ring-white/10"
-          : "ml-auto bg-primary/15 text-foreground",
-        emphasis && "interview-question",
-      )}
-    >
-      {text}
-    </div>
-  );
-}
-
-function Dot({ delay }: { delay?: string }) {
-  return (
-    <span
-      className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-ai"
-      style={{ animationDelay: delay }}
-    />
   );
 }
 

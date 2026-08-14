@@ -4,6 +4,7 @@ import {
   resolveSecondaryStatus,
   secondaryStatusLabel,
 } from "@/lib/secondary-camera";
+import { pendingSecondaryWarningDto } from "@/lib/integrity";
 
 type Ctx = { params: { code: string } };
 
@@ -33,7 +34,7 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
       { status: 410 },
     );
   }
-  if (session.status === "CANCELLED" || session.status === "COMPLETED" || session.status === "TERMINATED") {
+  if (session.status === "CANCELLED") {
     return Response.json({ error: "Interview ended" }, { status: 410 });
   }
   if (
@@ -70,6 +71,7 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
     recordingConsent: Boolean(session.secondaryRecordingConsentAt),
     recordingStatus: session.secondaryRecordingStatus,
     recordingId: session.secondaryRecordingId,
+    pendingIntegrityWarning: pendingSecondaryWarningDto(session),
     shouldRecord:
       session.status === "IN_PROGRESS" &&
       Boolean(session.secondaryPlacementConfirmedAt) &&

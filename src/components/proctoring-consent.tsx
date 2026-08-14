@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand-logo";
 
 const CONSENT_COPY_STANDARD =
   "This interview monitors tab focus, window switching, copy/paste, and (if you allow the camera) whether a face is visible. These are informational signals reviewed by a human recruiter; they do not automatically affect your result.";
@@ -42,9 +43,7 @@ export function ProctoringConsent({
 
   return (
     <div className="mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-        Logisoft HireOS
-      </p>
+      <BrandLogo size="header" />
       <p className="text-sm uppercase tracking-wide text-muted-foreground">
         Proctoring consent
       </p>

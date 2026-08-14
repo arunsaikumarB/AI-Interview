@@ -1,37 +1,37 @@
 import Link from "next/link";
-import { DEFAULT_COMPANY_NAME, PRODUCT_NAME, TAGLINE } from "@/lib/branding";
+import { BrandLogo } from "@/components/brand-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { PRODUCT_NAME, TAGLINE } from "@/lib/branding";
 
 export default function HomePage() {
   return (
-    <div className="app-canvas relative min-h-screen overflow-hidden text-foreground">
+    <div className="app-canvas relative min-h-svh overflow-x-hidden text-foreground">
       <div className="pointer-events-none absolute inset-0 bg-grid-faint opacity-30" />
+      <div className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6">
+        <ThemeToggle />
+      </div>
 
-      <main className="relative mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-16">
-        <div className="accent-rule mb-6" />
-        <p className="font-sans text-5xl font-semibold leading-none tracking-tight text-foreground md:text-6xl">
-          {DEFAULT_COMPANY_NAME}
-        </p>
-        <h1 className="mt-6 max-w-2xl text-xl text-muted-foreground md:text-2xl">
-          {PRODUCT_NAME}
-        </h1>
-        <p className="mt-3 max-w-2xl text-lg text-muted-foreground">{TAGLINE}</p>
-        <p className="mt-4 max-w-xl text-sm text-muted-foreground">
-          Runs on your stack: Next.js, PostgreSQL + pgvector, local disk storage,
-          and Ollama at localhost:11434. No cloud AI. No cloud DB.
-        </p>
-        <div className="mt-10 flex flex-wrap gap-3">
-          <Link
-            href="/login"
-            className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
-          >
-            Sign in
-          </Link>
-          <Link
-            href="/careers"
-            className="inline-flex h-10 items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-foreground transition hover:bg-muted"
-          >
-            View careers
-          </Link>
+      <main className="relative grid min-h-svh place-items-center px-6 py-16">
+        <div className="hero-content flex flex-col items-center text-center">
+          <h1 className="sr-only">{PRODUCT_NAME}</h1>
+          <BrandLogo size="hero" />
+          <p className="mt-6 max-w-md text-base leading-relaxed text-foreground/75 sm:text-lg">
+            {TAGLINE}
+          </p>
+          <div className="mt-10 flex w-full flex-col items-stretch justify-center gap-3 sm:w-auto sm:flex-row sm:items-center">
+            <Link
+              href="/login"
+              className="btn-primary inline-flex h-12 min-w-[10.5rem] items-center justify-center rounded-[14px] px-8 text-[15px] font-semibold text-white transition hover:opacity-95"
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/careers"
+              className="inline-flex h-12 min-w-[10.5rem] items-center justify-center rounded-[14px] border border-border bg-surface/80 px-8 text-[15px] font-semibold text-foreground transition hover:bg-muted"
+            >
+              View careers
+            </Link>
+          </div>
         </div>
       </main>
     </div>

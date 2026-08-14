@@ -22,10 +22,62 @@ export type SecondaryIntegrityKind =
   | "LOOKING_AT_SECONDARY";
 
 export const SECONDARY_INTEGRITY_POLICY = {
-  /** Camera-move episodes before terminate (1st = warn, 2nd = end). */
-  cameraMoveTerminateAt: 2,
+  /** Candidate may correct this many times. The next episode after this ends the interview. */
+  warningLimit: 3,
+  terminateAt: 4,
   episodeCooldownMs: 1500,
 } as const;
+
+export function isSecondaryIntegrityKind(
+  raw: string | null | undefined,
+): raw is SecondaryIntegrityKind {
+  return (
+    raw === "CAMERA_MOVED" ||
+    raw === "PERSON_MISSING" ||
+    raw === "EXTRA_PERSON" ||
+    raw === "LOOKING_AT_SECONDARY"
+  );
+}
+
+/** Plain-language instruction so the candidate can fix the issue. Never technical. */
+export function candidateSecondaryFixMessage(
+  kind: SecondaryIntegrityKind,
+): string {
+  switch (kind) {
+    case "PERSON_MISSING":
+      return "The side camera cannot see the room. Uncover the phone and keep it pointed at you and your desk, then tap I’ve fixed this.";
+    case "EXTRA_PERSON":
+      return "Someone else is visible on the side camera. Only you should be in view. When the room is clear, tap I’ve fixed this.";
+    case "LOOKING_AT_SECONDARY":
+      return "Please look at the interview laptop, not the side camera. Face the laptop, then tap I’ve fixed this.";
+    case "CAMERA_MOVED":
+      return "The side camera moved. Put the phone back where it was and leave it still, then tap I’ve fixed this.";
+  }
+}
+
+export function pendingSecondaryWarningDto(session: {
+  integrityPendingWarningKind: string | null;
+  integrityCameraMoveCount: number;
+}): {
+  kind: SecondaryIntegrityKind;
+  warningNumber: number;
+  warningOf: number;
+  message: string;
+} | null {
+  if (!isSecondaryIntegrityKind(session.integrityPendingWarningKind)) {
+    return null;
+  }
+  const of = SECONDARY_INTEGRITY_POLICY.warningLimit;
+  return {
+    kind: session.integrityPendingWarningKind,
+    warningNumber: Math.min(
+      Math.max(session.integrityCameraMoveCount, 1),
+      of,
+    ),
+    warningOf: of,
+    message: candidateSecondaryFixMessage(session.integrityPendingWarningKind),
+  };
+}
 
 /** Default Strict thresholds — configurable via overrides on the session later if needed. */
 export const STRICT_POLICY = {

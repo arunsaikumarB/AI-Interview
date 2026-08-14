@@ -1,10 +1,16 @@
 import { prisma } from "@/lib/db";
 import { AIError } from "@/lib/ai/ollama";
 import {
+  evaluateAnswerOnly,
   finalEvaluation,
   mapFinalRecommendation,
-  nextTurnWithState,
+  type InterviewPlan,
+  type TurnRecord,
 } from "@/lib/ai/interview";
+import {
+  decideNextTurn,
+  type JobInterviewScope,
+} from "@/lib/ai/interview-guard";
 import {
   asJson,
   isSessionTimeUp,
@@ -17,6 +23,8 @@ import { prefetchQuestionTts } from "@/lib/question-tts";
 
 /**
  * Process the latest answered question (evaluate + next question / conclude).
+ * Next question is chosen in code so the candidate is not blocked on Ollama.
+ * Recruiter-facing model scores run in the background.
  * Does NOT change Application.stage.
  */
 export async function processAnswerTurn(sessionId: string): Promise<{
@@ -69,21 +77,25 @@ export async function processAnswerTurn(sessionId: string): Promise<{
       },
     };
   }
-  // hasEval && !openQuestion → fall through to re-run conclude path if needed
 
-  const out = await nextTurnWithState({
-    plan,
-    state,
-    turns,
-    maxQuestions: session.maxQuestions,
+  const job: JobInterviewScope = {
+    title: session.application.job.title,
+    description: session.application.job.description,
+    skills: session.application.job.skills,
     interviewType: session.interviewType,
-    jobTitle: session.application.job.title,
+  };
+
+  let { result: turnResult, nextState } = decideNextTurn({
+    state,
+    plan,
+    maxQuestions: session.maxQuestions,
+    lastAnswerText: turns[turns.length - 1]!.answerText,
+    lastTopic: latestAnswered.topic,
+    priorQuestions: turns.map((t) => t.question),
+    job,
+    modelResult: null,
   });
 
-  const { model, raw } = out;
-  let { result: turnResult, nextState } = out;
-
-  // Wall-clock limit: accept the current answer, then conclude (no further questions).
   if (
     isSessionTimeUp(session.startedAt, session.durationMinutes) &&
     turnResult.nextAction !== "CONCLUDE"
@@ -102,72 +114,12 @@ export async function processAnswerTurn(sessionId: string): Promise<{
     data: { evaluation: asJson(turnResult.answerEvaluation) },
   });
 
-  await prisma.aIEvaluation.create({
-    data: {
-      applicationId: session.applicationId,
-      sessionId: session.id,
-      kind: "INTERVIEW_ANSWER",
-      scores: asJson(turnResult.answerEvaluation),
-      recommendation: "MAYBE",
-      reasoning: turnResult.answerEvaluation.reasoning,
-      model,
-      rawResponse: asJson({
-        nextAction: turnResult.nextAction,
-        actionReasoning: turnResult.actionReasoning,
-        raw,
-      }),
-    },
-  });
-
   await prisma.interviewSession.update({
     where: { id: session.id },
     data: { adaptiveState: asJson(nextState) },
   });
 
   if (turnResult.nextAction === "CONCLUDE" || !turnResult.nextQuestion) {
-    let finalModel = model;
-    try {
-      const final = await finalEvaluation({
-        plan,
-        interviewType: session.interviewType,
-        jobTitle: session.application.job.title,
-        jobDescription: session.application.job.description,
-        resumeText: session.application.candidate.resumeText ?? "",
-        turns,
-        adaptiveState: { ...nextState, concluded: true },
-      });
-      finalModel = final.model;
-
-      await prisma.aIEvaluation.create({
-        data: {
-          applicationId: session.applicationId,
-          sessionId: session.id,
-          kind: "INTERVIEW_OVERALL",
-          scores: asJson(final.result),
-          recommendation: mapFinalRecommendation(final.result.recommendation),
-          reasoning: final.result.reasoning,
-          model: final.model,
-          rawResponse: asJson(final.raw),
-        },
-      });
-
-      await prisma.timelineEvent.create({
-        data: {
-          applicationId: session.applicationId,
-          type: "AI_EVALUATION",
-          payload: {
-            sessionId: session.id,
-            kind: "INTERVIEW_OVERALL",
-            overall: final.result.overall,
-            recommendation: final.result.recommendation,
-            advisoryOnly: true,
-          },
-        },
-      });
-    } catch (err) {
-      console.error("finalEvaluation failed", err);
-    }
-
     await prisma.interviewSession.updateMany({
       where: { id: session.id, status: "IN_PROGRESS" },
       data: {
@@ -196,11 +148,25 @@ export async function processAnswerTurn(sessionId: string): Promise<{
         payload: {
           sessionId: session.id,
           questionsAsked: nextState.questionsAsked,
-          model: finalModel,
+          model: "deterministic-guard",
           advisoryOnly: true,
           stageUnchanged: true,
         },
       },
+    });
+
+    void scoreInBackground({
+      sessionId: session.id,
+      questionId: latestAnswered.id,
+      applicationId: session.applicationId,
+      plan,
+      interviewType: session.interviewType,
+      jobTitle: session.application.job.title,
+      jobDescription: session.application.job.description,
+      jobSkills: session.application.job.skills,
+      resumeText: session.application.candidate.resumeText ?? "",
+      turns,
+      concluded: true,
     });
 
     return { concluded: true, nextQuestion: null };
@@ -228,6 +194,20 @@ export async function processAnswerTurn(sessionId: string): Promise<{
     text: created.question,
   });
 
+  void scoreInBackground({
+    sessionId: session.id,
+    questionId: latestAnswered.id,
+    applicationId: session.applicationId,
+    plan,
+    interviewType: session.interviewType,
+    jobTitle: session.application.job.title,
+    jobDescription: session.application.job.description,
+    jobSkills: session.application.job.skills,
+    resumeText: session.application.candidate.resumeText ?? "",
+    turns,
+    concluded: false,
+  });
+
   return {
     concluded: false,
     nextQuestion: {
@@ -235,4 +215,99 @@ export async function processAnswerTurn(sessionId: string): Promise<{
       question: created.question,
     },
   };
+}
+
+async function scoreInBackground(params: {
+  sessionId: string;
+  questionId: string;
+  applicationId: string;
+  plan: InterviewPlan;
+  interviewType: string;
+  jobTitle: string;
+  jobDescription: string;
+  jobSkills: string[];
+  resumeText: string;
+  turns: TurnRecord[];
+  concluded: boolean;
+}): Promise<void> {
+  try {
+    const scored = await evaluateAnswerOnly({
+      plan: params.plan,
+      interviewType: params.interviewType,
+      jobTitle: params.jobTitle,
+      jobDescription: params.jobDescription,
+      jobSkills: params.jobSkills,
+      turns: params.turns,
+    });
+
+    await prisma.interviewAnswer.update({
+      where: { questionId: params.questionId },
+      data: { evaluation: asJson(scored.evaluation) },
+    });
+
+    await prisma.aIEvaluation.create({
+      data: {
+        applicationId: params.applicationId,
+        sessionId: params.sessionId,
+        kind: "INTERVIEW_ANSWER",
+        scores: asJson(scored.evaluation),
+        recommendation: "MAYBE",
+        reasoning: scored.evaluation.reasoning,
+        model: scored.model,
+        rawResponse: asJson(scored.raw),
+      },
+    });
+  } catch (err) {
+    console.warn(
+      "[processAnswerTurn] background answer score failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  if (!params.concluded) return;
+
+  try {
+    const session = await prisma.interviewSession.findUnique({
+      where: { id: params.sessionId },
+      select: { adaptiveState: true },
+    });
+    const final = await finalEvaluation({
+      plan: params.plan,
+      interviewType: params.interviewType,
+      jobTitle: params.jobTitle,
+      jobDescription: params.jobDescription,
+      resumeText: params.resumeText,
+      turns: params.turns,
+      adaptiveState: parseAdaptiveState(session?.adaptiveState),
+    });
+
+    await prisma.aIEvaluation.create({
+      data: {
+        applicationId: params.applicationId,
+        sessionId: params.sessionId,
+        kind: "INTERVIEW_OVERALL",
+        scores: asJson(final.result),
+        recommendation: mapFinalRecommendation(final.result.recommendation),
+        reasoning: final.result.reasoning,
+        model: final.model,
+        rawResponse: asJson(final.raw),
+      },
+    });
+
+    await prisma.timelineEvent.create({
+      data: {
+        applicationId: params.applicationId,
+        type: "AI_EVALUATION",
+        payload: {
+          sessionId: params.sessionId,
+          kind: "INTERVIEW_OVERALL",
+          overall: final.result.overall,
+          recommendation: final.result.recommendation,
+          advisoryOnly: true,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("finalEvaluation failed", err);
+  }
 }

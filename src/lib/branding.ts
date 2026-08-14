@@ -7,4 +7,9 @@ export const DEFAULT_COMPANY_NAME = "Logi Hiring";
 export const PRODUCT_CATEGORY = "AI Recruitment Operating System";
 export const TAGLINE = "Intelligent hiring. Human decisions.";
 export const PRODUCT_DESCRIPTION = `${PRODUCT_CATEGORY} — ${TAGLINE}`;
-export const DOCUMENT_TITLE = `${DEFAULT_COMPANY_NAME} — ${PRODUCT_NAME}`;
+export const DOCUMENT_TITLE = PRODUCT_NAME;
+
+/** Official PNG assets in /public/branding (transparent). */
+export const BRAND_LOGO_DARK = "/branding/logisoft-hireos-white.png";
+export const BRAND_LOGO_LIGHT = "/branding/logisoft-hireos.png";
+export const BRAND_LOGO_TAGLINE = "/branding/logisoft-hireos-tagline.png";

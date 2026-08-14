@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand-logo";
 
 export function IntegrityWarningDialog({
   open,
@@ -21,7 +22,7 @@ export function IntegrityWarningDialog({
 }) {
   if (!open) return null;
 
-  // Spec: "Warning 1 of 2" where 2 is the terminate threshold.
+  // Warning N of 3 (secondary) or N of 2 (Strict). Dialog stays until they confirm.
   const of = Math.max(warningOf, 1);
 
   return (
@@ -30,6 +31,7 @@ export function IntegrityWarningDialog({
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="integrity-warning-title"
+      onClick={(e) => e.stopPropagation()}
     >
       <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-6 shadow-xl">
         <h2
@@ -43,8 +45,8 @@ export function IntegrityWarningDialog({
         <p className="text-xs uppercase tracking-wide text-muted-foreground">
           Warning {warningNumber} of {of}
         </p>
-        <Button className="w-full" onClick={onDismiss}>
-          Return to Interview
+        <Button className="h-11 w-full" onClick={onDismiss}>
+          I understand — I&apos;ve fixed this
         </Button>
       </div>
     </div>
@@ -57,7 +59,8 @@ export function IntegrityTerminatedScreen({
   onClose?: () => void;
 }) {
   return (
-    <div className="mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm">
+    <div className="mx-auto max-w-lg space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm">
+      <BrandLogo size="header" />
       <p className="text-sm uppercase tracking-wide text-muted-foreground">
         Interview ended
       </p>

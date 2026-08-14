@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { prisma } from "@/lib/db";
-import { PRODUCT_NAME } from "@/lib/branding";
+import { BrandLogo } from "@/components/brand-logo";
 
 export const dynamic = "force-dynamic";
 
@@ -9,23 +8,17 @@ export const metadata: Metadata = {
   title: "Careers",
 };
 
-export default async function CareersLayout({
+export default function CareersLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const org = await prisma.organization.findFirst({
-    orderBy: { createdAt: "asc" },
-    select: { name: true, companyName: true },
-  });
-  const employer = org?.companyName?.trim() || org?.name || "Careers";
-
   return (
     <div className="app-canvas min-h-screen">
       <header className="glass-topbar border-b">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-4">
-          <Link href="/careers" className="font-sans text-xl font-semibold text-foreground">
-            {employer}
+          <Link href="/careers" className="inline-flex max-w-[220px] items-center">
+            <BrandLogo size="nav" />
           </Link>
           <Link
             href="/login"
@@ -36,8 +29,8 @@ export default async function CareersLayout({
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-4 py-10">{children}</main>
-      <footer className="mx-auto max-w-3xl px-4 pb-8 text-center text-[11px] text-muted-foreground">
-        {PRODUCT_NAME}
+      <footer className="mx-auto flex max-w-3xl justify-center px-4 pb-8">
+        <BrandLogo size="nav" />
       </footer>
     </div>
   );

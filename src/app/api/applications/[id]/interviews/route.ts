@@ -13,6 +13,7 @@ import {
   initialAdaptiveState,
   type InterviewType,
 } from "@/lib/ai/interview";
+import { inferInterviewType } from "@/lib/ai/interview-guard";
 import { INTERVIEW_TYPES } from "@/lib/constants";
 import { ScreeningResultSchema } from "@/lib/ai/screening";
 import {
@@ -140,6 +141,11 @@ export async function POST(request: Request, { params }: Ctx) {
       ? ScreeningResultSchema.safeParse(latestScreen.scores).data ?? null
       : null;
 
+    const interviewType = inferInterviewType(
+      application.job.title,
+      body.interviewType as InterviewType,
+    );
+
     const { plan, model, raw } = await generatePlan({
       job: application.job,
       candidate: {
@@ -150,7 +156,7 @@ export async function POST(request: Request, { params }: Ctx) {
         experience: application.candidate.experience,
       },
       resumeText,
-      interviewType: body.interviewType as InterviewType,
+      interviewType,
       screeningFocus,
     });
 
@@ -175,7 +181,7 @@ export async function POST(request: Request, { params }: Ctx) {
         proctoringMode,
         integrityMode,
         status: "SCHEDULED",
-        interviewType: body.interviewType,
+        interviewType,
         maxQuestions: body.maxQuestions,
         durationMinutes: body.durationMinutes,
         accessToken,
@@ -193,7 +199,7 @@ export async function POST(request: Request, { params }: Ctx) {
         type: "INTERVIEW_SCHEDULED",
         payload: {
           sessionId: interview.id,
-          interviewType: body.interviewType,
+          interviewType,
           deliveryMode: body.mode,
           proctoringEnabled,
           proctoringMode,

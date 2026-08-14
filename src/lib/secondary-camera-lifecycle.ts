@@ -75,16 +75,36 @@ export async function signalSecondaryTransition(params: {
 
 /** Invalidate pairing + clear ephemeral frames when interview ends/cancels/expires. */
 export async function endSecondaryCameraSession(sessionId: string): Promise<void> {
-  try {
-    const { finalizeSecondaryRecording } = await import(
-      "@/lib/secondary-recording-server"
-    );
-    await finalizeSecondaryRecording(sessionId);
-  } catch (err) {
-    console.warn(
-      "[secondary-recording] finalize on end failed:",
-      err instanceof Error ? err.message : err,
-    );
+  const rec = await prisma.interviewSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      secondaryRecordingId: true,
+      secondaryRecordingPath: true,
+      secondaryRecordingStatus: true,
+      secondaryRecordingLastChunkIndex: true,
+      secondaryPairExpiresAt: true,
+    },
+  });
+
+  const hasChunks = (rec?.secondaryRecordingLastChunkIndex ?? -1) >= 0;
+  const keepPairForFlush =
+    Boolean(rec?.secondaryRecordingId) &&
+    !rec?.secondaryRecordingPath &&
+    rec?.secondaryRecordingStatus !== "SAVED" &&
+    rec?.secondaryRecordingStatus !== "DISCARDED";
+
+  if (hasChunks) {
+    try {
+      const { finalizeSecondaryRecording } = await import(
+        "@/lib/secondary-recording-server"
+      );
+      await finalizeSecondaryRecording(sessionId);
+    } catch (err) {
+      console.warn(
+        "[secondary-recording] finalize on end failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   const session = await prisma.interviewSession.findUnique({
@@ -104,14 +124,19 @@ export async function endSecondaryCameraSession(sessionId: string): Promise<void
   const prev = getLastSignaled(sessionId);
   clearSecondaryRuntime(sessionId);
 
+  const flushUntil = new Date(Date.now() + 10 * 60 * 1000);
+
   await prisma.interviewSession.update({
     where: { id: sessionId },
     data: {
-      secondaryPairToken: null,
-      secondaryPairExpiresAt: null,
+      ...(keepPairForFlush
+        ? { secondaryPairExpiresAt: flushUntil }
+        : {
+            secondaryPairToken: null,
+            secondaryPairExpiresAt: null,
+          }),
       secondaryDeviceStatus: "DISCONNECTED",
       secondaryDeviceLastSeenAt: null,
-      // keep placementConfirmed for audit? clear it
       secondaryPlacementConfirmedAt: null,
     },
   });

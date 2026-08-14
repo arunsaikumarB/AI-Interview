@@ -448,8 +448,10 @@ model InterviewSession {
   integrityViolationCount    Int       @default(0)
   /// Count of paste violations under Strict policy (server authority)
   integrityPasteCount        Int       @default(0)
-  /// Secondary-camera movement warnings (Enhanced). 2nd episode may terminate.
+  /// Secondary-camera environment warnings (Enhanced). 3 warnings, then the next ends the interview.
   integrityCameraMoveCount   Int       @default(0)
+  /// Open secondary warning the candidate must acknowledge before continuing (kind key).
+  integrityPendingWarningKind String?
   /// Short reason key when status=TERMINATED (e.g. focus_threshold, paste_threshold)
   integrityTerminatedReason  String?
   /// Short-lived secondary device pair token (QR / deep link)

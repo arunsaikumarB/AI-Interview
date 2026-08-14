@@ -25,12 +25,21 @@ type FaceBox = {
 };
 
 const SAMPLE_MS = 400;
-const WARMUP_MS = 4_000;
-const NO_FACE_MS = 7_000;
-const EXTRA_FACE_MS = 2_500;
-const LOOKING_MS = 3_500;
-const CAMERA_MOVE_HOLD_MS = 1_200;
-const LOOK_HEIGHT_RATIO = 0.42;
+const WARMUP_MS = 6_000;
+/** Covered / black / featureless frame — not “no frontal face”. */
+const NO_SCENE_MS = 12_000;
+const EXTRA_FACE_MS = 8_000;
+const LOOKING_MS = 4_000;
+const CAMERA_MOVE_HOLD_MS = 1_600;
+/**
+ * Side-desk profile is the expected secondary view. BlazeFace is frontal-only,
+ * so a missing face is normal. “Looking at this phone” only if a large
+ * selfie-style face fills the frame.
+ */
+const LOOK_AREA_RATIO = 0.2;
+const MIN_PERSON_BOX_AREA = 0.035;
+const SCENE_EMPTY_VARIANCE = 90;
+const SCENE_DARK_MEAN = 16;
 const GRID_COLS = 8;
 const GRID_ROWS = 5;
 const MOVE_CELL = 18;
@@ -70,6 +79,33 @@ function cellLuma(
   return out;
 }
 
+function sceneOccupied(data: Uint8ClampedArray): boolean {
+  let sum = 0;
+  let sum2 = 0;
+  let n = 0;
+  for (let i = 0; i < data.length; i += 32) {
+    const y = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    sum += y;
+    sum2 += y * y;
+    n += 1;
+  }
+  if (n < 8) return true;
+  const mean = sum / n;
+  const variance = sum2 / n - mean * mean;
+  if (mean < SCENE_DARK_MEAN) return false;
+  if (variance < SCENE_EMPTY_VARIANCE) return false;
+  return true;
+}
+
+function boxAreaRatio(
+  box: FaceBox | undefined,
+  frameW: number,
+  frameH: number,
+): number {
+  if (!box || frameW <= 0 || frameH <= 0) return 0;
+  return (box.width * box.height) / (frameW * frameH);
+}
+
 function isGlobalCameraMove(prev: Float32Array, next: Float32Array): boolean {
   let sum = 0;
   let hot = 0;
@@ -85,8 +121,9 @@ function isGlobalCameraMove(prev: Float32Array, next: Float32Array): boolean {
 export function createSecondaryIntegrityMonitor(params: {
   code: string;
   video: HTMLVideoElement;
+  isPaused?: () => boolean;
   onResult: (result: SecondaryIntegrityResult) => void;
-}): { start: () => void; stop: () => void } {
+}): { start: () => void; stop: () => void; resume: () => void } {
   let started = false;
   let timer: ReturnType<typeof setInterval> | null = null;
   let faceDetector: {
@@ -97,7 +134,7 @@ export function createSecondaryIntegrityMonitor(params: {
   } | null = null;
   let canvas: HTMLCanvasElement | null = null;
   let prevGrid: Float32Array | null = null;
-  let noFaceSince: number | null = null;
+  let emptySceneSince: number | null = null;
   let extraSince: number | null = null;
   let lookingSince: number | null = null;
   let moveSince: number | null = null;
@@ -131,6 +168,7 @@ export function createSecondaryIntegrityMonitor(params: {
   async function sample() {
     const video = params.video;
     if (!started || video.readyState < 2 || video.videoWidth < 8) return;
+    if (params.isPaused?.()) return;
     const now = Date.now();
     if (now < warmupUntil) return;
 
@@ -144,7 +182,19 @@ export function createSecondaryIntegrityMonitor(params: {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (ctx) {
         ctx.drawImage(video, 0, 0, w, h);
-        const grid = cellLuma(ctx.getImageData(0, 0, w, h).data, w, h);
+        const pixels = ctx.getImageData(0, 0, w, h).data;
+        if (sceneOccupied(pixels)) {
+          emptySceneSince = null;
+        } else {
+          if (emptySceneSince == null) emptySceneSince = now;
+          if (now - emptySceneSince >= NO_SCENE_MS) {
+            emptySceneSince = now + 60_000;
+            await post("PERSON_MISSING", 0);
+            prevGrid = cellLuma(pixels, w, h);
+            return;
+          }
+        }
+        const grid = cellLuma(pixels, w, h);
         if (prevGrid && isGlobalCameraMove(prevGrid, grid)) {
           if (moveSince == null) moveSince = now;
           if (now - moveSince >= CAMERA_MOVE_HOLD_MS) {
@@ -166,38 +216,30 @@ export function createSecondaryIntegrityMonitor(params: {
     try {
       const result = faceDetector.detectForVideo(video, performance.now());
       const detections = result.detections ?? [];
-      const n = detections.length;
+      const frameW = video.videoWidth;
+      const frameH = video.videoHeight;
+      const people = detections.filter(
+        (d) => boxAreaRatio(d.boundingBox, frameW, frameH) >= MIN_PERSON_BOX_AREA,
+      );
 
-      if (n === 0) {
-        extraSince = null;
-        lookingSince = null;
-        if (noFaceSince == null) noFaceSince = now;
-        if (now - noFaceSince >= NO_FACE_MS) {
-          noFaceSince = now + 60_000;
-          await post("PERSON_MISSING", 0);
-        }
-        return;
-      }
-
-      noFaceSince = null;
-
-      if (n > 1) {
+      if (people.length >= 2) {
         lookingSince = null;
         if (extraSince == null) extraSince = now;
         if (now - extraSince >= EXTRA_FACE_MS) {
           extraSince = now + 60_000;
-          await post("EXTRA_PERSON", n);
+          await post("EXTRA_PERSON", people.length);
         }
         return;
       }
-
       extraSince = null;
-      const box = detections[0]?.boundingBox;
-      const close =
-        box && video.videoHeight > 0
-          ? box.height / video.videoHeight >= LOOK_HEIGHT_RATIO
-          : false;
-      if (close) {
+
+      const largest = people.reduce((best, d) => {
+        const a = boxAreaRatio(d.boundingBox, frameW, frameH);
+        return a > best ? a : best;
+      }, 0);
+      // Side-profile at a desk is a small face (or none). A large face means
+      // they picked up this phone and are looking into it.
+      if (largest >= LOOK_AREA_RATIO) {
         if (lookingSince == null) lookingSince = now;
         if (now - lookingSince >= LOOKING_MS) {
           lookingSince = now + 60_000;
@@ -234,6 +276,15 @@ export function createSecondaryIntegrityMonitor(params: {
     }, SAMPLE_MS);
   }
 
+  function resume() {
+    warmupUntil = Date.now() + WARMUP_MS;
+    emptySceneSince = null;
+    extraSince = null;
+    lookingSince = null;
+    moveSince = null;
+    posting = false;
+  }
+
   function stop() {
     started = false;
     if (timer) {
@@ -245,5 +296,5 @@ export function createSecondaryIntegrityMonitor(params: {
     prevGrid = null;
   }
 
-  return { start, stop };
+  return { start, stop, resume };
 }

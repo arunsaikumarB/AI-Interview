@@ -22,6 +22,7 @@ import {
 } from "@/lib/interview-links";
 import { formatDate } from "@/lib/format";
 import { toast } from "sonner";
+import { inferInterviewType } from "@/lib/ai/interview-guard";
 
 export type CreateInterviewApplicationOption = {
   id: string;
@@ -201,7 +202,10 @@ export function CreateInterviewDialog({
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          interviewType: "TECHNICAL",
+          interviewType: inferInterviewType(
+            applications.find((a) => a.id === applicationId)?.jobTitle ?? "",
+            "TECHNICAL",
+          ),
           maxQuestions: 12,
           mode,
           proctoringEnabled: proctoringMode !== "OFF",

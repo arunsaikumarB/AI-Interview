@@ -233,14 +233,14 @@ export async function finalizeSecondaryRecording(sessionId: string): Promise<{
       await prisma.interviewSession.update({
         where: { id: sessionId },
         data: {
-          secondaryRecordingStatus: "FAILED",
+          secondaryRecordingStatus: "INTERRUPTED",
           secondaryRecordingEndedAt: new Date(),
         },
       });
       return {
-        status: "FAILED",
+        status: "INTERRUPTED",
         path: null,
-        label: recordingStatusLabel("FAILED"),
+        label: recordingStatusLabel("INTERRUPTED"),
       };
     }
 
