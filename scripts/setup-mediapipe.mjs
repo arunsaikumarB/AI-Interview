@@ -14,9 +14,20 @@ const outDir = join(root, "public", "mediapipe");
 const outWasm = join(outDir, "wasm");
 const outModels = join(outDir, "models");
 
-const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
-const MODEL_FILE = join(outModels, "blaze_face_short_range.tflite");
+const MODELS = [
+  {
+    file: "blaze_face_short_range.tflite",
+    url: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+  },
+  {
+    file: "pose_landmarker_lite.task",
+    url: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+  },
+  {
+    file: "efficientdet_lite0.tflite",
+    url: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+  },
+];
 
 if (!existsSync(pkgWasm)) {
   console.error(
@@ -31,20 +42,25 @@ mkdirSync(outModels, { recursive: true });
 cpSync(pkgWasm, outWasm, { recursive: true });
 console.log(`[setup-mediapipe] Copied wasm → public/mediapipe/wasm`);
 
-if (!existsSync(MODEL_FILE)) {
-  console.log(`[setup-mediapipe] Downloading face detector model…`);
-  const res = await fetch(MODEL_URL);
+for (const model of MODELS) {
+  const dest = join(outModels, model.file);
+  if (existsSync(dest)) {
+    console.log(`[setup-mediapipe] ${model.file} already present — skipped`);
+    continue;
+  }
+  console.log(`[setup-mediapipe] Downloading ${model.file}…`);
+  const res = await fetch(model.url);
   if (!res.ok) {
-    console.error(`[setup-mediapipe] Model download failed: ${res.status}`);
+    console.error(
+      `[setup-mediapipe] ${model.file} download failed: ${res.status}`,
+    );
     process.exit(1);
   }
   const buf = Buffer.from(await res.arrayBuffer());
-  writeFileSync(MODEL_FILE, buf);
+  writeFileSync(dest, buf);
   console.log(
-    `[setup-mediapipe] Wrote model (${buf.length} bytes) → public/mediapipe/models/`,
+    `[setup-mediapipe] Wrote ${model.file} (${buf.length} bytes)`,
   );
-} else {
-  console.log(`[setup-mediapipe] Model already present — skipped download`);
 }
 
-console.log("[setup-mediapipe] Done. Face detector uses /mediapipe/* only.");
+console.log("[setup-mediapipe] Done. Models served from /mediapipe/* only.");

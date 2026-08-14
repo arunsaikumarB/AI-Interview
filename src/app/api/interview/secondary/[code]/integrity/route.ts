@@ -9,12 +9,22 @@ const bodySchema = z.object({
   kind: z.enum([
     "CAMERA_MOVED",
     "PERSON_MISSING",
+    "PERSON_MOVED",
+    "PERSON_RETURNED",
     "EXTRA_PERSON",
     "LOOKING_AT_SECONDARY",
+    "ATTENTION_DEVIATION",
+    "DEVICE_VISIBLE",
+    "DEVICE_REMOVED",
+    "DEVICE_INTERACTION",
+    "PERSON_RETURNED_TO_ONE",
+    "PERSON_INTERACTION",
   ]),
   timestamp: z.string().datetime(),
   episodeId: z.string().min(1).max(80).optional(),
   faceCount: z.number().int().min(0).max(20).optional(),
+  personCount: z.number().int().min(0).max(20).optional(),
+  durationMs: z.number().int().min(0).max(3_600_000).optional(),
 });
 
 /**
@@ -86,6 +96,8 @@ export async function POST(request: Request, { params }: Ctx) {
       meta: {
         kind: body.kind,
         ...(body.faceCount != null ? { faceCount: body.faceCount } : {}),
+        ...(body.personCount != null ? { personCount: body.personCount } : {}),
+        ...(body.durationMs != null ? { durationMs: body.durationMs } : {}),
       },
     });
 

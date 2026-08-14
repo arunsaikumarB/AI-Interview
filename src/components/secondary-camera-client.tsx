@@ -11,9 +11,16 @@ import {
 import {
   CHUNK_TIMESLICE_MS,
   MAX_PENDING_CLIENT_CHUNKS,
+  RECORDING_AUDIO_BITRATE,
+  RECORDING_VIDEO_BITRATE,
+  capSecondaryCameraTo1080p,
+  secondaryCameraVideoConstraints,
 } from "@/lib/secondary-recording-client";
 import { createSecondaryIntegrityMonitor } from "@/lib/secondary-integrity-client";
+import type { SecondaryFramingStatus } from "@/lib/secondary-integrity-client";
 import { candidateSecondaryFixMessage } from "@/lib/integrity";
+import type { SecondaryIntegrityKind } from "@/lib/integrity";
+import { createOrientedRecordStream, cameraBufferNeedsPortraitRotate } from "@/lib/secondary-record-orientation";
 
 type Meta = {
   jobTitle: string;
@@ -27,7 +34,7 @@ type Meta = {
   recordingStatus?: string;
   recordingId?: string | null;
   pendingIntegrityWarning?: {
-    kind: "CAMERA_MOVED" | "PERSON_MISSING" | "EXTRA_PERSON" | "LOOKING_AT_SECONDARY";
+    kind: SecondaryIntegrityKind;
     warningNumber: number;
     warningOf: number;
     message: string;
@@ -59,24 +66,42 @@ function pickRecorderMime(): string | undefined {
   return undefined;
 }
 
+function createMediaRecorder(
+  stream: MediaStream,
+  mime?: string,
+): MediaRecorder {
+  const withBitrate: MediaRecorderOptions = {
+    videoBitsPerSecond: RECORDING_VIDEO_BITRATE,
+    audioBitsPerSecond: RECORDING_AUDIO_BITRATE,
+  };
+  if (mime) withBitrate.mimeType = mime;
+  try {
+    return new MediaRecorder(stream, withBitrate);
+  } catch {
+    return mime
+      ? new MediaRecorder(stream, { mimeType: mime })
+      : new MediaRecorder(stream);
+  }
+}
+
 async function openCameraAndMic(): Promise<MediaStream> {
   try {
-    return await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: secondaryCameraVideoConstraints(),
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
       },
     });
+    await capSecondaryCameraTo1080p(stream);
+    return stream;
   } catch {
-    return navigator.mediaDevices.getUserMedia({
+    const stream = await navigator.mediaDevices.getUserMedia({
       video: true,
       audio: true,
     });
+    await capSecondaryCameraTo1080p(stream);
+    return stream;
   }
 }
 
@@ -98,6 +123,8 @@ export function SecondaryCameraClient({ code }: { code: string }) {
     warningOf: number;
     message: string;
   } | null>(null);
+  const [orientHint, setOrientHint] = useState<string | null>(null);
+  const [framing, setFraming] = useState<SecondaryFramingStatus | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -106,6 +133,7 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pairedRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const orientedStopRef = useRef<(() => void) | null>(null);
   const recordingIdRef = useRef<string | null>(null);
   const chunkIndexRef = useRef(0);
   const pendingQueue = useRef<{ index: number; blob: Blob; mime: string }[]>(
@@ -115,6 +143,8 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   const interruptedAtRef = useRef<number | null>(null);
   const recordingActiveRef = useRef(false);
   const warningOpenRef = useRef(false);
+  const framingRef = useRef<SecondaryFramingStatus | null>(null);
+  const emitEventsRef = useRef(false);
   const monitorRef = useRef<ReturnType<
     typeof createSecondaryIntegrityMonitor
   > | null>(null);
@@ -122,6 +152,9 @@ export function SecondaryCameraClient({ code }: { code: string }) {
     null,
   );
   warningOpenRef.current = Boolean(integrityWarning);
+  emitEventsRef.current = Boolean(
+    meta?.placementConfirmed && meta.interviewStatus === "IN_PROGRESS",
+  );
 
   const stopStreamingOnly = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -166,6 +199,8 @@ export function SecondaryCameraClient({ code }: { code: string }) {
 
   const stopRecorder = useCallback(async (finalize: boolean) => {
     recordingActiveRef.current = false;
+    orientedStopRef.current?.();
+    orientedStopRef.current = null;
     if (requestDataTimerRef.current) {
       clearInterval(requestDataTimerRef.current);
       requestDataTimerRef.current = null;
@@ -215,13 +250,24 @@ export function SecondaryCameraClient({ code }: { code: string }) {
     }
     const mime = pickRecorderMime();
     let rec: MediaRecorder;
+    const videoEl = videoRef.current;
+    const oriented =
+      videoEl && streamRef.current
+        ? createOrientedRecordStream(videoEl, streamRef.current)
+        : null;
+    orientedStopRef.current = oriented?.stop ?? null;
+    const recordStream = oriented?.stream ?? streamRef.current;
     try {
-      rec = mime
-        ? new MediaRecorder(streamRef.current, { mimeType: mime })
-        : new MediaRecorder(streamRef.current);
+      rec = createMediaRecorder(recordStream, mime);
     } catch {
-      setRecLabel("Secondary recording is not supported by this browser.");
-      return;
+      orientedStopRef.current?.();
+      orientedStopRef.current = null;
+      try {
+        rec = createMediaRecorder(streamRef.current, mime);
+      } catch {
+        setRecLabel("Secondary recording is not supported by this browser.");
+        return;
+      }
     }
     const usedMime = rec.mimeType || mime || "video/webm";
     rec.ondataavailable = (e) => {
@@ -317,6 +363,8 @@ export function SecondaryCameraClient({ code }: { code: string }) {
       if (!blob) return;
       const form = new FormData();
       form.append("frame", blob, "frame.jpg");
+      const snap = framingRef.current;
+      if (snap) form.append("framing", JSON.stringify(snap));
       try {
         const res = await fetch(`/api/interview/secondary/${code}/frame`, {
           method: "POST",
@@ -436,27 +484,25 @@ export function SecondaryCameraClient({ code }: { code: string }) {
       }
     };
     void tick();
-    pollRef.current = setInterval(() => void tick(), 4000);
+    pollRef.current = setInterval(() => void tick(), 2000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [code, connected, startRecorder, stopRecorder]);
 
   useEffect(() => {
-    if (
-      phoneTerminated ||
-      !connected ||
-      !camReady ||
-      !meta?.placementConfirmed ||
-      meta.interviewStatus !== "IN_PROGRESS" ||
-      !videoRef.current
-    ) {
+    if (phoneTerminated || !connected || !camReady || !videoRef.current) {
       return;
     }
     const monitor = createSecondaryIntegrityMonitor({
       code,
       video: videoRef.current,
       isPaused: () => warningOpenRef.current,
+      emitEvents: () => emitEventsRef.current,
+      onFraming: (status) => {
+        framingRef.current = status;
+        setFraming(status);
+      },
       onResult: (result) => {
         if (result.terminated) {
           setPhoneTerminated(true);
@@ -465,10 +511,18 @@ export function SecondaryCameraClient({ code }: { code: string }) {
           return;
         }
         if (result.showWarning && result.kind) {
+          const n = result.warningNumber ?? 1;
+          const of = result.warningOf ?? 3;
+          const base = candidateSecondaryFixMessage(result.kind);
           setIntegrityWarning({
-            warningNumber: result.warningNumber ?? 1,
-            warningOf: result.warningOf ?? 3,
-            message: candidateSecondaryFixMessage(result.kind),
+            warningNumber: n,
+            warningOf: of,
+            message:
+              n >= of
+                ? `${base} Your interview may be paused for recruiter review if this continues.`
+                : n >= 2
+                  ? `Integrity warning: unusual activity detected. ${base}`
+                  : base,
           });
         }
       },
@@ -483,11 +537,25 @@ export function SecondaryCameraClient({ code }: { code: string }) {
     phoneTerminated,
     connected,
     camReady,
-    meta?.placementConfirmed,
-    meta?.interviewStatus,
     code,
     stopAll,
   ]);
+
+  useEffect(() => {
+    if (!camReady) return;
+    const id = setInterval(() => {
+      const v = videoRef.current;
+      if (!v || v.videoWidth < 8) return;
+      if (cameraBufferNeedsPortraitRotate(v)) {
+        setOrientHint(
+          "Rotate your phone so the preview matches the room. Rest it on its side for a landscape view of you and the desk.",
+        );
+      } else {
+        setOrientHint(null);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [camReady]);
 
   useEffect(() => {
     const onVis = () => {
@@ -626,7 +694,7 @@ export function SecondaryCameraClient({ code }: { code: string }) {
           integrityWarning?.message ??
           "Please correct the side-camera issue, then tap I’ve fixed this."
         }
-        stayHint="This stays on screen until you fix it and confirm. You have 3 chances."
+        stayHint="Please remain focused on the interview. Return to your normal position, then continue."
         onDismiss={() => {
           void fetch(`/api/interview/secondary/${code}/integrity/ack`, {
             method: "POST",
@@ -680,15 +748,74 @@ export function SecondaryCameraClient({ code }: { code: string }) {
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-background">
+      {orientHint ? (
+        <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
+          Rotate your phone. {orientHint}
+        </div>
+      ) : null}
+
+      <div className="relative overflow-hidden rounded-xl border border-border bg-background">
         <video
           ref={videoRef}
           playsInline
           muted
           className="max-h-[70vh] w-full object-contain"
         />
+        {camReady ? (
+          <div
+            className="pointer-events-none absolute inset-0 flex flex-col justify-between p-3 text-[10px] font-medium uppercase tracking-[0.12em] text-foreground/80"
+            aria-hidden
+          >
+            <div className="rounded-md border border-dashed border-primary/35 bg-background/20 px-2 py-1 text-center">
+              Surrounding area
+            </div>
+            <div className="mx-auto w-[55%] rounded-lg border border-primary/50 bg-background/15 px-2 py-6 text-center">
+              Candidate visible
+            </div>
+            <div className="rounded-md border border-dashed border-primary/35 bg-background/20 px-2 py-1 text-center">
+              Laptop visible
+            </div>
+          </div>
+        ) : null}
       </div>
       <canvas ref={canvasRef} className="hidden" />
+
+      {connected && camReady ? (
+        <div className="space-y-2 rounded-lg border border-border px-3 py-2 text-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Expected view
+          </p>
+          <ul className="space-y-1 text-foreground">
+            <li>
+              {framing?.candidateVisible
+                ? "✓ Candidate visible"
+                : "○ Candidate visible"}
+            </li>
+            <li>
+              {framing?.laptopVisible ? "✓ Laptop visible" : "○ Laptop visible"}
+            </li>
+            <li>
+              {framing?.extraPersonInPrimaryZone
+                ? "⚠ Additional person detected"
+                : "✓ No additional person detected"}
+            </li>
+          </ul>
+          {framing?.extraPersonInPrimaryZone ? (
+            <p className="text-sm text-warning">
+              Please make sure only the candidate is in the interview area
+              before continuing.
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => monitorRef.current?.resume()}
+          >
+            Recheck camera
+          </Button>
+        </div>
+      ) : null}
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

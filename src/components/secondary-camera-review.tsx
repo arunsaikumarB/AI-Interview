@@ -4,9 +4,11 @@ import { useMemo, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { integritySignalLabel } from "@/lib/integrity";
 import {
+  recordingMimeHasAudio,
   recordingStatusLabel,
   recruiterRecordingState,
 } from "@/lib/secondary-recording-labels";
+import { SecondaryReviewPlayer } from "@/components/secondary-review-player";
 import { cn } from "@/lib/utils";
 
 type Signal = {
@@ -39,6 +41,7 @@ export function SecondaryCameraReview({
   recordingStartedAt,
   placementConfirmed,
   secondaryDeviceStatus,
+  recordingMime,
   events,
 }: {
   interviewId: string;
@@ -50,10 +53,39 @@ export function SecondaryCameraReview({
   recordingStartedAt: string | null;
   placementConfirmed: boolean;
   secondaryDeviceStatus: string;
+  recordingMime?: string | null;
   events: Signal[];
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const state = recruiterRecordingState(status, hasPath);
+  const audioKnown = recordingMimeHasAudio(recordingMime);
+  const visibilityCount = events.filter((e) => e.type === "SECONDARY_NO_FACE").length;
+  const positionCount = events.filter(
+    (e) => e.type === "SECONDARY_PERSON_MOVED",
+  ).length;
+  const attentionCount = events.filter(
+    (e) =>
+      e.type === "SECONDARY_ATTENTION_DEVIATION" ||
+      e.type === "SECONDARY_LOOKING_AT_DEVICE",
+  ).length;
+  const deviceCount = events.filter(
+    (e) =>
+      e.type === "SECONDARY_DEVICE_VISIBLE" ||
+      e.type === "SECONDARY_DEVICE_INTERACTION",
+  ).length;
+  const interruptCount = events.filter(
+    (e) =>
+      e.type === "SECONDARY_CAMERA_DISCONNECTED" ||
+      e.type === "SECONDARY_CAMERA_MOVED",
+  ).length;
+  const additionalPersons = events.filter(
+    (e) =>
+      e.type === "SECONDARY_MULTIPLE_PERSONS" ||
+      e.type === "SECONDARY_MULTIPLE_FACES",
+  ).length;
+  const personInteraction = events.some(
+    (e) => e.type === "SECONDARY_PERSON_INTERACTION",
+  );
   const playable = hasPath && state === "READY";
   const src = playable
     ? `/api/interviews/${interviewId}/secondary-recording/file`
@@ -92,7 +124,10 @@ export function SecondaryCameraReview({
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+    <section
+      id="secondary-camera-review"
+      className="space-y-4 rounded-xl border border-border bg-card p-5"
+    >
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-medium text-foreground">
@@ -109,12 +144,10 @@ export function SecondaryCameraReview({
       </div>
 
       {playable && src ? (
-        <video
-          ref={videoRef}
-          className="aspect-video w-full rounded-xl border border-border bg-black"
-          controls
-          preload="metadata"
+        <SecondaryReviewPlayer
           src={src}
+          interviewId={interviewId}
+          videoRef={videoRef}
         />
       ) : (
         <div className="flex aspect-video w-full items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 px-6 text-center">
@@ -137,13 +170,19 @@ export function SecondaryCameraReview({
           <dd className="font-medium text-foreground">{formatMs(durationMs)}</dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Recording quality</dt>
+          <dt className="text-muted-foreground">Video</dt>
           <dd className="font-medium text-foreground">
-            {playable
-              ? hasGap || interruptedMs > 0
-                ? "Available with interruption"
-                : "Available"
-              : "Not available"}
+            {playable ? "Available" : "Not available"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Audio</dt>
+          <dd className="font-medium text-foreground">
+            {audioKnown === true
+              ? "Available"
+              : audioKnown === false
+                ? "Unavailable"
+                : "Not confirmed in file metadata"}
           </dd>
         </div>
         <div>
@@ -179,13 +218,13 @@ export function SecondaryCameraReview({
 
       {timeline.length > 0 ? (
         <div className="space-y-2">
-          <p className="text-sm font-medium text-foreground">Timeline</p>
+          <p className="text-sm font-medium text-foreground">Integrity timeline</p>
           <p className="text-xs text-muted-foreground">
             {playable
-              ? "Select an event to jump to that moment in the recording."
+              ? "Select Watch event to jump to that moment. Signals are indicators for human review, not proof of cheating."
               : "Timestamps are shown. Seeking is unavailable because there is no playable recording."}
           </p>
-          <ol className="max-h-56 space-y-1 overflow-y-auto text-sm">
+          <ol className="max-h-64 space-y-1 overflow-y-auto text-sm">
             {timeline.map((item) => (
               <li key={item.id}>
                 <button
@@ -203,13 +242,59 @@ export function SecondaryCameraReview({
                     {formatMs(item.offsetMs)}
                   </span>
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                  <span className="text-foreground">{item.label}</span>
+                  <span className="flex-1 text-foreground">{item.label}</span>
+                  {playable && item.offsetMs != null ? (
+                    <span className="shrink-0 text-xs font-medium text-primary">
+                      Watch event
+                    </span>
+                  ) : null}
                 </button>
               </li>
             ))}
           </ol>
         </div>
       ) : null}
+
+      <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <div>
+          <dt className="text-muted-foreground">Candidate visibility</dt>
+          <dd className="font-medium text-foreground">
+            {visibilityCount === 0 ? "Good" : `${visibilityCount} interruption(s)`}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Position stability</dt>
+          <dd className="font-medium text-foreground">
+            {positionCount === 0 ? "Good" : `Warning · ${positionCount}`}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Attention deviation</dt>
+          <dd className="font-medium text-foreground">{attentionCount}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Additional device</dt>
+          <dd className="font-medium text-foreground">{deviceCount}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Additional persons</dt>
+          <dd className="font-medium text-foreground">{additionalPersons}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Person interaction</dt>
+          <dd className="font-medium text-foreground">
+            {personInteraction ? "Review recommended" : "None"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Camera interruptions</dt>
+          <dd className="font-medium text-foreground">{interruptCount}</dd>
+        </div>
+      </dl>
+      <p className="text-xs text-muted-foreground">
+        Human review: the signals above are indicators. They are not automatic
+        proof of cheating. The recruiter remains the final decision-maker.
+      </p>
     </section>
   );
 }

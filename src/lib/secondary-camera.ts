@@ -27,6 +27,14 @@ export type SecondaryRuntimeStatus =
   | "DISCONNECTED"
   | "ENDED";
 
+export type FramingSnapshot = {
+  candidateVisible: boolean;
+  extraPersonInPrimaryZone: boolean;
+  laptopVisible: boolean;
+  personCount: number;
+  at: number;
+};
+
 type LiveSession = {
   sessionId: string;
   lastHeartbeatAt: number;
@@ -41,6 +49,7 @@ type LiveSession = {
   lastSignaled: "NONE" | "WAITING" | "CONNECTED" | "DISCONNECTED" | "ENDED";
   reconnectCount: number;
   hadConnected: boolean;
+  framing: FramingSnapshot | null;
 };
 
 const live = new Map<string, LiveSession>();
@@ -61,6 +70,7 @@ function ensure(sessionId: string): LiveSession {
       lastSignaled: "NONE",
       reconnectCount: 0,
       hadConnected: false,
+      framing: null,
     };
     live.set(sessionId, s);
   }
@@ -122,6 +132,21 @@ export function putLiveFrame(params: {
   s.lastHeartbeatAt = now;
   s.hadConnected = true;
   return { ok: true };
+}
+
+export function putFraming(
+  sessionId: string,
+  snapshot: Omit<FramingSnapshot, "at">,
+): void {
+  const s = ensure(sessionId);
+  s.framing = { ...snapshot, at: Date.now() };
+}
+
+export function getFraming(sessionId: string): FramingSnapshot | null {
+  const s = live.get(sessionId);
+  if (!s?.framing) return null;
+  if (Date.now() - s.framing.at > FRAME_KEEP_MS * 2) return null;
+  return s.framing;
 }
 
 export function getLiveFrame(sessionId: string): {

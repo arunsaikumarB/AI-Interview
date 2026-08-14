@@ -58,14 +58,36 @@ export function IntegritySignalsSummary({
     (e) =>
       e.type === "SECONDARY_NO_FACE" ||
       e.type === "SECONDARY_MULTIPLE_FACES" ||
-      e.type === "SECONDARY_LOOKING_AT_DEVICE",
+      e.type === "SECONDARY_LOOKING_AT_DEVICE" ||
+      e.type === "SECONDARY_PERSON_MOVED" ||
+      e.type === "SECONDARY_ATTENTION_DEVIATION" ||
+      e.type === "SECONDARY_DEVICE_VISIBLE" ||
+      e.type === "SECONDARY_DEVICE_INTERACTION",
+  ).length;
+  const attentionDeviations = events.filter(
+    (e) => e.type === "SECONDARY_ATTENTION_DEVIATION",
+  ).length;
+  const additionalDevices = events.filter(
+    (e) =>
+      e.type === "SECONDARY_DEVICE_VISIBLE" ||
+      e.type === "SECONDARY_DEVICE_INTERACTION",
+  ).length;
+  const additionalPersons = events.filter(
+    (e) =>
+      e.type === "SECONDARY_MULTIPLE_PERSONS" ||
+      e.type === "SECONDARY_MULTIPLE_FACES",
+  ).length;
+  const personInteractions = events.filter(
+    (e) => e.type === "SECONDARY_PERSON_INTERACTION",
   ).length;
 
   const meaningful =
     tabSwitches +
       pasteEvents +
       cameraInterruptions +
-      visibilityInterruptions >
+      visibilityInterruptions +
+      additionalPersons +
+      personInteractions >
     0;
 
   return (
@@ -97,6 +119,10 @@ export function IntegritySignalsSummary({
           label="Candidate visibility interruptions"
           value={visibilityInterruptions}
         />
+        <Count label="Attention deviations" value={attentionDeviations} />
+        <Count label="Additional device signals" value={additionalDevices} />
+        <Count label="Additional persons" value={additionalPersons} />
+        <Count label="Person interaction signals" value={personInteractions} />
         <Count
           label="Interview ended by integrity policy"
           value={terminated ? 1 : 0}

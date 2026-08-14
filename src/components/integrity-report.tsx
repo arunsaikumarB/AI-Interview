@@ -62,6 +62,15 @@ export function IntegrityReportSection({
       e.type === "SECONDARY_NO_FACE" ||
       e.type === "SECONDARY_MULTIPLE_FACES" ||
       e.type === "SECONDARY_LOOKING_AT_DEVICE" ||
+      e.type === "SECONDARY_PERSON_MOVED" ||
+      e.type === "SECONDARY_PERSON_RETURNED" ||
+      e.type === "SECONDARY_ATTENTION_DEVIATION" ||
+      e.type === "SECONDARY_DEVICE_VISIBLE" ||
+      e.type === "SECONDARY_DEVICE_REMOVED" ||
+      e.type === "SECONDARY_DEVICE_INTERACTION" ||
+      e.type === "SECONDARY_MULTIPLE_PERSONS" ||
+      e.type === "SECONDARY_PERSON_RETURNED_TO_ONE" ||
+      e.type === "SECONDARY_PERSON_INTERACTION" ||
       (e.type === "WINDOW_SWITCH" && m?.kind === "blur")
     );
   });

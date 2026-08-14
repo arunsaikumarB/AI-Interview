@@ -87,6 +87,8 @@ export async function GET(_request: Request, { params }: Ctx) {
 
     return jsonOk({
       events,
+      interviewStatus: interview.status,
+      secondaryDeviceStatus: interview.secondaryDeviceStatus,
       advisoryNote:
         "These are timestamped signals for human review — not automatic verdicts.",
     });

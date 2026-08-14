@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { jsonOk, withApiHandler } from "@/lib/api";
-import { putLiveFrame, resolveSecondaryStatus } from "@/lib/secondary-camera";
+import { putLiveFrame, putFraming, resolveSecondaryStatus } from "@/lib/secondary-camera";
 import { signalSecondaryTransition } from "@/lib/secondary-camera-lifecycle";
 
 type Ctx = { params: { code: string } };
@@ -67,6 +67,31 @@ export const POST = withApiHandler<Ctx>(async (request, { params }) => {
   });
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: 429 });
+  }
+
+  const framingRaw = form.get("framing");
+  if (typeof framingRaw === "string" && framingRaw.length > 0 && framingRaw.length < 500) {
+    try {
+      const parsed = JSON.parse(framingRaw) as {
+        candidateVisible?: unknown;
+        extraPersonInPrimaryZone?: unknown;
+        laptopVisible?: unknown;
+        personCount?: unknown;
+      };
+      putFraming(session.id, {
+        candidateVisible: parsed.candidateVisible === true,
+        extraPersonInPrimaryZone: parsed.extraPersonInPrimaryZone === true,
+        laptopVisible: parsed.laptopVisible === true,
+        personCount:
+          typeof parsed.personCount === "number" &&
+          parsed.personCount >= 0 &&
+          parsed.personCount <= 20
+            ? Math.floor(parsed.personCount)
+            : 0,
+      });
+    } catch {
+      /* ignore malformed framing */
+    }
   }
 
   const status = resolveSecondaryStatus({

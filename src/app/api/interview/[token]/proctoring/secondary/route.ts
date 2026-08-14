@@ -6,6 +6,7 @@ import {
   clearLiveFrame,
   clearSecondaryRuntime,
   createSecondaryPairToken,
+  getFraming,
   getLiveFrame,
   getRuntimeDiagnostics,
   pairExpiresAt,
@@ -110,6 +111,7 @@ export const GET = withApiHandler<Ctx>(async (request, { params }) => {
     pairToken: session.secondaryPairToken,
     pairExpiresAt: session.secondaryPairExpiresAt?.toISOString() ?? null,
     pairUrl: app?.pairUrl ?? null,
+    lanIp: app?.lanIp ?? null,
     reachableFromPhone: app?.reachableFromPhone ?? false,
     requiresHttpsTrust: app?.requiresHttpsTrust ?? false,
     placementConfirmed: Boolean(session.secondaryPlacementConfirmedAt),
@@ -125,6 +127,17 @@ export const GET = withApiHandler<Ctx>(async (request, { params }) => {
         return f && f.ageMs < 3000;
       })(),
     ),
+    framing: (() => {
+      const f = getFraming(session.id);
+      if (!f) return null;
+      return {
+        candidateVisible: f.candidateVisible,
+        extraPersonInPrimaryZone: f.extraPersonInPrimaryZone,
+        laptopVisible: f.laptopVisible,
+        personCount: f.personCount,
+        ageMs: Date.now() - f.at,
+      };
+    })(),
     ...(diag
       ? { diagnostics: getRuntimeDiagnostics(session.id) }
       : {}),
@@ -159,7 +172,7 @@ export const POST = withApiHandler<Ctx>(async (request, { params }) => {
         secondaryPlacementConfirmedAt: null,
       },
     });
-    const { pairUrl, reachableFromPhone, requiresHttpsTrust } = secondaryPairUrl(
+    const { pairUrl, reachableFromPhone, requiresHttpsTrust, lanIp } = secondaryPairUrl(
       token,
       request,
     );
@@ -170,6 +183,7 @@ export const POST = withApiHandler<Ctx>(async (request, { params }) => {
       pairToken: token,
       pairExpiresAt: expires.toISOString(),
       pairUrl,
+      lanIp: lanIp ?? null,
       reachableFromPhone,
       requiresHttpsTrust,
       placementConfirmed: false,
@@ -203,6 +217,16 @@ export const POST = withApiHandler<Ctx>(async (request, { params }) => {
       return Response.json(
         { error: "Enhanced recording consent is required first" },
         { status: 403 },
+      );
+    }
+    const framing = getFraming(session.id);
+    if (framing && framing.extraPersonInPrimaryZone) {
+      return Response.json(
+        {
+          error:
+            "Please make sure only the candidate is in the interview area before continuing.",
+        },
+        { status: 400 },
       );
     }
     await prisma.interviewSession.update({

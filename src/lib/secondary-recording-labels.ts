@@ -48,3 +48,12 @@ export function recordingStatusLabel(status: string, hasPath = false): string {
       return "Secondary camera recording unavailable";
   }
 }
+
+export function recordingMimeHasAudio(mime: string | null | undefined): boolean | null {
+  if (!mime) return null;
+  const m = mime.toLowerCase();
+  if (m.includes("opus") || m.includes("mp4a") || m.includes("aac") || m.includes("vorbis")) {
+    return true;
+  }
+  return null;
+}

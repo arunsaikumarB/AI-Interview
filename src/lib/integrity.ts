@@ -18,8 +18,22 @@ export type IntegrityViolationKind =
 export type SecondaryIntegrityKind =
   | "CAMERA_MOVED"
   | "PERSON_MISSING"
+  | "PERSON_MOVED"
+  | "PERSON_RETURNED"
   | "EXTRA_PERSON"
-  | "LOOKING_AT_SECONDARY";
+  | "LOOKING_AT_SECONDARY"
+  | "ATTENTION_DEVIATION"
+  | "DEVICE_VISIBLE"
+  | "DEVICE_REMOVED"
+  | "DEVICE_INTERACTION"
+  | "PERSON_RETURNED_TO_ONE"
+  | "PERSON_INTERACTION";
+
+export const SECONDARY_INFO_KINDS = new Set<SecondaryIntegrityKind>([
+  "PERSON_RETURNED",
+  "DEVICE_REMOVED",
+  "PERSON_RETURNED_TO_ONE",
+]);
 
 export const SECONDARY_INTEGRITY_POLICY = {
   /** Candidate may correct this many times. The next episode after this ends the interview. */
@@ -34,8 +48,16 @@ export function isSecondaryIntegrityKind(
   return (
     raw === "CAMERA_MOVED" ||
     raw === "PERSON_MISSING" ||
+    raw === "PERSON_MOVED" ||
+    raw === "PERSON_RETURNED" ||
     raw === "EXTRA_PERSON" ||
-    raw === "LOOKING_AT_SECONDARY"
+    raw === "LOOKING_AT_SECONDARY" ||
+    raw === "ATTENTION_DEVIATION" ||
+    raw === "DEVICE_VISIBLE" ||
+    raw === "DEVICE_REMOVED" ||
+    raw === "DEVICE_INTERACTION" ||
+    raw === "PERSON_RETURNED_TO_ONE" ||
+    raw === "PERSON_INTERACTION"
   );
 }
 
@@ -45,13 +67,29 @@ export function candidateSecondaryFixMessage(
 ): string {
   switch (kind) {
     case "PERSON_MISSING":
-      return "The side camera cannot see the room. Uncover the phone and keep it pointed at you and your desk, then tap I’ve fixed this.";
+      return "Please return to your interview position. The side camera cannot see you in the room.";
+    case "PERSON_MOVED":
+      return "Please return to your normal interview position and remain seated.";
+    case "PERSON_RETURNED":
+      return "You are visible again. Continue the interview.";
     case "EXTRA_PERSON":
-      return "Someone else is visible on the side camera. Only you should be in view. When the room is clear, tap I’ve fixed this.";
+      return "Another person has been detected in the interview area. Please ensure that you are alone and return your attention to the interview.";
+    case "PERSON_RETURNED_TO_ONE":
+      return "Only you are visible again. Continue the interview.";
+    case "PERSON_INTERACTION":
+      return "Please continue the interview without assistance from another person.";
     case "LOOKING_AT_SECONDARY":
-      return "Please look at the interview laptop, not the side camera. Face the laptop, then tap I’ve fixed this.";
+      return "Please look at the interview laptop, not the side camera.";
+    case "ATTENTION_DEVIATION":
+      return "Please return your attention to the interview.";
+    case "DEVICE_VISIBLE":
+      return "Additional device activity detected. Please put other phones or tablets away.";
+    case "DEVICE_REMOVED":
+      return "The extra device is no longer visible. Continue the interview.";
+    case "DEVICE_INTERACTION":
+      return "Possible external-device activity — please keep your attention on the interview laptop.";
     case "CAMERA_MOVED":
-      return "The side camera moved. Put the phone back where it was and leave it still, then tap I’ve fixed this.";
+      return "Secondary camera moved. Please return it to the original position.";
   }
 }
 
@@ -129,16 +167,43 @@ export function integritySignalLabel(params: {
     return "Secondary camera interruption";
   }
   if (type === "SECONDARY_CAMERA_MOVED") {
-    return "Secondary camera interruption";
+    return "Secondary camera moved";
   }
   if (type === "SECONDARY_NO_FACE") {
     return "Candidate was not visible";
   }
   if (type === "SECONDARY_MULTIPLE_FACES") {
-    return "Candidate visibility interrupted";
+    return "Additional person detected";
+  }
+  if (type === "SECONDARY_MULTIPLE_PERSONS") {
+    return "Additional person detected";
+  }
+  if (type === "SECONDARY_PERSON_RETURNED_TO_ONE") {
+    return "Additional person no longer detected";
+  }
+  if (type === "SECONDARY_PERSON_INTERACTION") {
+    return "Possible interaction with another person detected. Review recommended.";
   }
   if (type === "SECONDARY_LOOKING_AT_DEVICE") {
-    return "Candidate visibility interrupted";
+    return "Attention toward the side camera";
+  }
+  if (type === "SECONDARY_PERSON_MOVED") {
+    return "Candidate position changed";
+  }
+  if (type === "SECONDARY_PERSON_RETURNED") {
+    return "Candidate returned to interview position";
+  }
+  if (type === "SECONDARY_ATTENTION_DEVIATION") {
+    return "Attention deviation";
+  }
+  if (type === "SECONDARY_DEVICE_VISIBLE") {
+    return "Possible additional-device activity";
+  }
+  if (type === "SECONDARY_DEVICE_REMOVED") {
+    return "Additional device no longer visible";
+  }
+  if (type === "SECONDARY_DEVICE_INTERACTION") {
+    return "Possible interaction with an additional device";
   }
   return type.replaceAll("_", " ").toLowerCase();
 }
@@ -165,6 +230,15 @@ export function terminationReasonLabel(reason: string | null | undefined): strin
   }
   if (reason === "secondary_looking_at_device") {
     return "Interview ended (candidate looked at the secondary camera)";
+  }
+  if (reason === "secondary_person_moved") {
+    return "Interview ended (candidate left the expected interview position)";
+  }
+  if (reason === "secondary_attention") {
+    return "Interview ended (repeated attention deviation)";
+  }
+  if (reason === "secondary_person_interaction") {
+    return "Interview ended (possible interaction with another person)";
   }
   return "Interview ended by integrity policy";
 }

@@ -70,6 +70,21 @@ function stripTrailingSlash(url: string): string {
   return url.replace(/\/$/, "");
 }
 
+function lanAddressesOnThisPc(): Set<string> {
+  const ips = new Set<string>();
+  const ifaces = os.networkInterfaces();
+  for (const entries of Object.values(ifaces)) {
+    if (!entries) continue;
+    for (const entry of entries) {
+      const family = String(entry.family);
+      if (family !== "IPv4" && family !== "4") continue;
+      if (entry.internal) continue;
+      ips.add(entry.address);
+    }
+  }
+  return ips;
+}
+
 function lanIpFromEnv(): string | null {
   const raw = (
     process.env.PUBLIC_LAN_IP ||
@@ -81,9 +96,17 @@ function lanIpFromEnv(): string | null {
     .split("/")[0]!
     .split(":")[0]!;
   if (!raw || isLoopbackHostname(raw)) return null;
-  // Basic IPv4 sanity
   if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(raw)) return null;
+  // Ignore leftover IPs from a previous Wi‑Fi (phone timeouts).
+  if (!lanAddressesOnThisPc().has(raw)) return null;
   return raw;
+}
+
+function phoneHttpsOrigin(): { origin: string; lanIp: string } | null {
+  const live = detectLanIPv4();
+  if (!live) return null;
+  const port = (process.env.PUBLIC_HTTPS_PORT || "3443").trim() || "3443";
+  return { origin: `https://${live}:${port}`, lanIp: live };
 }
 
 /**
@@ -226,19 +249,14 @@ export function secondaryPairUrl(
   lanIp?: string;
   requiresHttpsTrust?: boolean;
 } {
-  // Phones require a Secure Context for getUserMedia. Prefer local HTTPS proxy URL.
-  const httpsBase = (process.env.PUBLIC_HTTPS_URL ?? "").trim().replace(/\/$/, "");
-  if (httpsBase.startsWith("https://")) {
-    let lanIp: string | undefined;
-    try {
-      lanIp = new URL(httpsBase).hostname;
-    } catch {
-      lanIp = undefined;
-    }
+  // Always use the live Wi‑Fi IP. PUBLIC_HTTPS_URL in .env is often a stale
+  // address from another network (ERR_CONNECTION_TIMED_OUT on the phone).
+  const phone = phoneHttpsOrigin();
+  if (phone) {
     return {
-      pairUrl: `${httpsBase}/interview/secondary/${pairToken}`,
+      pairUrl: `${phone.origin}/interview/secondary/${pairToken}`,
       reachableFromPhone: true,
-      lanIp,
+      lanIp: phone.lanIp,
       requiresHttpsTrust: true,
     };
   }
@@ -248,6 +266,6 @@ export function secondaryPairUrl(
     pairUrl: `${base.url}/interview/secondary/${pairToken}`,
     reachableFromPhone: base.reachableFromPhone,
     lanIp: base.lanIp,
-    requiresHttpsTrust: false,
+    requiresHttpsTrust: base.url.startsWith("https://"),
   };
 }

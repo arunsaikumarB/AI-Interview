@@ -33,20 +33,20 @@ export function IntegrityWarningDialog({
       aria-labelledby="integrity-warning-title"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-6 shadow-xl">
+      <div className="w-full max-w-lg space-y-5 rounded-2xl border-2 border-warning/50 bg-card p-8 shadow-2xl">
         <h2
           id="integrity-warning-title"
-          className="text-2xl font-semibold tracking-tight text-foreground"
+          className="text-center text-3xl font-semibold tracking-tight text-foreground"
         >
-          Interview Integrity Warning
+          Interview warning
         </h2>
-        <p className="text-sm leading-relaxed text-foreground/90">{message}</p>
+        <p className="text-base leading-relaxed text-foreground">{message}</p>
         <p className="text-sm text-muted-foreground">{stayHint}</p>
         <p className="text-xs uppercase tracking-wide text-muted-foreground">
           Warning {warningNumber} of {of}
         </p>
-        <Button className="h-11 w-full" onClick={onDismiss}>
-          I understand — I&apos;ve fixed this
+        <Button className="h-12 w-full text-base" onClick={onDismiss}>
+          Continue
         </Button>
       </div>
     </div>

@@ -5,10 +5,13 @@
  * Usage: node scripts/ensure-local-https.mjs
  */
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -95,17 +98,73 @@ function detectLanIPv4() {
   return candidates[0]?.address ?? null;
 }
 
-function opensslAvailable() {
+function findOpenssl() {
+  const candidates = [
+    "openssl",
+    "C:\\Program Files\\Git\\usr\\bin\\openssl.exe",
+    "C:\\Program Files\\Git\\mingw64\\bin\\openssl.exe",
+  ];
+  for (const bin of candidates) {
+    try {
+      execFileSync(bin, ["version"], { stdio: "ignore", windowsHide: true });
+      return bin;
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
+}
+
+async function generateCertWithNode(lanIp) {
+  let selfsigned;
   try {
-    execFileSync("openssl", ["version"], { stdio: "ignore", windowsHide: true });
-    return true;
+    selfsigned = require("selfsigned");
   } catch {
     return false;
   }
+  const pems = await selfsigned.generate(
+    [{ name: "commonName", value: "AI-Recruitment-OS-Local" }],
+    {
+      days: 825,
+      keySize: 2048,
+      algorithm: "sha256",
+      extensions: [
+        { name: "basicConstraints", cA: false },
+        {
+          name: "keyUsage",
+          digitalSignature: true,
+          keyEncipherment: true,
+        },
+        { name: "extKeyUsage", serverAuth: true, clientAuth: true },
+        {
+          name: "subjectAltName",
+          altNames: [
+            { type: 7, ip: lanIp },
+            { type: 7, ip: "127.0.0.1" },
+            { type: 2, value: "localhost" },
+          ],
+        },
+      ],
+    },
+  );
+  if (!pems?.cert || !pems?.private) return false;
+  fs.writeFileSync(CERT, pems.cert);
+  fs.writeFileSync(KEY, pems.private);
+  console.log("[https] TLS cert generated in Node (Docker not required).");
+  return true;
 }
 
-function generateCert(lanIp) {
+async function generateCert(lanIp) {
   fs.mkdirSync(CERT_DIR, { recursive: true });
+  try {
+    if (await generateCertWithNode(lanIp)) return;
+  } catch (err) {
+    console.warn(
+      "[https] Node cert generation failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   const san = `subjectAltName=IP:${lanIp},DNS:localhost,IP:127.0.0.1`;
   const args = [
     "req",
@@ -126,12 +185,12 @@ function generateCert(lanIp) {
     san,
   ];
 
-  if (opensslAvailable()) {
-    execFileSync("openssl", args, { cwd: ROOT, stdio: "inherit", windowsHide: true });
+  const openssl = findOpenssl();
+  if (openssl) {
+    execFileSync(openssl, args, { cwd: ROOT, stdio: "inherit", windowsHide: true });
     return;
   }
 
-  // Fallback: openssl inside a tiny Docker image (local only).
   console.log("[https] Host openssl missing — generating cert via Docker…");
   execFileSync(
     "docker",
@@ -164,35 +223,45 @@ function generateCert(lanIp) {
 
 function certCoversIp(lanIp) {
   if (!fs.existsSync(CERT) || !fs.existsSync(KEY)) return false;
-  try {
-    const text = execFileSync("openssl", ["x509", "-in", CERT, "-noout", "-text"], {
-      encoding: "utf8",
-      windowsHide: true,
-    });
-    return text.includes(`IP Address:${lanIp}`);
-  } catch {
-    // If we can't inspect, regenerate when missing marker file.
-    const meta = path.join(CERT_DIR, "lan-ip.txt");
-    if (!fs.existsSync(meta)) return false;
-    return fs.readFileSync(meta, "utf8").trim() === lanIp;
+  const openssl = findOpenssl();
+  if (openssl) {
+    try {
+      const text = execFileSync(openssl, ["x509", "-in", CERT, "-noout", "-text"], {
+        encoding: "utf8",
+        windowsHide: true,
+      });
+      return text.includes(`IP Address:${lanIp}`);
+    } catch {
+      /* fall through to marker file */
+    }
   }
+  const meta = path.join(CERT_DIR, "lan-ip.txt");
+  if (!fs.existsSync(meta)) return false;
+  return fs.readFileSync(meta, "utf8").trim() === lanIp;
 }
 
-function main() {
+async function main() {
   const env = {
     ...loadEnvFile(path.join(ROOT, ".env.docker")),
     ...loadEnvFile(path.join(ROOT, ".env")),
     ...process.env,
   };
-  const lan = (env.PUBLIC_LAN_IP || "").trim() || detectLanIPv4();
+  // Always prefer the live NIC. A stale PUBLIC_LAN_IP in .env (old Wi‑Fi)
+  // is why phones keep opening 192.168.x.x that this PC no longer has.
+  const lan = detectLanIPv4() || (env.PUBLIC_LAN_IP || "").trim();
   if (!lan) {
     console.error("[https] No LAN IPv4 — cannot build phone HTTPS cert.");
     process.exit(1);
   }
+  if ((env.PUBLIC_LAN_IP || "").trim() && env.PUBLIC_LAN_IP.trim() !== lan) {
+    console.log(
+      `[https] Ignoring stale PUBLIC_LAN_IP=${env.PUBLIC_LAN_IP.trim()} — this PC is ${lan}`,
+    );
+  }
 
   if (!certCoversIp(lan)) {
     console.log(`[https] Generating TLS cert for ${lan}…`);
-    generateCert(lan);
+    await generateCert(lan);
   } else {
     console.log(`[https] TLS cert already covers ${lan}`);
   }
@@ -209,4 +278,7 @@ function main() {
   );
 }
 
-main();
+main().catch((err) => {
+  console.error("[https]", err);
+  process.exit(1);
+});

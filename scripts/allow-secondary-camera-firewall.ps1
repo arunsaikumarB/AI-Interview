@@ -17,7 +17,8 @@ if (-not $isAdmin) {
 
 $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
 if ($existing) {
-  Write-Host "Firewall rule already exists: $ruleName"
+  netsh advfirewall firewall set rule name="$ruleName" new profile=any | Out-Null
+  Write-Host "Firewall rule updated (all profiles): $ruleName"
   exit 0
 }
 
@@ -27,7 +28,7 @@ New-NetFirewallRule `
   -Action Allow `
   -Protocol TCP `
   -LocalPort 3443 `
-  -Profile Private,Domain `
+  -Profile Domain,Private,Public `
   -Description "Logisoft HireOS secondary-camera QR (host TLS proxy)" | Out-Null
 
 Write-Host "Allowed inbound TCP 3443 for the secondary camera phone."

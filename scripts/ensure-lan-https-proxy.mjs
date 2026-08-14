@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const PID_FILE = path.join(ROOT, "certs", "lan-https-proxy.pid");
+const PROXY_IP_FILE = path.join(ROOT, "certs", "lan-https-proxy.ip");
 const HTTPS_PORT = Number(process.env.PUBLIC_HTTPS_PORT || 3443);
 const RULE_NAME = "Logisoft HireOS secondary camera HTTPS";
 
@@ -82,13 +83,9 @@ function firewallRuleExists() {
 
 function ensureFirewallRule() {
   if (process.platform !== "win32") return;
-  if (firewallRuleExists()) {
-    console.log("[https] Firewall already allows TCP 3443");
-    return;
-  }
   const ps1 = path.join(ROOT, "scripts", "allow-secondary-camera-firewall.ps1");
   console.log(
-    "[https] Windows must allow inbound TCP 3443 for the phone — approve the UAC prompt.",
+    "[https] Windows must allow inbound TCP 3443 (all network profiles) — approve UAC if prompted.",
   );
   try {
     execFileSync(
@@ -118,15 +115,57 @@ async function waitForListen() {
   return false;
 }
 
+function stopPid(pid) {
+  if (!pidAlive(pid)) return;
+  try {
+    process.kill(pid);
+  } catch {
+    /* already gone */
+  }
+}
+
+function readCertLanIp() {
+  try {
+    return fs.readFileSync(path.join(ROOT, "certs", "lan-ip.txt"), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+function readProxyIp() {
+  try {
+    return fs.readFileSync(PROXY_IP_FILE, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
 async function startHostProxy() {
+  const lanIp = readCertLanIp();
   const existing = readPid();
-  if (existing && pidAlive(existing) && (await canTcp("127.0.0.1", HTTPS_PORT))) {
-    console.log(`[https] Host TLS proxy already running (pid ${existing}) on :${HTTPS_PORT}`);
+  const listening = await canTcp("127.0.0.1", HTTPS_PORT);
+
+  if (
+    existing &&
+    pidAlive(existing) &&
+    listening &&
+    lanIp &&
+    readProxyIp() === lanIp
+  ) {
+    console.log(
+      `[https] Host TLS proxy already running (pid ${existing}) → https://${lanIp}:${HTTPS_PORT}`,
+    );
     return;
   }
 
+  // Restart when Wi‑Fi IP changed so the cert + bind match the QR.
+  if (existing && pidAlive(existing)) {
+    console.log("[https] Restarting host TLS proxy for current LAN IP…");
+    stopPid(existing);
+    await sleep(500);
+  }
+
   if (await canTcp("127.0.0.1", HTTPS_PORT)) {
-    // Port in use by Docker or a previous proxy we don't own — try to free Docker first.
     stopDockerHttps();
     await sleep(800);
   }
@@ -158,6 +197,7 @@ async function startHostProxy() {
   child.unref();
   if (child.pid) {
     fs.writeFileSync(PID_FILE, `${child.pid}\n`, "utf8");
+    if (lanIp) fs.writeFileSync(PROXY_IP_FILE, `${lanIp}\n`, "utf8");
   }
 
   const ok = await waitForListen();
@@ -166,7 +206,7 @@ async function startHostProxy() {
     return;
   }
   console.log(
-    `[https] Phone URL is https://<LAN>:${HTTPS_PORT} → this PC's npm run dev (127.0.0.1:3000)`,
+    `[https] Phone URL is https://${lanIp || "<LAN>"}:${HTTPS_PORT} → 127.0.0.1:3000`,
   );
 }
 

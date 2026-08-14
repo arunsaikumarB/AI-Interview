@@ -30,7 +30,7 @@ import { InterviewMicControl } from "@/components/interview/interview-mic-contro
 import { useOrbState, usePrefersReducedMotion } from "@/components/interview/orb-state";
 
 const FOCUS_NUDGE_COPY =
-  "Please stay focused on the interview — activity signals are shared with the recruiter.";
+  "Please stay focused on the interview â€” activity signals are shared with the recruiter.";
 const MAX_FOCUS_NUDGES = 2;
 const FOCUS_GAP_MS = 3000;
 
@@ -233,7 +233,7 @@ export function InterviewRoom({ token }: { token: string }) {
         return;
       }
 
-      // STANDARD: soft nudge only — never terminate from the client.
+      // STANDARD: soft nudge only â€” never terminate from the client.
       if (type === "TAB_BLUR" || (type === "WINDOW_SWITCH" && meta?.kind === "blur")) {
         hiddenSinceRef.current = Date.now();
         return;
@@ -256,7 +256,7 @@ export function InterviewRoom({ token }: { token: string }) {
       if (voiceModeRef.current) {
         const audio = new Audio(`/api/interview/${token}/nudge-audio`);
         audio.play().catch(() => {
-          /* TTS optional — banner still shown */
+          /* TTS optional â€” banner still shown */
         });
       }
     },
@@ -276,7 +276,7 @@ export function InterviewRoom({ token }: { token: string }) {
     setPendingProcessing(Boolean(data.pendingProcessing));
     if (data.pendingProcessing) {
       setError(
-        "AI is still processing your last answer — your text was saved. Retry when ready.",
+        "AI is still processing your last answer â€” your text was saved. Retry when ready.",
       );
     } else {
       setError((prev) =>
@@ -550,7 +550,7 @@ export function InterviewRoom({ token }: { token: string }) {
         camStreamRef.current = cam;
         await collector.enableCamera(cam);
       } catch {
-        /* camera optional — tab/paste still run */
+        /* camera optional â€” tab/paste still run */
       }
     })();
 
@@ -621,7 +621,7 @@ export function InterviewRoom({ token }: { token: string }) {
     const audio = new Audio(url);
     questionAudioRef.current = audio;
     audio.play().catch(() => {
-      /* autoplay may be blocked — user can press Replay */
+      /* autoplay may be blocked â€” user can press Replay */
     });
     return () => {
       audio.pause();
@@ -708,7 +708,7 @@ export function InterviewRoom({ token }: { token: string }) {
     const data = await res.json();
     setThinking(false);
     if (!res.ok) {
-      // No answer saved yet (e.g. speech was down) — refresh room, don't look like an outage.
+      // No answer saved yet (e.g. speech was down) â€” refresh room, don't look like an outage.
       if (res.status === 400 && data.code === "VALIDATION") {
         setPendingProcessing(false);
         setError(
@@ -719,7 +719,7 @@ export function InterviewRoom({ token }: { token: string }) {
         await loadState();
         return;
       }
-      setError(data.error ?? "Still processing — retry shortly");
+      setError(data.error ?? "Still processing â€” retry shortly");
       return;
     }
     if (data.concluded) {
@@ -757,8 +757,8 @@ export function InterviewRoom({ token }: { token: string }) {
     if (res.status === 503 && data.retryable) {
       setError(
         data.ollamaDown
-          ? "AI is offline — your answer was saved. Retry when ready."
-          : "AI is busy — your answer was saved. Retry processing.",
+          ? "AI is offline â€” your answer was saved. Retry when ready."
+          : "AI is busy â€” your answer was saved. Retry processing.",
       );
       await loadState();
       return;
@@ -888,8 +888,8 @@ export function InterviewRoom({ token }: { token: string }) {
       setHeardLabel(data.transcript ?? null);
       setError(
         data.ollamaDown
-          ? "AI is offline — your answer was saved. Retry when ready."
-          : "AI is busy — your answer was saved. Retry processing.",
+          ? "AI is offline â€” your answer was saved. Retry when ready."
+          : "AI is busy â€” your answer was saved. Retry processing.",
       );
       await loadState();
       return;
@@ -946,7 +946,7 @@ export function InterviewRoom({ token }: { token: string }) {
     return (
       <div className="mx-auto max-w-lg space-y-3 p-6 text-center">
         <BrandLogo size="header" />
-        <p className="text-sm text-muted-foreground">Loading interview…</p>
+        <p className="text-sm text-muted-foreground">Loading interviewâ€¦</p>
       </div>
     );
   }
@@ -1092,13 +1092,13 @@ export function InterviewRoom({ token }: { token: string }) {
           Hi {info.candidateFirstName}. You&apos;ll get about {info.maxQuestions} questions
           {info.durationMinutes ? ` within ${info.durationMinutes} minutes` : ""}.
           {info.mode === "VOICE"
-            ? " Answer by voice. You may switch to typing once — you cannot switch back to voice, and you cannot re-record."
-            : " Answer in text — take your time."}
+            ? " Answer by voice. You may switch to typing once â€” you cannot switch back to voice, and you cannot re-record."
+            : " Answer in text â€” take your time."}
         </p>
         <p className="mt-2 text-sm text-muted-foreground">{info.instructions}</p>
         {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
         <Button className="mt-6 w-full" onClick={start} disabled={thinking}>
-          {thinking ? "Starting…" : "Start interview"}
+          {thinking ? "Startingâ€¦" : "Start interview"}
         </Button>
       </div>
     );
@@ -1130,7 +1130,7 @@ export function InterviewRoom({ token }: { token: string }) {
         }
         stayHint={
           integrityWarning?.source === "secondary"
-            ? "This stays on screen until you fix it and confirm. You have 3 chances."
+            ? "Please remain focused on the interview. Return to your normal position, then continue."
             : "Please remain on the interview screen for the rest of the interview."
         }
         onDismiss={() => {
@@ -1161,7 +1161,7 @@ export function InterviewRoom({ token }: { token: string }) {
         <div className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">
           <p>
             Interview {interviewCode}
-            {info.mode === "VOICE" ? ` · ${useVoiceUi ? "Voice" : "Typing"}` : ""}
+            {info.mode === "VOICE" ? ` Â· ${useVoiceUi ? "Voice" : "Typing"}` : ""}
           </p>
           {remainingLabel != null ? (
             <p className="mt-0.5">{remainingLabel}</p>
@@ -1170,7 +1170,7 @@ export function InterviewRoom({ token }: { token: string }) {
       </header>
       {timeUp && !concluded ? (
         <p className="relative z-10 mb-2 shrink-0 text-sm text-warning">
-          Time is up — submit your current answer to finish the interview.
+          Time is up â€” submit your current answer to finish the interview.
         </p>
       ) : null}
 
@@ -1199,7 +1199,7 @@ export function InterviewRoom({ token }: { token: string }) {
         <div className="relative z-10 mb-2 shrink-0 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
           <p>
             {error ??
-              "AI is still processing your last answer — your text was saved. Retry when ready."}
+              "AI is still processing your last answer â€” your text was saved. Retry when ready."}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button
@@ -1208,7 +1208,7 @@ export function InterviewRoom({ token }: { token: string }) {
               onClick={continueTurn}
               disabled={thinking}
             >
-              {thinking ? "Retrying…" : "Retry AI (answer already saved)"}
+              {thinking ? "Retryingâ€¦" : "Retry AI (answer already saved)"}
             </Button>
             {info.mode === "VOICE" && error?.toLowerCase().includes("speech") ? (
               <Button
@@ -1229,7 +1229,7 @@ export function InterviewRoom({ token }: { token: string }) {
       {transcriptFailed ? (
         <div className="relative z-10 mb-2 shrink-0 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
           <p>
-            We couldn&apos;t hear that clearly. Continue by typing your answer —
+            We couldn&apos;t hear that clearly. Continue by typing your answer â€”
             re-recording is not available.
           </p>
         </div>
@@ -1271,7 +1271,7 @@ export function InterviewRoom({ token }: { token: string }) {
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}
                 rows={4}
-                placeholder="Type your answer…"
+                placeholder="Type your answerâ€¦"
                 disabled={thinking}
                 className="min-h-28 resize-y"
               />

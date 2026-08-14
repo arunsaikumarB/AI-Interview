@@ -13,6 +13,7 @@ import {
 import { InterviewReviewSummary } from "@/components/interview-review-summary";
 import { IntegritySignalsSummary } from "@/components/integrity-signals-summary";
 import { SecondaryCameraReview } from "@/components/secondary-camera-review";
+import { SecondaryIntegrityLive } from "@/components/secondary-integrity-live";
 import { CandidateAskedSection } from "@/components/candidate-asked-section";
 import {
   AnswerEvaluationSchema,
@@ -190,6 +191,13 @@ export default async function InterviewReportPage({ params }: Ctx) {
         hasRecording={Boolean(recordingPath)}
       />
 
+      <SecondaryIntegrityLive
+        interviewId={interview.id}
+        candidateName={`${interview.application.candidate.firstName} ${interview.application.candidate.lastName}`}
+        initialStatus={interview.status}
+        initialDeviceStatus={interview.secondaryDeviceStatus}
+      />
+
       <SecondaryCameraReview
         interviewId={interview.id}
         status={recordingStatus}
@@ -204,6 +212,7 @@ export default async function InterviewReportPage({ params }: Ctx) {
         }
         placementConfirmed={Boolean(interview.secondaryPlacementConfirmedAt)}
         secondaryDeviceStatus={interview.secondaryDeviceStatus}
+        recordingMime={interview.secondaryRecordingMime}
         events={interview.proctoring.map((e) => ({
           id: e.id,
           type: e.type,

@@ -4,6 +4,7 @@ import { asJson } from "@/lib/ai/interview-session";
 import {
   STRICT_POLICY,
   SECONDARY_INTEGRITY_POLICY,
+  SECONDARY_INFO_KINDS,
   type IntegrityViolationKind,
   type SecondaryIntegrityKind,
   parseIntegrityMode,
@@ -304,9 +305,25 @@ function secondarySignalType(kind: SecondaryIntegrityKind): ProctoringSignalType
     case "PERSON_MISSING":
       return "SECONDARY_NO_FACE";
     case "EXTRA_PERSON":
-      return "SECONDARY_MULTIPLE_FACES";
+      return "SECONDARY_MULTIPLE_PERSONS" as ProctoringSignalType;
+    case "PERSON_RETURNED_TO_ONE":
+      return "SECONDARY_PERSON_RETURNED_TO_ONE" as ProctoringSignalType;
+    case "PERSON_INTERACTION":
+      return "SECONDARY_PERSON_INTERACTION" as ProctoringSignalType;
     case "LOOKING_AT_SECONDARY":
       return "SECONDARY_LOOKING_AT_DEVICE";
+    case "PERSON_MOVED":
+      return "SECONDARY_PERSON_MOVED";
+    case "PERSON_RETURNED":
+      return "SECONDARY_PERSON_RETURNED";
+    case "ATTENTION_DEVIATION":
+      return "SECONDARY_ATTENTION_DEVIATION";
+    case "DEVICE_VISIBLE":
+      return "SECONDARY_DEVICE_VISIBLE";
+    case "DEVICE_REMOVED":
+      return "SECONDARY_DEVICE_REMOVED";
+    case "DEVICE_INTERACTION":
+      return "SECONDARY_DEVICE_INTERACTION";
   }
 }
 
@@ -320,6 +337,19 @@ function secondaryTerminateReason(kind: SecondaryIntegrityKind): string {
       return "secondary_extra_person";
     case "LOOKING_AT_SECONDARY":
       return "secondary_looking_at_device";
+    case "PERSON_MOVED":
+      return "secondary_person_moved";
+    case "ATTENTION_DEVIATION":
+      return "secondary_attention";
+    case "DEVICE_VISIBLE":
+    case "DEVICE_INTERACTION":
+      return "secondary_device";
+    case "PERSON_INTERACTION":
+      return "secondary_person_interaction";
+    case "PERSON_RETURNED":
+    case "PERSON_RETURNED_TO_ONE":
+    case "DEVICE_REMOVED":
+      return "secondary_person_missing";
   }
 }
 
@@ -410,13 +440,15 @@ export async function recordSecondaryIntegrityViolation(params: {
     }
   }
 
+  const infoOnly = SECONDARY_INFO_KINDS.has(params.kind);
   const meta: Record<string, unknown> = {
     ...(params.meta ?? {}),
     signalOnly: true,
     noAutoVerdict: true,
     noAtsStageChange: true,
     noAiInput: true,
-    integrityViolation: true,
+    integrityViolation: !infoOnly,
+    integrityInfo: infoOnly,
     integrityKind: params.kind,
     source: "secondary_camera",
     ...(params.episodeId ? { episodeId: params.episodeId } : {}),
@@ -456,6 +488,29 @@ export async function recordSecondaryIntegrityViolation(params: {
         recorded: false,
         status: fresh.status,
         warningNumber: fresh.integrityCameraMoveCount,
+      };
+    }
+
+    if (infoOnly) {
+      await tx.proctoringEvent.create({
+        data: {
+          sessionId: session.id,
+          type: secondarySignalType(params.kind),
+          timestamp: params.timestamp,
+          meta: asJson(meta) as Prisma.InputJsonValue,
+        },
+      });
+      return {
+        cameraMoves: fresh.integrityCameraMoveCount,
+        terminated: false,
+        reason: null,
+        showWarning: false,
+        recorded: true,
+        status: "IN_PROGRESS" as const,
+        warningNumber: Math.min(
+          Math.max(fresh.integrityCameraMoveCount, 1),
+          warningOf,
+        ),
       };
     }
 

@@ -20,6 +20,7 @@ type StatusPayload = {
   status: PairStatus;
   label?: string;
   pairUrl: string | null;
+  lanIp?: string | null;
   pairToken?: string | null;
   pairExpiresAt: string | null;
   placementConfirmed: boolean;
@@ -27,6 +28,13 @@ type StatusPayload = {
   reachableFromPhone?: boolean;
   requiresHttpsTrust?: boolean;
   frameFresh?: boolean;
+  framing?: {
+    candidateVisible: boolean;
+    extraPersonInPrimaryZone: boolean;
+    laptopVisible: boolean;
+    personCount: number;
+    ageMs: number;
+  } | null;
   recordingStatus?: string;
   recordingLabel?: string;
   recordingHasGap?: boolean;
@@ -100,6 +108,7 @@ export function EnhancedProctoringSetup({
   const [localhostWarn, setLocalhostWarn] = useState(false);
   const [httpsTrustHint, setHttpsTrustHint] = useState(false);
   const [diag, setDiag] = useState<StatusPayload["diagnostics"] | null>(null);
+  const [framing, setFraming] = useState<StatusPayload["framing"]>(null);
 
   const showDiag =
     typeof window !== "undefined" &&
@@ -122,6 +131,7 @@ export function EnhancedProctoringSetup({
     setRecordingStatus(data.recordingStatus ?? null);
     setRecordingHasGap(Boolean(data.recordingHasGap));
     setDiag(data.diagnostics ?? null);
+    setFraming(data.framing ?? null);
     if (data.pairUrl) {
       setLocalhostWarn(
         data.reachableFromPhone === false ||
@@ -261,8 +271,9 @@ export function EnhancedProctoringSetup({
     await refreshStatus();
   }
 
+  const extraPersonBlocking = Boolean(framing?.extraPersonInPrimaryZone);
   const placementReady =
-    status === "CONNECTED" && frameFresh && Boolean(previewUrl);
+    status === "CONNECTED" && frameFresh && Boolean(previewUrl) && !extraPersonBlocking;
 
   return (
     <div className="mx-auto max-w-lg space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm">
@@ -339,11 +350,11 @@ export function EnhancedProctoringSetup({
             </p>
           ) : httpsTrustHint ? (
             <p className="text-xs text-muted-foreground">
-              Use the same Wi‑Fi as this PC (not mobile data). After scanning,
-              Brave will warn about the local certificate — tap Advanced →
-              Proceed, then Allow camera &amp; microphone. If the phone says
-              the site took too long, approve the Windows Firewall prompt on
-              this PC and reload.
+              Phone and this PC must be on the <strong>same Wi‑Fi</strong> —
+              turn off mobile data. Scan a <strong>fresh QR</strong> (do not
+              reopen an old 192.168… tab). Brave will warn about the local
+              certificate: tap Advanced → Proceed, then Allow camera &amp;
+              microphone.
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
@@ -369,7 +380,7 @@ export function EnhancedProctoringSetup({
               <img
                 src={previewUrl}
                 alt="Secondary camera live preview"
-                className="aspect-video w-full object-contain bg-background"
+                className="max-h-[50vh] w-full bg-background object-contain"
               />
             ) : (
               <p className="px-4 py-10 text-center text-sm text-muted-foreground">
@@ -381,11 +392,32 @@ export function EnhancedProctoringSetup({
             {previewUrl && !placementConfirmed ? <PlacementGuideOverlay /> : null}
           </div>
 
+          {status === "CONNECTED" ? (
+            <ul className="space-y-1 text-sm text-foreground">
+              <li>
+                {framing?.candidateVisible
+                  ? "✓ Candidate visible"
+                  : "○ Candidate visible"}
+              </li>
+              <li>
+                {framing?.laptopVisible ? "✓ Laptop visible" : "○ Laptop visible"}
+              </li>
+              <li>✓ Surrounding interview area visible</li>
+              <li>
+                {extraPersonBlocking
+                  ? "⚠ Additional person detected"
+                  : "✓ No additional person detected"}
+              </li>
+            </ul>
+          ) : null}
+
           {!placementConfirmed ? (
             <>
               <p className="text-sm text-foreground/90">
-                {placementReady
-                  ? "Placement looks ready. Review the preview and confirm that the candidate, interview computer, desk, and surrounding workspace are visible, and the phone will stay fixed."
+                {extraPersonBlocking
+                  ? "Please make sure only the candidate is in the interview area before continuing."
+                  : placementReady
+                  ? "Confirm that the candidate’s upper body, laptop, and surrounding area are visible. Reposition the phone if framing is insufficient."
                   : "Wait for a stable live preview, then leave the phone still so framing matches the guide."}
               </p>
               <div className="flex flex-wrap gap-2">
@@ -400,7 +432,7 @@ export function EnhancedProctoringSetup({
                   onClick={resetPlacement}
                   disabled={busy}
                 >
-                  Reposition Phone
+                  Recheck camera
                 </Button>
               </div>
             </>
@@ -428,7 +460,7 @@ export function EnhancedProctoringSetup({
 
       <Button
         className="w-full"
-        disabled={!placementConfirmed || status !== "CONNECTED"}
+        disabled={!placementConfirmed || status !== "CONNECTED" || extraPersonBlocking}
         onClick={onReady}
       >
         Continue to interview
