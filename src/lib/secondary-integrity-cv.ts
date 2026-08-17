@@ -39,6 +39,242 @@ export const LOOK_AREA_RATIO = 0.2;
 export const MIN_PERSON_BOX_AREA = 0.035;
 export const MIN_CLOSE_PERSON_AREA = 0.035;
 
+/* ── F-05 R1: baseline may only be taken from a settled candidate ────────── */
+
+/** Minimum pose samples before a baseline can be considered at all. */
+export const BASELINE_MIN_SAMPLES = 5;
+
+/**
+ * Maximum spread allowed across a sampling window for it to count as settled.
+ * Chosen well below the isOutOfPosition thresholds (0.20 / 0.22 / 0.18) so a
+ * baseline can never be taken from a window that already contains a movement
+ * large enough to later be reported as one.
+ */
+export const BASELINE_SETTLE_TOLERANCE = 0.06;
+
+/**
+ * If the candidate never fully settles, stop waiting and take the best
+ * available baseline rather than leaving the session unmonitored.
+ */
+export const BASELINE_MAX_WAIT_MS = 15_000;
+
+/** How long a condition must be continuously clear before its episode ends. */
+export const SECONDARY_EPISODE_CLEAR_MS = 4_000;
+
+function spread(values: number[]): number {
+  if (values.length === 0) return Infinity;
+  return Math.max(...values) - Math.min(...values);
+}
+
+/**
+ * True when a pose window is stable enough to define "the interview position".
+ *
+ * F-05: the old code took the baseline during a fixed 6s warm-up that began the
+ * moment the camera came up — i.e. while the candidate was still holding and
+ * propping the phone. Their settled posture was then permanently out-of-position
+ * against that setup posture. Requiring stability means a window that spans the
+ * setup→settle transition is rejected instead of frozen in.
+ */
+export function isSettled(samples: PoseBaseline[]): boolean {
+  if (samples.length < BASELINE_MIN_SAMPLES) return false;
+  return (
+    spread(samples.map((s) => s.torsoY)) <= BASELINE_SETTLE_TOLERANCE &&
+    spread(samples.map((s) => s.torsoX)) <= BASELINE_SETTLE_TOLERANCE &&
+    spread(samples.map((s) => s.shoulderSpan)) <= BASELINE_SETTLE_TOLERANCE &&
+    spread(samples.map((s) => s.hipY)) <= BASELINE_SETTLE_TOLERANCE
+  );
+}
+
+/* ── R7: device presence continuity ──────────────────────────────────────── */
+
+/**
+ * How long a device may go undetected before presence lapses.
+ *
+ * Run G (real phone) produced 16 cell-phone detections whose longest
+ * uninterrupted run was 1600ms, yet DEVICE_VISIBLE fired zero times: the hold
+ * reset on every single missed detector frame, so the 1500ms DEVICE_MS window
+ * never completed. Real phone video detects intermittently.
+ *
+ * 1200ms spans exactly one missed object-detection tick (detection runs every
+ * 2nd 400ms sample = 800ms). Two consecutive misses exceed it, so presence
+ * still lapses and DEVICE_REMOVED still fires. Deliberately shorter than
+ * DEVICE_MS so it can never manufacture a hold on its own.
+ */
+export const DEVICE_ABSENCE_GRACE_MS = 1_200;
+
+export type PresenceDebouncer = {
+  /** Feed the raw per-frame detection result; returns debounced presence. */
+  update: (raw: boolean, now: number) => boolean;
+  /** Drop presence immediately (session pause / resume). */
+  reset: () => void;
+};
+
+/**
+ * Smooths intermittent detector output into a presence signal, bounded by
+ * `graceMs`. This is NOT sticky detection: once the grace elapses with no
+ * detection, presence goes false and stays false until the detector fires
+ * again.
+ */
+export function createPresenceDebouncer(opts: {
+  graceMs?: number;
+}): PresenceDebouncer {
+  const graceMs = opts.graceMs ?? DEVICE_ABSENCE_GRACE_MS;
+  let lastSeenAt: number | null = null;
+
+  return {
+    update(raw, now) {
+      if (raw) {
+        lastSeenAt = now;
+        return true;
+      }
+      if (lastSeenAt == null) return false;
+      if (now - lastSeenAt >= graceMs) {
+        lastSeenAt = null;
+        return false;
+      }
+      return true;
+    },
+    reset() {
+      lastSeenAt = null;
+    },
+  };
+}
+
+/* ── R8: device interaction continuity ───────────────────────────────────── */
+
+/**
+ * How long the most recently observed phone box stays usable for evaluating
+ * the interaction geometry.
+ *
+ * sample() runs every 400ms but object detection only runs every 2nd tick, so
+ * `phones` is empty on roughly half of all frames *before* any detector
+ * intermittency. The interaction condition needs a box to test the wrist
+ * against, so `interactionSince` was reset at least every other frame and the
+ * 1500ms INTERACTION_MS hold could never accumulate — Run I fired
+ * DEVICE_VISIBLE six times and DEVICE_INTERACTION zero times.
+ *
+ * 1200ms spans the non-detection tick plus one detector blink. It is a memory
+ * of *where the phone was*, not of whether an interaction happened: the
+ * wrist/head geometry is still re-evaluated on every frame against this box,
+ * and the box expires once the phone is genuinely gone.
+ */
+export const DEVICE_BOX_MEMORY_MS = 1_200;
+
+export type BoxMemory = {
+  /** Feed this frame's box (or null); returns the box usable right now. */
+  update: (box: NormBox | null, now: number) => NormBox | null;
+  reset: () => void;
+};
+
+/**
+ * Remembers the last observed box for a bounded window. Never fabricates a
+ * box: it only replays one that the detector actually produced, and only until
+ * `ttlMs` has elapsed.
+ */
+export function createBoxMemory(opts: { ttlMs?: number }): BoxMemory {
+  const ttlMs = opts.ttlMs ?? DEVICE_BOX_MEMORY_MS;
+  let box: NormBox | null = null;
+  let seenAt = 0;
+
+  return {
+    update(next, now) {
+      if (next) {
+        box = next;
+        seenAt = now;
+        return box;
+      }
+      if (!box) return null;
+      if (now - seenAt >= ttlMs) {
+        box = null;
+        return null;
+      }
+      return box;
+    },
+    reset() {
+      box = null;
+      seenAt = 0;
+    },
+  };
+}
+
+/* ── F-05 R2: one continuous condition is one episode ────────────────────── */
+
+export type EpisodeUpdate = { fire: boolean; episodeId: string | null };
+
+export type EpisodeTracker = {
+  /** Feed the current condition state. Returns whether to report it now. */
+  update: (active: boolean, now: number) => EpisodeUpdate;
+  /** Id of the episode currently in flight, or null. */
+  current: () => string | null;
+  /** Abandon any in-flight episode (session pause / resume). */
+  reset: () => void;
+};
+
+/**
+ * Tracks one integrity condition across frames.
+ *
+ * F-05: the old inline pattern reset its hold timer on a single clear frame
+ * (`else { movedSince = null }`), so one unbroken condition re-fired every
+ * ~8s and billed a separate termination slot each time. Run C reached the
+ * 4-episode limit in 37 seconds from a single bad baseline.
+ *
+ * Here an episode opens once the condition has held for `holdMs`, reports
+ * exactly once, and stays open — keeping one stable id so the server's
+ * episode de-duplication can engage — until the condition has been
+ * continuously clear for `clearMs`.
+ */
+export function createEpisodeTracker(opts: {
+  kind: string;
+  holdMs: number;
+  clearMs?: number;
+  idFactory?: (kind: string, startedAt: number) => string;
+}): EpisodeTracker {
+  const clearMs = opts.clearMs ?? SECONDARY_EPISODE_CLEAR_MS;
+  const makeId =
+    opts.idFactory ??
+    ((kind: string, startedAt: number) =>
+      `${kind}-${startedAt.toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+
+  let activeSince: number | null = null;
+  let clearSince: number | null = null;
+  let episodeId: string | null = null;
+  let reported = false;
+
+  return {
+    update(active, now) {
+      if (active) {
+        clearSince = null;
+        if (activeSince == null) activeSince = now;
+        if (!reported && now - activeSince >= opts.holdMs) {
+          reported = true;
+          episodeId = makeId(opts.kind, activeSince);
+          return { fire: true, episodeId };
+        }
+        return { fire: false, episodeId };
+      }
+
+      // Not active. A brief flicker must NOT end the episode or re-arm the hold.
+      if (clearSince == null) clearSince = now;
+      if (now - clearSince >= clearMs) {
+        activeSince = null;
+        clearSince = null;
+        episodeId = null;
+        reported = false;
+      }
+      return { fire: false, episodeId };
+    },
+    current() {
+      return episodeId;
+    },
+    reset() {
+      activeSince = null;
+      clearSince = null;
+      episodeId = null;
+      reported = false;
+    },
+  };
+}
+
 const PHONE_LABELS = new Set(["cell phone", "mobile phone", "phone"]);
 const LAPTOP_LABELS = new Set(["laptop", "tv", "monitor", "computer"]);
 

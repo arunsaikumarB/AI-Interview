@@ -9,7 +9,7 @@ import {
   saveRecordingChunk,
 } from "@/lib/secondary-recording";
 import { recordingStatusLabel } from "@/lib/secondary-recording-labels";
-import { resolveStoragePath } from "@/lib/storage";
+import { resolveStoragePath, verifyStoredFile } from "@/lib/storage";
 
 /**
  * Start recording metadata when interview is IN_PROGRESS + placement + consent.
@@ -203,12 +203,19 @@ export async function finalizeSecondaryRecording(sessionId: string): Promise<{
   if (!session.secondaryRecordingId) {
     return { status: "NONE", path: null, label: recordingStatusLabel("NONE") };
   }
-  if (session.secondaryRecordingStatus === "SAVED" && session.secondaryRecordingPath) {
-    return {
-      status: "SAVED",
-      path: session.secondaryRecordingPath,
-      label: recordingStatusLabel("SAVED", true),
-    };
+  if (
+    session.secondaryRecordingStatus === "SAVED" &&
+    session.secondaryRecordingPath
+  ) {
+    const existing = await verifyStoredFile(session.secondaryRecordingPath);
+    if (existing.ok) {
+      return {
+        status: "SAVED",
+        path: session.secondaryRecordingPath,
+        label: recordingStatusLabel("SAVED", true),
+      };
+    }
+    // DB said SAVED but the file is gone — do not keep advertising it.
   }
 
   await prisma.interviewSession.update({
@@ -234,6 +241,7 @@ export async function finalizeSecondaryRecording(sessionId: string): Promise<{
         where: { id: sessionId },
         data: {
           secondaryRecordingStatus: "INTERRUPTED",
+          secondaryRecordingPath: null,
           secondaryRecordingEndedAt: new Date(),
         },
       });
@@ -251,11 +259,13 @@ export async function finalizeSecondaryRecording(sessionId: string): Promise<{
       mime: session.secondaryRecordingMime,
     });
 
-    if (byteLength <= 0) {
+    const verified = await verifyStoredFile(relativePath);
+    if (byteLength <= 0 || !verified.ok) {
       await prisma.interviewSession.update({
         where: { id: sessionId },
         data: {
           secondaryRecordingStatus: "FAILED",
+          secondaryRecordingPath: null,
           secondaryRecordingEndedAt: new Date(),
         },
       });
@@ -331,6 +341,10 @@ export async function finalizeSecondaryRecording(sessionId: string): Promise<{
           mime: session.secondaryRecordingMime,
         });
         if (retry.byteLength > 0) {
+          const retryOk = await verifyStoredFile(retry.relativePath);
+          if (!retryOk.ok) {
+            throw new Error("RETRY_UNVERIFIED");
+          }
           const endedAt = new Date();
           await prisma.interviewSession.update({
             where: { id: sessionId },
@@ -359,6 +373,7 @@ export async function finalizeSecondaryRecording(sessionId: string): Promise<{
       where: { id: sessionId },
       data: {
         secondaryRecordingStatus: "FAILED",
+        secondaryRecordingPath: null,
         secondaryRecordingEndedAt: new Date(),
       },
     });

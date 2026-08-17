@@ -6,7 +6,18 @@ import { useState } from "react";
 import { AmbientBackground } from "@/components/ambient-background";
 import { Toaster } from "@/components/ui/sonner";
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  nonce,
+}: {
+  children: React.ReactNode;
+  /**
+   * R-1: next-themes injects its own inline no-flash script, which Next does
+   * not stamp. Without the nonce it is the one script the production CSP
+   * blocks, and the page loads with the wrong theme until hydration.
+   */
+  nonce?: string;
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -26,6 +37,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       enableSystem={false}
       themes={["dark", "light"]}
       storageKey="aros-theme-v2"
+      nonce={nonce}
     >
       <QueryClientProvider client={queryClient}>
         <AmbientBackground />

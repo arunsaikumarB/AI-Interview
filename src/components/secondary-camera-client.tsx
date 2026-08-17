@@ -145,6 +145,17 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   const warningOpenRef = useRef(false);
   const framingRef = useRef<SecondaryFramingStatus | null>(null);
   const emitEventsRef = useRef(false);
+  /** F-05 R1: gates when the pose baseline may be taken. */
+  const placementConfirmedRef = useRef(false);
+  /**
+   * F-05 audit: baseline capture reported on the next ordinary heartbeat.
+   * Kept until a heartbeat succeeds so a dropped beat cannot lose the evidence;
+   * the server de-duplicates on (session, capturedAt).
+   */
+  const pendingBaselineRef = useRef<{
+    baselineCapturedAt: string;
+    baselineSettled: boolean;
+  } | null>(null);
   const monitorRef = useRef<ReturnType<
     typeof createSecondaryIntegrityMonitor
   > | null>(null);
@@ -155,6 +166,7 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   emitEventsRef.current = Boolean(
     meta?.placementConfirmed && meta.interviewStatus === "IN_PROGRESS",
   );
+  placementConfirmedRef.current = Boolean(meta?.placementConfirmed);
 
   const stopStreamingOnly = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -325,8 +337,12 @@ export function SecondaryCameraClient({ code }: { code: string }) {
           await fetch(`/api/interview/secondary/${code}/heartbeat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ disconnect: true }),
+            body: JSON.stringify({
+              disconnect: true,
+              ...(pendingBaselineRef.current ?? {}),
+            }),
           });
+          pendingBaselineRef.current = null;
         } catch {
           /* ignore */
         }
@@ -383,11 +399,15 @@ export function SecondaryCameraClient({ code }: { code: string }) {
     void pushFrame();
     timerRef.current = setInterval(() => void pushFrame(), 700);
     hbRef.current = setInterval(() => {
+      const pending = pendingBaselineRef.current;
       void fetch(`/api/interview/secondary/${code}/heartbeat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ ...(pending ?? {}) }),
       }).then(async (res) => {
+        if (res.ok && pending && pendingBaselineRef.current === pending) {
+          pendingBaselineRef.current = null;
+        }
         if (res.status === 410) {
           setPhoneTerminated(true);
           setUiState("Interview ended");
@@ -499,6 +519,14 @@ export function SecondaryCameraClient({ code }: { code: string }) {
       video: videoRef.current,
       isPaused: () => warningOpenRef.current,
       emitEvents: () => emitEventsRef.current,
+      // F-05 R1: never baseline a setup posture — wait for host confirmation.
+      placementConfirmed: () => placementConfirmedRef.current,
+      onBaseline: ({ capturedAt, settled }) => {
+        pendingBaselineRef.current = {
+          baselineCapturedAt: new Date(capturedAt).toISOString(),
+          baselineSettled: settled,
+        };
+      },
       onFraming: (status) => {
         framingRef.current = status;
         setFraming(status);

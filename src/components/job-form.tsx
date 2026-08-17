@@ -9,12 +9,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  departmentIdForSubmit,
+  departmentSelectOptions,
+  initialDepartmentValue,
+} from "@/lib/jobs/department-select";
 
 type Dept = { id: string; name: string };
 type Job = {
   id?: string;
   title: string;
   departmentId?: string | null;
+  departmentName?: string | null;
   location?: string | null;
   description: string;
   skills?: string[];
@@ -28,6 +34,12 @@ export function JobForm({ initial }: { initial?: Job }) {
   const router = useRouter();
   const [departments, setDepartments] = useState<Dept[]>([]);
   const [loading, setLoading] = useState(false);
+  // Controlled from the job itself, so the async /api/org load below can never
+  // reset it. JOBS-05: an uncontrolled defaultValue is applied only on the
+  // first render, when the matching <option> does not exist yet.
+  const [departmentId, setDepartmentId] = useState<string>(() =>
+    initialDepartmentValue(initial),
+  );
 
   useEffect(() => {
     fetch("/api/org")
@@ -57,7 +69,7 @@ export function JobForm({ initial }: { initial?: Job }) {
 
     const payload = {
       title: String(form.get("title")),
-      departmentId: String(form.get("departmentId") || "") || null,
+      departmentId: departmentIdForSubmit(departmentId),
       location: String(form.get("location") || "") || null,
       description: String(form.get("description")),
       skills,
@@ -101,11 +113,16 @@ export function JobForm({ initial }: { initial?: Job }) {
           <select
             id="departmentId"
             name="departmentId"
-            defaultValue={initial?.departmentId ?? ""}
+            value={departmentId}
+            onChange={(e) => setDepartmentId(e.target.value)}
             className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
           >
             <option value="">—</option>
-            {departments.map((d) => (
+            {departmentSelectOptions(
+              departments,
+              departmentId,
+              initial?.departmentName,
+            ).map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}
               </option>

@@ -24,8 +24,9 @@
     "db:studio": "prisma studio",
     "setup:mediapipe": "node scripts/setup-mediapipe.mjs",
     "embed:backfill": "tsx scripts/backfill-embeddings.ts",
-    "test:isolation": "node --import ./tests/isolation/load-env.mjs --test tests/isolation/phase9-isolation.test.mjs",
+    "test:isolation": "node --import ./tests/isolation/load-env.mjs --test tests/isolation/phase9-isolation.test.mjs tests/isolation/deactivated-session.test.mjs tests/isolation/secondary-audit-evidence.test.mjs",
     "test:cv": "tsx --test tests/unit/secondary-integrity-cv.test.ts",
+    "test:unit": "tsx --test tests/unit/device-interaction-continuity.test.ts tests/unit/device-presence-continuity.test.ts tests/unit/detector-vocabulary.test.ts tests/unit/secondary-audit-evidence.test.ts tests/unit/secondary-integrity-f05.test.ts tests/unit/secondary-camera-connect-dedupe.test.ts tests/unit/job-form-department.test.ts tests/unit/secondary-integrity-cv.test.ts tests/unit/orb-state.test.ts tests/unit/staff-reads.test.ts tests/unit/staff-async.test.ts tests/unit/staff-stage-writes.test.ts tests/unit/staff-job-writes.test.ts tests/unit/staff-admin-writes.test.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

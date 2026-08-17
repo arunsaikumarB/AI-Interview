@@ -3,6 +3,12 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { requireAdmin, requireOrganizationId } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
+import {
+  djangoDeleteJson,
+  djangoPatchJson,
+} from "@/lib/staff-reads/django-client";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
+import { useDjangoAdminWrites } from "@/lib/staff-writes/flag";
 
 type Ctx = { params: { id: string } };
 
@@ -15,6 +21,21 @@ export async function PATCH(request: Request, { params }: Ctx) {
     const session = await getSession();
     const user = requireAdmin(session);
     const body = patchSchema.parse(await request.json());
+
+    if (useDjangoAdminWrites()) {
+      try {
+        const data = await djangoPatchJson<{ department: unknown }>(
+          `/api/v1/admin/departments/${params.id}/`,
+          body as Record<string, unknown>,
+          { request },
+        );
+        return jsonOk({ department: data.department });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) return mapped;
+        throw err;
+      }
+    }
 
     const orgId =
       user.role === "SUPER_ADMIN" ? undefined : requireOrganizationId(user);
@@ -37,10 +58,25 @@ export async function PATCH(request: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: Ctx) {
+export async function DELETE(request: Request, { params }: Ctx) {
   try {
     const session = await getSession();
     const user = requireAdmin(session);
+
+    if (useDjangoAdminWrites()) {
+      try {
+        const data = await djangoDeleteJson<{ ok?: boolean }>(
+          `/api/v1/admin/departments/${params.id}/`,
+          { request },
+        );
+        return jsonOk({ ok: data.ok ?? true });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) return mapped;
+        throw err;
+      }
+    }
+
     const orgId =
       user.role === "SUPER_ADMIN" ? undefined : requireOrganizationId(user);
 

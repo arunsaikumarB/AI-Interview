@@ -9,6 +9,9 @@ import {
   resumeMimeError,
   RESUME_MAX_BYTES,
 } from "@/lib/resume/mime";
+import { enqueueDjangoJob } from "@/lib/staff-async/enqueue";
+import { useDjangoAsync } from "@/lib/staff-async/flag";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
 
 /**
  * Staff resume upload + parse. Candidates use PUT /api/portal/profile.
@@ -65,15 +68,17 @@ export async function POST(request: Request) {
 
     let resumeText: string | null = null;
     let parseError: string | null = null;
-    try {
-      const { extractResumeText } = await import("@/lib/resume/parse");
-      resumeText = await extractResumeText({
-        buffer,
-        mimeType: file.type || "application/octet-stream",
-        fileName: file.name,
-      });
-    } catch (err) {
-      parseError = err instanceof Error ? err.message : "Parse failed";
+    if (!useDjangoAsync()) {
+      try {
+        const { extractResumeText } = await import("@/lib/resume/parse");
+        resumeText = await extractResumeText({
+          buffer,
+          mimeType: file.type || "application/octet-stream",
+          fileName: file.name,
+        });
+      } catch (err) {
+        parseError = err instanceof Error ? err.message : "Parse failed";
+      }
     }
 
     const candidate = await prisma.candidate.update({
@@ -83,6 +88,56 @@ export async function POST(request: Request) {
         ...(resumeText ? { resumeText } : {}),
       },
     });
+
+    if (useDjangoAsync()) {
+      try {
+        const queued = await enqueueDjangoJob(
+          "/api/v1/resumes/process/",
+          { candidate_id: candidate.id },
+          "RESUME_PROCESSING",
+          request,
+        );
+        if (applicationId) {
+          await prisma.timelineEvent.create({
+            data: {
+              applicationId,
+              type: "DOCUMENT_UPLOADED",
+              payload: {
+                fileName: stored.fileName,
+                parsed: false,
+                queued: true,
+                task_id: queued.task_id,
+              },
+            },
+          });
+        }
+        return jsonCreated({
+          candidate: {
+            id: candidate.id,
+            resumeUrl: candidate.resumeUrl,
+            resumeTextLength: candidate.resumeText?.length ?? 0,
+          },
+          parsed: false,
+          queued: true,
+          ...queued,
+        });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) {
+          const payload = await mapped.json();
+          return Response.json(
+            {
+              error:
+                typeof payload.error === "string"
+                  ? `${payload.error} File was stored but processing was not queued.`
+                  : "File was stored but processing was not queued.",
+            },
+            { status: mapped.status },
+          );
+        }
+        throw err;
+      }
+    }
 
     if (resumeText) {
       try {
@@ -119,6 +174,6 @@ export async function POST(request: Request) {
       parseError,
     });
   } catch (err) {
-    return handleApiError(err);
+    return djangoReadToResponse(err) ?? handleApiError(err);
   }
 }

@@ -5,7 +5,7 @@
  * Retention: see docs/RECORDINGS.md — do not keep files indefinitely.
  */
 
-import { mkdir, writeFile, readFile, readdir, access } from "fs/promises";
+import { mkdir, writeFile, readFile, readdir, access, stat } from "fs/promises";
 import path from "path";
 import { randomBytes } from "crypto";
 import { ensureStorageDirs, resolveStoragePath } from "@/lib/storage";
@@ -128,7 +128,11 @@ export async function finalizeRecordingFile(params: {
   }
   await mkdir(path.dirname(absFinal), { recursive: true });
   await writeFile(absFinal, combined);
-  return { relativePath, byteLength: combined.length };
+  const written = await stat(absFinal).catch(() => null);
+  if (!written?.isFile() || written.size <= 0) {
+    return { relativePath, byteLength: 0 };
+  }
+  return { relativePath, byteLength: written.size };
 }
 
 export async function listChunkIndexes(

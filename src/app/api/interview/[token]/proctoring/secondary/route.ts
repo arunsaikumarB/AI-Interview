@@ -1,6 +1,8 @@
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { jsonOk, withApiHandler } from "@/lib/api";
+import { secondaryPlacementAuditPayload } from "@/lib/integrity";
 import { secondaryPairUrl } from "@/lib/public-app-url";
 import {
   clearLiveFrame,
@@ -229,16 +231,36 @@ export const POST = withApiHandler<Ctx>(async (request, { params }) => {
         { status: 400 },
       );
     }
+    const confirmedAt = new Date();
     await prisma.interviewSession.update({
       where: { id: session.id },
       data: {
-        secondaryPlacementConfirmedAt: new Date(),
+        secondaryPlacementConfirmedAt: confirmedAt,
         secondaryRecordingStatus:
           session.secondaryRecordingStatus === "NONE"
             ? "READY"
             : session.secondaryRecordingStatus,
       },
     });
+
+    // F-05 audit evidence. The column above is cleared on disconnect/reset, so
+    // durable proof of when placement happened lives in the timeline instead.
+    // Only written on a null -> set transition, so re-confirming without a
+    // reset cannot duplicate; a reconnect nulls the column and legitimately
+    // produces a new record.
+    if (!session.secondaryPlacementConfirmedAt) {
+      await prisma.timelineEvent.create({
+        data: {
+          applicationId: session.applicationId,
+          type: "OTHER",
+          payload: secondaryPlacementAuditPayload({
+            sessionId: session.id,
+            confirmedAt,
+          }) as Prisma.InputJsonValue,
+        },
+      });
+    }
+
     return jsonOk({
       placementConfirmed: true,
       status,

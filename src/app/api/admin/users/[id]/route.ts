@@ -8,6 +8,9 @@ import {
   requireOrganizationId,
 } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
+import { djangoPatchJson } from "@/lib/staff-reads/django-client";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
+import { useDjangoAdminWrites } from "@/lib/staff-writes/flag";
 
 type Ctx = { params: { id: string } };
 
@@ -31,6 +34,24 @@ export async function PATCH(request: Request, { params }: Ctx) {
     const session = await getSession();
     const actor = requireAdmin(session);
     const body = patchSchema.parse(await request.json());
+
+    if (useDjangoAdminWrites()) {
+      if (body.role !== undefined && actor.role !== "SUPER_ADMIN") {
+        throw new AuthError("Only Super Admin can change roles", 403);
+      }
+      try {
+        const data = await djangoPatchJson<{ user: unknown }>(
+          `/api/v1/admin/users/${params.id}/`,
+          body as Record<string, unknown>,
+          { request },
+        );
+        return jsonOk({ user: data.user });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) return mapped;
+        throw err;
+      }
+    }
 
     if (body.role !== undefined && actor.role !== "SUPER_ADMIN") {
       throw new AuthError("Only Super Admin can change roles", 403);

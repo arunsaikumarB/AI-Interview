@@ -2,6 +2,9 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { orgScopeWhere, requireStaff } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
+import { djangoListCandidates } from "@/lib/staff-reads/django-reads";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
+import { useDjangoReads } from "@/lib/staff-reads/flag";
 
 /** Staff talent list — CANDIDATE → 403. Portal uses /api/portal/profile. */
 export async function GET(request: Request) {
@@ -10,6 +13,11 @@ export async function GET(request: Request) {
     const user = requireStaff(session);
     const scope = orgScopeWhere(user);
     const q = new URL(request.url).searchParams.get("q")?.trim();
+
+    if (useDjangoReads()) {
+      const candidates = await djangoListCandidates(request, q || undefined);
+      return jsonOk({ candidates });
+    }
 
     const candidates = await prisma.candidate.findMany({
       where: {
@@ -33,6 +41,6 @@ export async function GET(request: Request) {
 
     return jsonOk({ candidates });
   } catch (err) {
-    return handleApiError(err);
+    return djangoReadToResponse(err) ?? handleApiError(err);
   }
 }

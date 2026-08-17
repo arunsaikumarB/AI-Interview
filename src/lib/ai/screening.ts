@@ -104,7 +104,7 @@ export type ScreeningCandidateInput = {
   resumeText?: string | null;
 };
 
-const SYSTEM_PROMPT = `You are an advisory hiring screener for a self-hosted ATS.
+export const SYSTEM_PROMPT = `You are an advisory hiring screener for a self-hosted ATS.
 You NEVER make hiring decisions and you NEVER change application stages.
 Score the candidate ONLY against the provided job description and criteria.
 Rules:

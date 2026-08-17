@@ -37,6 +37,7 @@ import {
   secondaryCameraAvailable,
   stageBadgeClass,
 } from "@/lib/candidate-detail-ui";
+import { verifyStoredFile } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 type Ctx = {
@@ -176,10 +177,15 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
   const signals = latestInterview
     ? countProctoringSignals(latestInterview.proctoring)
     : { tabSwitches: 0, copyPaste: 0, cameraInterruptions: 0 };
+  const recordingPathVerified =
+    latestInterview?.secondaryRecordingPath &&
+    (await verifyStoredFile(latestInterview.secondaryRecordingPath)).ok
+      ? latestInterview.secondaryRecordingPath
+      : null;
   const recordingReady = latestInterview
     ? secondaryCameraAvailable(
         latestInterview.secondaryRecordingStatus,
-        latestInterview.secondaryRecordingPath,
+        recordingPathVerified,
       )
     : false;
   const interviewLabel = latestInterview
@@ -505,7 +511,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
                       endedAt: latestInterview.endedAt,
                       secondaryRecordingStatus:
                         latestInterview.secondaryRecordingStatus,
-                      secondaryRecordingPath: latestInterview.secondaryRecordingPath,
+                      secondaryRecordingPath: recordingPathVerified,
                       tabSwitches: signals.tabSwitches,
                       copyPaste: signals.copyPaste,
                       cameraInterruptions: signals.cameraInterruptions,

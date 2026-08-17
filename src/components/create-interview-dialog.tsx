@@ -23,6 +23,9 @@ import {
 import { formatDate } from "@/lib/format";
 import { toast } from "sonner";
 import { inferInterviewType } from "@/lib/ai/interview-guard";
+import { isAcceptedEnqueue } from "@/lib/staff-async/flag";
+import { staffAsyncLabel } from "@/lib/staff-async/label";
+import { useStaffAsyncPoll } from "@/lib/staff-async/use-staff-async-poll";
 
 export type CreateInterviewApplicationOption = {
   id: string;
@@ -78,6 +81,21 @@ export function CreateInterviewDialog({
   const [mode, setMode] = useState<"TEXT" | "VOICE">("TEXT");
   const [created, setCreated] = useState<CreatedLink | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [planPollId, setPlanPollId] = useState<string | null>(null);
+
+  const planPoll = useStaffAsyncPoll({
+    url: planPollId ? `/api/interviews/${planPollId}/async-status?kind=plan` : null,
+    enabled: Boolean(planPollId),
+    onComplete: () => {
+      setPlanPollId(null);
+      toast.success("Interview plan ready");
+      router.refresh();
+    },
+    onFailed: (message) => {
+      setPlanPollId(null);
+      toast.error(message);
+    },
+  });
 
   useEffect(() => {
     if (!loading) {
@@ -171,6 +189,7 @@ export function CreateInterviewDialog({
   function resetForm() {
     setCreated(null);
     setLoading(false);
+    setPlanPollId(null);
     setCandidateQuery("");
     setDurationMinutes(DEFAULT_DURATION_MINUTES);
     setLinkExpiresInDays(DEFAULT_LINK_EXPIRE_DAYS);
@@ -195,7 +214,7 @@ export function CreateInterviewDialog({
     }
     setLoading(true);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 240_000);
+    const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
       const res = await fetch(`/api/applications/${applicationId}/interviews`, {
         method: "POST",
@@ -230,13 +249,25 @@ export function CreateInterviewDialog({
         applicationId: app.id,
         tokenExpiresAt: data.interview.tokenExpiresAt ?? null,
       });
-      toast.success("Interview link created");
+      const link = candidateInterviewUrl(
+        data.interview.accessToken,
+        window.location.origin,
+      );
+      try {
+        await navigator.clipboard.writeText(link);
+        toast.success("Interview link created and copied");
+      } catch {
+        toast.success("Interview link created — copy it below");
+      }
+      if (data.planEnqueueError) {
+        toast.error(data.planEnqueueError);
+      } else if (isAcceptedEnqueue(String(data.asyncPlan?.status ?? ""))) {
+        setPlanPollId(data.interview.id);
+      }
       router.refresh();
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
-        toast.error(
-          "Plan generation timed out. Ollama is slow on CPU — wait and retry, or keep the tab open longer next time.",
-        );
+        toast.error("Could not create the interview link. Try again.");
       } else {
         toast.error("Could not create interview");
       }
@@ -465,26 +496,18 @@ export function CreateInterviewDialog({
 
                 {loading ? (
                   <p className="w-full text-sm text-muted-foreground sm:order-first sm:mr-auto">
-                    Generating AI interview plan with local Ollama… {loadingElapsedSec}s
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      On CPU this often takes 1–3 minutes. Keep this dialog open.
-                    </span>
+                    Creating interview link… {loadingElapsedSec}s
                   </p>
                 ) : null}
                 <div className="flex flex-wrap justify-end gap-2 pt-2">
                   <Button
                     variant="ghost"
                     onClick={() => handleOpenChange(false)}
-                    disabled={loading}
                   >
                     Cancel
                   </Button>
                   <Button onClick={create} disabled={loading || !applicationId}>
-                    {loading
-                      ? loadingElapsedSec < 5
-                        ? "Creating…"
-                        : `Generating plan… ${loadingElapsedSec}s`
-                      : "Create Interview Link"}
+                    {loading ? "Creating…" : "Create Interview Link"}
                   </Button>
                 </div>
               </div>
@@ -497,6 +520,11 @@ export function CreateInterviewDialog({
                   Share the link with the candidate when you are ready.
                 </DialogDescription>
               </DialogHeader>
+              {planPollId || planPoll.status ? (
+                <p className="text-sm text-muted-foreground">
+                  AI plan: {staffAsyncLabel(planPoll.status ?? "QUEUED")}
+                </p>
+              ) : null}
               <div className="space-y-3 pt-2 text-sm">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -542,7 +570,8 @@ export function CreateInterviewDialog({
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  You can review the AI plan anytime from the Interview Links table.
+                  The candidate can open this link now. The AI plan continues in
+                  the background — review it from Interview Links if needed.
                 </p>
                 <div className="flex justify-end">
                   <Button variant="ghost" onClick={() => handleOpenChange(false)}>

@@ -90,7 +90,8 @@ export function AdminConsole({
   async function createUser(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setTempPassword(null);
-    const form = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
     const res = await fetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -108,7 +109,7 @@ export function AdminConsole({
     }
     setTempPassword(data.temporaryPassword ?? null);
     toast.success("User created — copy the temporary password now");
-    e.currentTarget.reset();
+    formEl.reset();
     void loadUsers();
   }
 
@@ -142,7 +143,8 @@ export function AdminConsole({
 
   async function createDept(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
     const res = await fetch("/api/admin/departments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -153,7 +155,7 @@ export function AdminConsole({
       toast.error(data.error ?? "Create failed");
       return;
     }
-    e.currentTarget.reset();
+    formEl.reset();
     void loadDepartments();
   }
 

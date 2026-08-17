@@ -10,6 +10,15 @@ import {
   requireUser,
 } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
+import { djangoGetJob } from "@/lib/staff-reads/django-reads";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
+import { useDjangoReads } from "@/lib/staff-reads/flag";
+import {
+  djangoDeleteJson,
+  djangoPatchJson,
+} from "@/lib/staff-reads/django-client";
+import { useDjangoJobWrites } from "@/lib/staff-writes/flag";
+import { normalizeJob, type DjangoJob } from "@/lib/staff-reads/normalize";
 
 type Ctx = { params: { id: string } };
 
@@ -44,10 +53,16 @@ const jobInclude = {
   _count: { select: { applications: true } },
 } as const;
 
-export async function GET(_request: Request, { params }: Ctx) {
+export async function GET(request: Request, { params }: Ctx) {
   try {
     const session = await getSession();
     const user = requireStaff(session);
+
+    if (useDjangoReads()) {
+      const job = await djangoGetJob(request, params.id);
+      return jsonOk({ job });
+    }
+
     const scope = orgScopeWhere(user);
 
     const job = await prisma.job.findFirst({
@@ -63,7 +78,7 @@ export async function GET(_request: Request, { params }: Ctx) {
 
     return jsonOk({ job });
   } catch (err) {
-    return handleApiError(err);
+    return djangoReadToResponse(err) ?? handleApiError(err);
   }
 }
 
@@ -75,6 +90,23 @@ export async function PATCH(request: Request, { params }: Ctx) {
       throw new AuthError("Insufficient permissions", 403);
     }
 
+    const body = updateSchema.parse(await request.json());
+
+    if (useDjangoJobWrites()) {
+      try {
+        const data = await djangoPatchJson<{ job: DjangoJob }>(
+          `/api/v1/jobs/${params.id}/`,
+          body as Record<string, unknown>,
+          { request },
+        );
+        return jsonOk({ job: normalizeJob(data.job) });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) return mapped;
+        throw err;
+      }
+    }
+
     const scope = orgScopeWhere(user);
     const existing = await prisma.job.findFirst({
       where: { id: params.id, ...scope },
@@ -82,8 +114,6 @@ export async function PATCH(request: Request, { params }: Ctx) {
     if (!existing) {
       return Response.json({ error: "Job not found" }, { status: 404 });
     }
-
-    const body = updateSchema.parse(await request.json());
     const data: Prisma.JobUncheckedUpdateInput = {
       ...body,
       screeningCriteria:
@@ -107,12 +137,26 @@ export async function PATCH(request: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: Ctx) {
+export async function DELETE(request: Request, { params }: Ctx) {
   try {
     const session = await getSession();
     const user = requireUser(session);
     if (!canManageJobs(user.role)) {
       throw new AuthError("Insufficient permissions", 403);
+    }
+
+    if (useDjangoJobWrites()) {
+      try {
+        const data = await djangoDeleteJson<{ ok?: boolean }>(
+          `/api/v1/jobs/${params.id}/`,
+          { request },
+        );
+        return jsonOk({ ok: data.ok ?? true });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) return mapped;
+        throw err;
+      }
     }
 
     const scope = orgScopeWhere(user);

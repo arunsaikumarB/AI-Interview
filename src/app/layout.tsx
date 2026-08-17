@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Inter } from "next/font/google";
 import { Providers } from "@/components/providers";
 import {
@@ -41,10 +42,15 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // R-1: middleware puts the per-request CSP nonce here so next-themes can
+  // stamp its inline no-flash script. Next stamps its own scripts from the
+  // CSP request header automatically.
+  const nonce = headers().get("x-nonce") ?? undefined;
+
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${sans.variable} font-sans antialiased`}>
-        <Providers>{children}</Providers>
+        <Providers nonce={nonce}>{children}</Providers>
       </body>
     </html>
   );

@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { canManagePipeline } from "@/lib/auth/rbac";
+import { deriveEvaluationState } from "@/lib/ai/evaluation-status";
 import { Badge } from "@/components/ui/badge";
 import {
   InterviewAiEvaluation,
@@ -20,6 +21,12 @@ import {
   FinalResultSchema,
 } from "@/lib/ai/interview";
 import { finalizeSecondaryRecording } from "@/lib/secondary-recording-server";
+import { verifyStoredFile } from "@/lib/storage";
+import { useDjangoAsync } from "@/lib/staff-async/flag";
+import {
+  StaffProctoringProcess,
+  StaffTtsPrefetch,
+} from "@/components/staff-async-side-effects";
 
 type Ctx = { params: { id: string } };
 
@@ -74,30 +81,47 @@ export default async function InterviewReportPage({ params }: Ctx) {
   let recordingDurationMs = interview.secondaryRecordingDurationMs;
   let recordingHasGap = interview.secondaryRecordingHasGap;
   let recordingInterruptedMs = interview.secondaryRecordingInterruptedMs;
+  const pathOnDisk = recordingPath
+    ? await verifyStoredFile(recordingPath)
+    : { ok: false as const, byteLength: 0 as const };
+  if (!pathOnDisk.ok) {
+    recordingPath = null;
+  }
+  const terminalSession = ["COMPLETED", "TERMINATED", "CANCELLED", "NO_SHOW"].includes(
+    interview.status,
+  );
+  const asyncStaff = useDjangoAsync();
   if (
+    !(asyncStaff && terminalSession) &&
     !recordingPath &&
     interview.secondaryRecordingId &&
     (recordingStatus === "FAILED" ||
       recordingStatus === "INTERRUPTED" ||
       recordingStatus === "RECORDING" ||
-      recordingStatus === "FINALIZING")
+      recordingStatus === "FINALIZING" ||
+      recordingStatus === "SAVED")
   ) {
     const salvaged = await finalizeSecondaryRecording(interview.id);
     recordingPath = salvaged.path;
     recordingStatus = salvaged.status;
     if (salvaged.path) {
-      const refreshed = await prisma.interviewSession.findUnique({
-        where: { id: interview.id },
-        select: {
-          secondaryRecordingDurationMs: true,
-          secondaryRecordingHasGap: true,
-          secondaryRecordingInterruptedMs: true,
-        },
-      });
-      recordingDurationMs = refreshed?.secondaryRecordingDurationMs ?? recordingDurationMs;
-      recordingHasGap = refreshed?.secondaryRecordingHasGap ?? recordingHasGap;
-      recordingInterruptedMs =
-        refreshed?.secondaryRecordingInterruptedMs ?? recordingInterruptedMs;
+      const onDisk = await verifyStoredFile(salvaged.path);
+      if (!onDisk.ok) {
+        recordingPath = null;
+      } else {
+        const refreshed = await prisma.interviewSession.findUnique({
+          where: { id: interview.id },
+          select: {
+            secondaryRecordingDurationMs: true,
+            secondaryRecordingHasGap: true,
+            secondaryRecordingInterruptedMs: true,
+          },
+        });
+        recordingDurationMs = refreshed?.secondaryRecordingDurationMs ?? recordingDurationMs;
+        recordingHasGap = refreshed?.secondaryRecordingHasGap ?? recordingHasGap;
+        recordingInterruptedMs =
+          refreshed?.secondaryRecordingInterruptedMs ?? recordingInterruptedMs;
+      }
     }
   }
 
@@ -105,6 +129,28 @@ export default async function InterviewReportPage({ params }: Ctx) {
   const finalResult = overall
     ? FinalResultSchema.safeParse(overall.scores).data
     : null;
+
+  // R-3: pending vs failed. Without this the report claimed the evaluation was
+  // "missing" while it was still generating, and said nothing once it failed.
+  const latestEvaluationEvent = await prisma.timelineEvent.findFirst({
+    where: {
+      applicationId: interview.applicationId,
+      type: "AI_EVALUATION",
+      payload: { path: ["sessionId"], equals: interview.id },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  const evaluationStatus = deriveEvaluationState({
+    sessionStatus: interview.status,
+    hasOverall: Boolean(overall && finalResult),
+    latestEvent:
+      (latestEvaluationEvent?.payload as {
+        status?: string;
+        kind?: string;
+        attempts?: number;
+        error?: string;
+      } | null) ?? null,
+  });
 
   const transcript = interview.questions.map((q) => ({
     sequence: q.sequence,
@@ -171,6 +217,16 @@ export default async function InterviewReportPage({ params }: Ctx) {
           </Badge>
         </div>
       </div>
+
+      {asyncStaff && terminalSession ? (
+        <StaffProctoringProcess sessionId={interview.id} />
+      ) : null}
+      {asyncStaff ? (
+        <StaffTtsPrefetch
+          sessionId={interview.id}
+          questionIds={interview.questions.filter((q) => !q.ttsPath).map((q) => q.id)}
+        />
+      ) : null}
 
       <InterviewReviewSummary
         candidateName={`${interview.application.candidate.firstName} ${interview.application.candidate.lastName}`}
@@ -240,6 +296,7 @@ export default async function InterviewReportPage({ params }: Ctx) {
       <InterviewAiEvaluation
         interviewId={interview.id}
         interviewStatus={interview.status}
+        evaluationStatus={evaluationStatus}
         overall={
           overall && finalResult
             ? {

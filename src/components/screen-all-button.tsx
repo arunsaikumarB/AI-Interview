@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { isAcceptedEnqueue } from "@/lib/staff-async/flag";
 
 /**
  * Progressive screening UI: loads screenable apps, then calls
@@ -46,6 +47,7 @@ export function ScreenAllButton({ jobId }: { jobId: string }) {
 
       let screened = 0;
       let failed = 0;
+      let queued = 0;
 
       for (let i = 0; i < withResume.length; i++) {
         const app = withResume[i];
@@ -53,16 +55,28 @@ export function ScreenAllButton({ jobId }: { jobId: string }) {
         const res = await fetch(`/api/applications/${app.id}/screen`, {
           method: "POST",
         });
-        if (res.ok) screened += 1;
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && isAcceptedEnqueue(String(data.status ?? ""))) {
+          queued += 1;
+        } else if (res.ok) screened += 1;
         else failed += 1;
       }
 
-      toast.success(
-        `Done: ${screened} screened` +
-          (failed ? `, ${failed} failed` : "") +
-          (skipped ? `, ${skipped} skipped (no resume)` : "") +
-          ". Stages unchanged.",
-      );
+      if (queued) {
+        toast.success(
+          `${queued} screening job(s) queued` +
+            (failed ? `, ${failed} failed` : "") +
+            (skipped ? `, ${skipped} skipped (no resume)` : "") +
+            ". Stages unchanged.",
+        );
+      } else {
+        toast.success(
+          `Done: ${screened} screened` +
+            (failed ? `, ${failed} failed` : "") +
+            (skipped ? `, ${skipped} skipped (no resume)` : "") +
+            ". Stages unchanged.",
+        );
+      }
       router.refresh();
     } catch {
       toast.error("Screen-all failed. Is Ollama running?");

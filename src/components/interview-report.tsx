@@ -11,6 +11,9 @@ import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { DraftEmailChip } from "@/components/draft-email-chip";
 import { STAGE_TO_CATEGORY } from "@/lib/templates";
+import { isAcceptedEnqueue } from "@/lib/staff-async/flag";
+import { staffAsyncLabel } from "@/lib/staff-async/label";
+import { useStaffAsyncPoll } from "@/lib/staff-async/use-staff-async-poll";
 
 const VERDICT_STYLE: Record<string, string> = {
   VALIDATED: "bg-success/15 text-success",
@@ -83,9 +86,21 @@ export function InterviewAiEvaluation({
   interviewId,
   interviewStatus,
   overall,
+  evaluationStatus,
 }: {
   interviewId: string;
   interviewStatus: string;
+  /**
+   * R-3: "no evaluation" used to be one undifferentiated state. It is now
+   * pending (still generating — normal, takes a couple of minutes) or failed
+   * (the background job gave up after bounded retries).
+   */
+  evaluationStatus?: {
+    state: "not_applicable" | "pending" | "completed" | "failed";
+    canRetry: boolean;
+    attempts?: number;
+    error?: string;
+  };
   overall: {
     recommendation: string;
     reasoning: string;
@@ -97,8 +112,31 @@ export function InterviewAiEvaluation({
   const router = useRouter();
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [pollUrl, setPollUrl] = useState<string | null>(null);
   const result = overall?.result;
-  const showMissingBanner = !result && interviewStatus === "COMPLETED";
+  // Fall back to the old "missing" heuristic only when the caller has not
+  // supplied a derived status (keeps older call sites rendering sensibly).
+  const state =
+    evaluationStatus?.state ??
+    (result ? "completed" : interviewStatus === "COMPLETED" ? "pending" : "not_applicable");
+  const showFailed = !result && state === "failed";
+  const showPending = !result && state === "pending";
+
+  const poll = useStaffAsyncPoll({
+    url: pollUrl,
+    enabled: Boolean(pollUrl),
+    onComplete: () => {
+      setRegenerating(false);
+      setPollUrl(null);
+      toast.success("Final evaluation ready");
+      router.refresh();
+    },
+    onFailed: (message) => {
+      setRegenerating(false);
+      setPollUrl(null);
+      toast.error(message);
+    },
+  });
 
   async function regenerate() {
     setRegenerating(true);
@@ -107,29 +145,75 @@ export function InterviewAiEvaluation({
       { method: "POST" },
     );
     const data = await res.json();
-    setRegenerating(false);
     if (!res.ok) {
+      setRegenerating(false);
       toast.error(data.error ?? "Regenerate failed");
       return;
     }
+    if (isAcceptedEnqueue(String(data.status ?? ""))) {
+      setPollUrl(`/api/interviews/${interviewId}/async-status?kind=finalize`);
+      return;
+    }
+    if (!data.evaluation) {
+      setRegenerating(false);
+      toast.error("Final evaluation was not accepted");
+      return;
+    }
+    setRegenerating(false);
     toast.success("Final evaluation regenerated");
     router.refresh();
   }
 
   return (
     <div className="space-y-4">
-      {showMissingBanner ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-foreground">
-          <p className="text-sm font-medium">
-            Final evaluation missing — regenerate
-          </p>
+      {showFailed ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-foreground">
+          <div>
+            <p className="text-sm font-medium">
+              AI evaluation failed — no score was produced
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {evaluationStatus?.attempts
+                ? `Gave up after ${evaluationStatus.attempts} attempts. `
+                : null}
+              {evaluationStatus?.error ?? "The interview transcript is unaffected."}
+            </p>
+          </div>
           <Button
             size="sm"
             variant="outline"
             disabled={regenerating}
             onClick={regenerate}
           >
-            {regenerating ? "Regenerating…" : "Regenerate evaluation"}
+            {regenerating
+              ? pollUrl
+                ? staffAsyncLabel(poll.status ?? "QUEUED")
+                : "Retrying…"
+              : "Retry evaluation"}
+          </Button>
+        </div>
+      ) : null}
+
+      {showPending ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-foreground">
+          <div>
+            <p className="text-sm font-medium">Final evaluation is being generated</p>
+            <p className="text-xs text-muted-foreground">
+              This usually takes a couple of minutes. Refresh to check, or
+              generate it now.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={regenerating}
+            onClick={regenerate}
+          >
+            {regenerating
+              ? pollUrl
+                ? staffAsyncLabel(poll.status ?? "QUEUED")
+                : "Generating…"
+              : "Generate now"}
           </Button>
         </div>
       ) : null}
@@ -214,7 +298,7 @@ export function InterviewAiEvaluation({
             </p>
           </div>
         </section>
-      ) : !showMissingBanner ? (
+      ) : !showFailed && !showPending ? (
         <p className="text-sm text-muted-foreground">
           Final evaluation not available yet (interview may still be in progress).
         </p>

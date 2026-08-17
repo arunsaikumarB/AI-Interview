@@ -1,23 +1,44 @@
-import { mkdir, writeFile, readFile, unlink } from "fs/promises";
+import { mkdir, writeFile, readFile, unlink, stat } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 
-function storageRoot(): string {
+/** Same convention Next.js uses: cwd + STORAGE_ROOT (repo `./storage` when Next runs from repo root). */
+export function getStorageRoot(): string {
   const root = process.env.STORAGE_ROOT ?? "./storage";
-  return path.isAbsolute(root) ? root : path.join(process.cwd(), root);
+  return path.resolve(path.isAbsolute(root) ? root : path.join(process.cwd(), root));
 }
 
 export function resolveStoragePath(relativePath: string): string {
-  const root = storageRoot();
+  const root = getStorageRoot();
   const resolved = path.resolve(root, relativePath);
-  if (!resolved.startsWith(root)) {
+  const rel = path.relative(root, resolved);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
     throw new Error("Invalid storage path");
   }
   return resolved;
 }
 
+/** True only if the file exists, is a file, and has size > 0. */
+export async function verifyStoredFile(
+  relativePath: string | null | undefined,
+): Promise<{ ok: true; byteLength: number } | { ok: false; byteLength: 0 }> {
+  if (!relativePath || relativePath.includes("..")) {
+    return { ok: false, byteLength: 0 };
+  }
+  try {
+    const abs = resolveStoragePath(relativePath);
+    const info = await stat(abs);
+    if (!info.isFile() || info.size <= 0) {
+      return { ok: false, byteLength: 0 };
+    }
+    return { ok: true, byteLength: info.size };
+  } catch {
+    return { ok: false, byteLength: 0 };
+  }
+}
+
 export async function ensureStorageDirs(): Promise<void> {
-  const root = storageRoot();
+  const root = getStorageRoot();
   await mkdir(path.join(root, "resumes"), { recursive: true });
   await mkdir(path.join(root, "assessments"), { recursive: true });
   await mkdir(path.join(root, "recordings"), { recursive: true });

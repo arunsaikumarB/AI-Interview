@@ -7,6 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ScreeningResult } from "@/lib/ai/screening";
+import { staffAsyncLabel } from "@/lib/staff-async/label";
+import { isAcceptedEnqueue } from "@/lib/staff-async/flag";
+import { useStaffAsyncPoll } from "@/lib/staff-async/use-staff-async-poll";
 
 const BREAKDOWN_LABELS: Record<keyof ScreeningResult["breakdown"], string> = {
   technicalSkills: "Technical skills",
@@ -43,14 +46,34 @@ export function AIScreeningCard({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [pollUrl, setPollUrl] = useState<string | null>(null);
+  const [asyncStatus, setAsyncStatus] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; ollamaDown?: boolean } | null>(
     null,
   );
   const [reasoningOpen, setReasoningOpen] = useState(false);
 
+  const poll = useStaffAsyncPoll({
+    url: pollUrl,
+    enabled: Boolean(pollUrl),
+    onComplete: () => {
+      setLoading(false);
+      setPollUrl(null);
+      setAsyncStatus("COMPLETED");
+      router.refresh();
+    },
+    onFailed: (message) => {
+      setLoading(false);
+      setPollUrl(null);
+      setError({ message, ollamaDown: false });
+    },
+  });
+
   async function runScreening() {
     setLoading(true);
     setError(null);
+    setPollUrl(null);
+    let queued = false;
     try {
       const res = await fetch(`/api/applications/${applicationId}/screen`, {
         method: "POST",
@@ -63,6 +86,16 @@ export function AIScreeningCard({
         });
         return;
       }
+      if (isAcceptedEnqueue(String(data.status ?? ""))) {
+        queued = true;
+        setAsyncStatus(String(data.status));
+        setPollUrl(`/api/applications/${applicationId}/screen-status`);
+        return;
+      }
+      if (!data.evaluation) {
+        setError({ message: "Screening was not accepted", ollamaDown: false });
+        return;
+      }
       router.refresh();
     } catch {
       setError({
@@ -70,7 +103,7 @@ export function AIScreeningCard({
         ollamaDown: false,
       });
     } finally {
-      setLoading(false);
+      if (!queued) setLoading(false);
     }
   }
 
@@ -87,12 +120,20 @@ export function AIScreeningCard({
         </div>
         <Button onClick={runScreening} disabled={loading}>
           {loading
-            ? "Screening… (10–40s)"
+            ? pollUrl
+              ? staffAsyncLabel(poll.status ?? asyncStatus ?? "QUEUED")
+              : "Screening… (10–40s)"
             : evaluation
               ? "Re-run screening"
               : "Run AI screening"}
         </Button>
       </div>
+
+      {pollUrl ? (
+        <p className="text-sm text-muted-foreground">
+          {staffAsyncLabel(poll.status ?? asyncStatus)}
+        </p>
+      ) : null}
 
       {error ? (
         <div

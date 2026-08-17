@@ -44,6 +44,12 @@ yarn-error.log*
 /speech-service/__pycache__/
 /speech-service/**/__pycache__/
 
+# Django Phase 1 (coexists with Next.js — do not commit venv or local secrets)
+/backend/.venv/
+/backend/.env
+/backend/**/__pycache__/
+/backend/**/*.pyc
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

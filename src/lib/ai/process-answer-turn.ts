@@ -20,6 +20,15 @@ import {
   turnsFromQuestions,
 } from "@/lib/ai/interview-session";
 import { prefetchQuestionTts } from "@/lib/question-tts";
+import {
+  EVALUATION_RETRY_DELAY_MS,
+  MAX_EVALUATION_ATTEMPTS,
+  evaluationFailurePayload,
+  evaluationSuccessPayload,
+  isRetryableEvaluationError,
+  redactEvaluationError,
+  type EvaluationKind,
+} from "@/lib/ai/evaluation-status";
 
 /**
  * Process the latest answered question (evaluate + next question / conclude).
@@ -230,84 +239,152 @@ async function scoreInBackground(params: {
   turns: TurnRecord[];
   concluded: boolean;
 }): Promise<void> {
-  try {
-    const scored = await evaluateAnswerOnly({
-      plan: params.plan,
-      interviewType: params.interviewType,
-      jobTitle: params.jobTitle,
-      jobDescription: params.jobDescription,
-      jobSkills: params.jobSkills,
-      turns: params.turns,
-    });
+  await runEvaluation({
+    applicationId: params.applicationId,
+    sessionId: params.sessionId,
+    kind: "INTERVIEW_ANSWER",
+    run: async () => {
+      const scored = await evaluateAnswerOnly({
+        plan: params.plan,
+        interviewType: params.interviewType,
+        jobTitle: params.jobTitle,
+        jobDescription: params.jobDescription,
+        jobSkills: params.jobSkills,
+        turns: params.turns,
+      });
 
-    await prisma.interviewAnswer.update({
-      where: { questionId: params.questionId },
-      data: { evaluation: asJson(scored.evaluation) },
-    });
+      await prisma.interviewAnswer.update({
+        where: { questionId: params.questionId },
+        data: { evaluation: asJson(scored.evaluation) },
+      });
 
-    await prisma.aIEvaluation.create({
-      data: {
-        applicationId: params.applicationId,
-        sessionId: params.sessionId,
-        kind: "INTERVIEW_ANSWER",
-        scores: asJson(scored.evaluation),
-        recommendation: "MAYBE",
-        reasoning: scored.evaluation.reasoning,
-        model: scored.model,
-        rawResponse: asJson(scored.raw),
-      },
-    });
-  } catch (err) {
-    console.warn(
-      "[processAnswerTurn] background answer score failed:",
-      err instanceof Error ? err.message : err,
-    );
-  }
+      await prisma.aIEvaluation.create({
+        data: {
+          applicationId: params.applicationId,
+          sessionId: params.sessionId,
+          kind: "INTERVIEW_ANSWER",
+          scores: asJson(scored.evaluation),
+          recommendation: "MAYBE",
+          reasoning: scored.evaluation.reasoning,
+          model: scored.model,
+          rawResponse: asJson(scored.raw),
+        },
+      });
+      // Per-answer scores are an internal detail of the report; only the final
+      // evaluation gets a timeline breadcrumb.
+      return null;
+    },
+  });
 
   if (!params.concluded) return;
 
+  await runEvaluation({
+    applicationId: params.applicationId,
+    sessionId: params.sessionId,
+    kind: "INTERVIEW_OVERALL",
+    run: async () => {
+      const session = await prisma.interviewSession.findUnique({
+        where: { id: params.sessionId },
+        select: { adaptiveState: true },
+      });
+      const final = await finalEvaluation({
+        plan: params.plan,
+        interviewType: params.interviewType,
+        jobTitle: params.jobTitle,
+        jobDescription: params.jobDescription,
+        resumeText: params.resumeText,
+        turns: params.turns,
+        adaptiveState: parseAdaptiveState(session?.adaptiveState),
+      });
+
+      await prisma.aIEvaluation.create({
+        data: {
+          applicationId: params.applicationId,
+          sessionId: params.sessionId,
+          kind: "INTERVIEW_OVERALL",
+          scores: asJson(final.result),
+          recommendation: mapFinalRecommendation(final.result.recommendation),
+          reasoning: final.result.reasoning,
+          model: final.model,
+          rawResponse: asJson(final.raw),
+        },
+      });
+
+      return {
+        overall: final.result.overall,
+        recommendation: final.result.recommendation,
+      };
+    },
+  });
+}
+
+/**
+ * R-3: run one background evaluation with a bounded retry, and make the
+ * outcome durable either way.
+ *
+ * On success the existing AI_EVALUATION timeline row is written (now carrying
+ * an explicit `status`). On final failure a row with `status: "failed"` is
+ * written instead — never an AIEvaluation, so a failure can never be read back
+ * as a result. Application.stage is untouched on both paths.
+ */
+async function runEvaluation(params: {
+  applicationId: string;
+  sessionId: string;
+  kind: EvaluationKind;
+  run: () => Promise<{ overall: number; recommendation: string } | null>;
+}): Promise<void> {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_EVALUATION_ATTEMPTS; attempt++) {
+    try {
+      const result = await params.run();
+      if (result) {
+        await prisma.timelineEvent.create({
+          data: {
+            applicationId: params.applicationId,
+            type: "AI_EVALUATION",
+            payload: evaluationSuccessPayload({
+              sessionId: params.sessionId,
+              kind: params.kind,
+              overall: result.overall,
+              recommendation: result.recommendation,
+            }),
+          },
+        });
+      }
+      return;
+    } catch (err) {
+      lastError = err;
+      console.warn(
+        `[processAnswerTurn] ${params.kind} attempt ${attempt}/${MAX_EVALUATION_ATTEMPTS} failed:`,
+        redactEvaluationError(err),
+      );
+      if (!isRetryableEvaluationError(err, attempt)) break;
+      await new Promise((resolve) => setTimeout(resolve, EVALUATION_RETRY_DELAY_MS * attempt));
+    }
+  }
+
+  // Only the final evaluation is surfaced to the recruiter, so only that one
+  // needs a failure breadcrumb. A dropped per-answer score degrades the report
+  // but is not a state the operator can act on.
+  if (params.kind !== "INTERVIEW_OVERALL") return;
+
   try {
-    const session = await prisma.interviewSession.findUnique({
-      where: { id: params.sessionId },
-      select: { adaptiveState: true },
-    });
-    const final = await finalEvaluation({
-      plan: params.plan,
-      interviewType: params.interviewType,
-      jobTitle: params.jobTitle,
-      jobDescription: params.jobDescription,
-      resumeText: params.resumeText,
-      turns: params.turns,
-      adaptiveState: parseAdaptiveState(session?.adaptiveState),
-    });
-
-    await prisma.aIEvaluation.create({
-      data: {
-        applicationId: params.applicationId,
-        sessionId: params.sessionId,
-        kind: "INTERVIEW_OVERALL",
-        scores: asJson(final.result),
-        recommendation: mapFinalRecommendation(final.result.recommendation),
-        reasoning: final.result.reasoning,
-        model: final.model,
-        rawResponse: asJson(final.raw),
-      },
-    });
-
     await prisma.timelineEvent.create({
       data: {
         applicationId: params.applicationId,
         type: "AI_EVALUATION",
-        payload: {
+        payload: evaluationFailurePayload({
           sessionId: params.sessionId,
-          kind: "INTERVIEW_OVERALL",
-          overall: final.result.overall,
-          recommendation: final.result.recommendation,
-          advisoryOnly: true,
-        },
+          kind: params.kind,
+          attempts: MAX_EVALUATION_ATTEMPTS,
+          error: lastError,
+        }),
       },
     });
   } catch (err) {
-    console.error("finalEvaluation failed", err);
+    // The database is the last thing standing; if this fails there is nowhere
+    // left to record the failure.
+    console.error("[processAnswerTurn] could not record evaluation failure:", err);
   }
 }

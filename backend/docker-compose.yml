@@ -1,0 +1,13 @@
+# Redis only for Django/Celery Phase 1.
+# Does not replace root docker-compose.yml (Postgres, Ollama, speech, Next.js).
+#
+#   docker compose -f backend/docker-compose.yml up -d
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: hireos-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]

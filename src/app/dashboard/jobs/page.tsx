@@ -1,19 +1,16 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import type { JobStatus, PipelineStage } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import type { JobStatus } from "@prisma/client";
 import { getSession } from "@/lib/auth/session";
 import { canManageJobs, orgScopeWhere } from "@/lib/auth/rbac";
+import { loadJobsHub } from "@/lib/staff-reads/jobs-hub";
 import { Badge } from "@/components/ui/badge";
 import { RecruitingSubnav } from "@/components/recruiting-subnav";
 import { JobsHubToolbar } from "@/components/jobs-hub-toolbar";
 import { buttonVariants } from "@/components/ui/button";
 import { formatDate } from "@/lib/format";
-import {
-  isInInterviewStage,
-  JOB_STATUS_LABELS,
-} from "@/lib/recruiting-ui";
+import { JOB_STATUS_LABELS } from "@/lib/recruiting-ui";
 import { cn } from "@/lib/utils";
 import type { Metadata } from "next";
 
@@ -46,43 +43,10 @@ export default async function JobsPage({
       : undefined;
   const q = searchParams?.q?.trim() ?? "";
 
-  const jobs = await prisma.job.findMany({
-    where: {
-      ...scope,
-      ...(statusFilter ? { status: statusFilter } : {}),
-      ...(q
-        ? {
-            OR: [
-              { title: { contains: q, mode: "insensitive" } },
-              { location: { contains: q, mode: "insensitive" } },
-              { department: { name: { contains: q, mode: "insensitive" } } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: { updatedAt: "desc" },
-    include: {
-      department: { select: { name: true } },
-      applications: { select: { stage: true } },
-    },
-  });
-
-  const rows = jobs.map((job) => {
-    const applications = job.applications.length;
-    const inInterview = job.applications.filter((a) =>
-      isInInterviewStage(a.stage as PipelineStage),
-    ).length;
-    const selected = job.applications.filter((a) => a.stage === "SELECTED").length;
-    return {
-      id: job.id,
-      title: job.title,
-      location: job.location,
-      status: job.status,
-      updatedAt: job.updatedAt,
-      applications,
-      inInterview,
-      selected,
-    };
+  const rows = await loadJobsHub({
+    organizationId: scope.organizationId,
+    q,
+    statusFilter,
   });
 
   const sort = searchParams?.sort ?? "updated";

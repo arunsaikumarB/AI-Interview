@@ -42,6 +42,134 @@ export const SECONDARY_INTEGRITY_POLICY = {
   episodeCooldownMs: 1500,
 } as const;
 
+
+/**
+ * F-05 R5 — only STRICT may end an interview from secondary-camera signals.
+ *
+ * STANDARD still records every timestamped signal and still warns the
+ * candidate, so recruiters keep full review visibility; it simply never
+ * terminates. Run C ended a STANDARD interview after 44 seconds with zero
+ * questions answered, because termination was gated only on ENHANCED
+ * proctoring and ignored integrityMode entirely — unlike the browser
+ * integrity path, which already returns early when mode !== "STRICT".
+ */
+export function secondaryTerminationEnabled(
+  mode: "STANDARD" | "STRICT",
+): boolean {
+  return mode === "STRICT";
+}
+
+export function shouldTerminateSecondary(params: {
+  mode: "STANDARD" | "STRICT";
+  nextCount: number;
+  terminateAt?: number;
+}): boolean {
+  if (!secondaryTerminationEnabled(params.mode)) return false;
+  return (
+    params.nextCount >=
+    (params.terminateAt ?? SECONDARY_INTEGRITY_POLICY.terminateAt)
+  );
+}
+
+/* ── F-05 audit evidence ─────────────────────────────────────────────────
+ *
+ * `InterviewSession.secondaryPlacementConfirmedAt` is transient: it is cleared
+ * on reconnect, placement reset, disconnect and session end, so after a run it
+ * cannot show when placement happened. Run D lost exactly that evidence and the
+ * R1 invariant became unprovable retrospectively.
+ *
+ * These records are append-only TimelineEvents (the same `type: "OTHER"` +
+ * `payload.kind` mechanism already used by PROCTORING_CONSENT and
+ * integrity_terminated). They are EVIDENCE ONLY — they change no detection,
+ * no thresholds, no termination behaviour.
+ *
+ * Deliberately not ProctoringEvent: the staff report counts every row of that
+ * table, so audit records would inflate the recruiter-facing signal counts.
+ */
+
+export const SECONDARY_AUDIT_KIND = {
+  placementConfirmed: "secondary_placement_confirmed",
+  baselineCaptured: "secondary_baseline_captured",
+} as const;
+
+/** Flags every advisory payload carries, so audit rows read the same way. */
+const ADVISORY_FLAGS = {
+  advisoryOnly: true,
+  noAtsStageChange: true,
+  noAiInput: true,
+  source: "secondary_camera",
+} as const;
+
+export function secondaryPlacementAuditPayload(params: {
+  sessionId: string;
+  confirmedAt: Date;
+}): Record<string, unknown> {
+  return {
+    ...ADVISORY_FLAGS,
+    kind: SECONDARY_AUDIT_KIND.placementConfirmed,
+    sessionId: params.sessionId,
+    confirmedAt: params.confirmedAt.toISOString(),
+  };
+}
+
+/**
+ * The baseline record carries the placement it belongs to, so a reconnect
+ * (which produces a new placement + new baseline) stays unambiguous, and the
+ * R1 invariant is checkable from the row alone.
+ */
+export function secondaryBaselineAuditPayload(params: {
+  sessionId: string;
+  capturedAt: Date;
+  settled: boolean;
+  placementConfirmedAt: Date | null;
+}): Record<string, unknown> {
+  return {
+    ...ADVISORY_FLAGS,
+    kind: SECONDARY_AUDIT_KIND.baselineCaptured,
+    sessionId: params.sessionId,
+    capturedAt: params.capturedAt.toISOString(),
+    settled: params.settled,
+    placementConfirmedAt: params.placementConfirmedAt
+      ? params.placementConfirmedAt.toISOString()
+      : null,
+    invariantHeld: baselineFollowsPlacement(
+      params.capturedAt,
+      params.placementConfirmedAt,
+    ),
+  };
+}
+
+/** The R1 invariant: a baseline must never predate its placement. */
+export function baselineFollowsPlacement(
+  capturedAt: Date,
+  placementConfirmedAt: Date | null,
+): boolean {
+  if (!placementConfirmedAt) return false;
+  return capturedAt.getTime() >= placementConfirmedAt.getTime();
+}
+
+export type BaselineReport = { capturedAt: Date; settled: boolean };
+
+/**
+ * Parse the optional baseline fields off an existing heartbeat body.
+ *
+ * Returns null for any body that does not carry a well-formed report, so a
+ * heartbeat without them (every heartbeat before this change) stays valid.
+ * A malformed timestamp is rejected rather than silently stored.
+ */
+export function parseBaselineReport(raw: unknown): BaselineReport | null {
+  if (!raw || typeof raw !== "object") return null;
+  const body = raw as Record<string, unknown>;
+  const at = body.baselineCapturedAt;
+  if (typeof at !== "string" || at.trim() === "") return null;
+  const capturedAt = new Date(at);
+  if (Number.isNaN(capturedAt.getTime())) return null;
+  // Guard against a wildly wrong device clock being written as evidence.
+  const skewMs = Math.abs(Date.now() - capturedAt.getTime());
+  if (skewMs > 24 * 60 * 60 * 1000) return null;
+  return { capturedAt, settled: body.baselineSettled === true };
+}
+
 export function isSecondaryIntegrityKind(
   raw: string | null | undefined,
 ): raw is SecondaryIntegrityKind {

@@ -8,6 +8,9 @@ import {
 import { handleApiError, jsonOk } from "@/lib/api";
 import { AIError } from "@/lib/ai/ollama";
 import { screenApplication } from "@/lib/ai/run-screening";
+import { enqueueDjangoJob } from "@/lib/staff-async/enqueue";
+import { useDjangoAsync } from "@/lib/staff-async/flag";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
 
 type Ctx = { params: { id: string } };
 
@@ -16,7 +19,7 @@ type Ctx = { params: { id: string } };
  * NEVER changes Application.stage or Application.status.
  * Each run creates a NEW AIEvaluation (history preserved).
  */
-export async function POST(_request: Request, { params }: Ctx) {
+export async function POST(request: Request, { params }: Ctx) {
   try {
     const session = await getSession();
     const user = requireUser(session);
@@ -41,6 +44,21 @@ export async function POST(_request: Request, { params }: Ctx) {
       throw new AuthError("Insufficient permissions", 403);
     }
 
+    if (useDjangoAsync()) {
+      const queued = await enqueueDjangoJob(
+        "/api/v1/screening/",
+        { application_id: params.id },
+        "AI_SCREENING",
+        request,
+      );
+      return jsonOk({
+        ...queued,
+        advisoryOnly: true,
+        message:
+          "AI screening queued. Application stage/status unchanged — recruiter decides.",
+      });
+    }
+
     const { evaluation, embeddingUpdated } = await screenApplication(params.id);
 
     return jsonOk({
@@ -61,6 +79,6 @@ export async function POST(_request: Request, { params }: Ctx) {
         { status: err.code === "VALIDATION" ? 400 : 503 },
       );
     }
-    return handleApiError(err);
+    return djangoReadToResponse(err) ?? handleApiError(err);
   }
 }

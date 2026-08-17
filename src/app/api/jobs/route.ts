@@ -10,6 +10,12 @@ import {
   AuthError,
 } from "@/lib/auth/rbac";
 import { handleApiError, jsonCreated, jsonOk } from "@/lib/api";
+import { djangoListJobs } from "@/lib/staff-reads/django-reads";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
+import { useDjangoReads } from "@/lib/staff-reads/flag";
+import { djangoPostJson } from "@/lib/staff-reads/django-client";
+import { useDjangoJobWrites } from "@/lib/staff-writes/flag";
+import { normalizeJob, type DjangoJob } from "@/lib/staff-reads/normalize";
 
 const createSchema = z.object({
   title: z.string().min(2),
@@ -43,7 +49,7 @@ const jobInclude = {
   _count: { select: { applications: true } },
 } as const;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await getSession();
     const user = requireUser(session);
@@ -55,8 +61,13 @@ export async function GET() {
       "HIRING_MANAGER",
       "INTERVIEWER",
     ]);
-    const scope = orgScopeWhere(user);
 
+    if (useDjangoReads()) {
+      const jobs = await djangoListJobs(request);
+      return jsonOk({ jobs });
+    }
+
+    const scope = orgScopeWhere(user);
     const jobs = await prisma.job.findMany({
       where: scope,
       orderBy: { createdAt: "desc" },
@@ -65,7 +76,7 @@ export async function GET() {
 
     return jsonOk({ jobs });
   } catch (err) {
-    return handleApiError(err);
+    return djangoReadToResponse(err) ?? handleApiError(err);
   }
 }
 
@@ -78,6 +89,23 @@ export async function POST(request: Request) {
     }
 
     const body = createSchema.parse(await request.json());
+
+    if (useDjangoJobWrites()) {
+      const { organizationId: _ignoredOrg, ...forward } = body;
+      try {
+        const data = await djangoPostJson<{ job: DjangoJob }>(
+          "/api/v1/jobs/",
+          forward as Record<string, unknown>,
+          { request },
+        );
+        return jsonCreated({ job: normalizeJob(data.job) });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) return mapped;
+        throw err;
+      }
+    }
+
     const organizationId = requireOrganizationId(user, body.organizationId);
 
     if (body.departmentId) {

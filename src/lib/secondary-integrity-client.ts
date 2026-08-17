@@ -20,8 +20,14 @@ import {
   PERSON_MISSING_MS,
   PERSON_MOVED_MS,
   WARMUP_MS,
+  BASELINE_MAX_WAIT_MS,
+  BASELINE_MIN_SAMPLES,
   attentionDeviated,
   captureBaseline,
+  createBoxMemory,
+  createEpisodeTracker,
+  createPresenceDebouncer,
+  isSettled,
   extraPersonsInPrimaryZone,
   headTowardBox,
   isOutOfPosition,
@@ -166,9 +172,21 @@ export function createSecondaryIntegrityMonitor(params: {
   video: HTMLVideoElement;
   isPaused?: () => boolean;
   emitEvents?: () => boolean;
+  /**
+   * F-05 R1: the pose baseline may only be taken once the host has confirmed
+   * placement. Defaults to true so existing callers keep working, but the
+   * secondary-camera client always supplies it.
+   */
+  placementConfirmed?: () => boolean;
   onFraming?: (status: SecondaryFramingStatus) => void;
   onResult: (result: SecondaryIntegrityResult) => void;
-}): { start: () => void; stop: () => void; resume: () => void } {
+  onBaseline?: (info: { capturedAt: number; settled: boolean }) => void;
+}): {
+  start: () => void;
+  stop: () => void;
+  resume: () => void;
+  baselineCapturedAt: () => number | null;
+} {
   let started = false;
   let timer: ReturnType<typeof setInterval> | null = null;
   let faceDetector: {
@@ -208,11 +226,28 @@ export function createSecondaryIntegrityMonitor(params: {
   let audioBuf: Uint8Array | null = null;
   let lookingSince: number | null = null;
   let moveSince: number | null = null;
-  let missingSince: number | null = null;
-  let movedSince: number | null = null;
-  let attentionSince: number | null = null;
+  // F-05 R2: continuous pose conditions are tracked as episodes, not as
+  // free-running hold timers that re-arm on a single clear frame.
+  const missingEpisode = createEpisodeTracker({
+    kind: "PERSON_MISSING",
+    holdMs: PERSON_MISSING_MS,
+  });
+  const movedEpisode = createEpisodeTracker({
+    kind: "PERSON_MOVED",
+    holdMs: PERSON_MOVED_MS,
+  });
+  const attentionEpisode = createEpisodeTracker({
+    kind: "ATTENTION_DEVIATION",
+    holdMs: ATTENTION_MS,
+  });
   let deviceSince: number | null = null;
   let deviceGoneSince: number | null = null;
+  // R7: bounded smoothing of intermittent detector output (not sticky).
+  const devicePresence = createPresenceDebouncer({});
+  // R8: bounded memory of the last observed phone box, so the wrist/head
+  // geometry can still be evaluated on samples where object detection did not
+  // run. Never fabricates a box; expires once the phone is genuinely gone.
+  const devicePhoneBox = createBoxMemory({});
   let interactionSince: number | null = null;
   let personWasMissing = false;
   let deviceWasVisible = false;
@@ -223,6 +258,14 @@ export function createSecondaryIntegrityMonitor(params: {
   const lastPostedAt: Partial<Record<SecondaryIntegrityKind, number>> = {};
   const poseSamples: PoseBaseline[] = [];
   let baseline: PoseBaseline | null = null;
+  /** Opens when placement is confirmed — never before. */
+  let baselineWindowOpenedAt: number | null = null;
+  let baselineCapturedAt: number | null = null;
+  /** ~6s of samples at SAMPLE_MS; the rolling window the settle check reads. */
+  const BASELINE_WINDOW_SAMPLES = Math.max(
+    BASELINE_MIN_SAMPLES,
+    Math.round(WARMUP_MS / SAMPLE_MS),
+  );
   let laptopBaseline: NormBox | null = null;
   const sampleCanvasW = 160;
 
@@ -258,7 +301,16 @@ export function createSecondaryIntegrityMonitor(params: {
     }
   }
 
-  async function post(kind: SecondaryIntegrityKind, extra?: Record<string, unknown>) {
+  async function post(
+    kind: SecondaryIntegrityKind,
+    extra?: Record<string, unknown>,
+    /**
+     * F-05 R2: episode-tracked conditions supply one stable id for the whole
+     * episode so the server's de-duplication can actually match. Untracked
+     * one-shot signals still mint a fresh id.
+     */
+    episodeId?: string | null,
+  ) {
     if (params.emitEvents && !params.emitEvents()) return;
     const now = Date.now();
     const last = lastPostedAt[kind] ?? 0;
@@ -273,7 +325,7 @@ export function createSecondaryIntegrityMonitor(params: {
         body: JSON.stringify({
           kind,
           timestamp: new Date().toISOString(),
-          episodeId: newEpisodeId(kind),
+          episodeId: episodeId ?? newEpisodeId(kind),
           ...extra,
         }),
       });
@@ -398,39 +450,80 @@ export function createSecondaryIntegrityMonitor(params: {
       personCount,
     });
 
-    if (inWarmup) {
-      if (metrics) {
-        poseSamples.push({
-          hipY: metrics.hipY,
-          torsoY: metrics.torsoY,
-          torsoX: metrics.torsoX,
-          shoulderSpan: metrics.shoulderSpan,
-          noseX: metrics.noseX,
-        });
-      }
+    const pushSample = () => {
+      if (!metrics) return;
+      poseSamples.push({
+        hipY: metrics.hipY,
+        torsoY: metrics.torsoY,
+        torsoX: metrics.torsoX,
+        shoulderSpan: metrics.shoulderSpan,
+        noseX: metrics.noseX,
+      });
+      while (poseSamples.length > BASELINE_WINDOW_SAMPLES) poseSamples.shift();
+    };
+
+    // ── F-05 R1 ───────────────────────────────────────────────────────────
+    // The baseline defines "the interview position", so it may only be taken
+    // once the host has confirmed placement AND the candidate has settled.
+    // Previously it was frozen during a fixed warm-up that began the instant
+    // the camera came up — i.e. while the phone was still being propped — and
+    // was never revisited, so normal seated posture read as movement forever.
+    const placementReady = params.placementConfirmed
+      ? params.placementConfirmed()
+      : true;
+
+    if (!placementReady) {
+      // Discard anything sampled during setup. A pre-placement posture must
+      // never survive to become the baseline.
+      poseSamples.length = 0;
+      baselineWindowOpenedAt = null;
       return;
     }
 
-    if (!baseline && poseSamples.length >= 5) {
-      baseline = captureBaseline(poseSamples);
+    if (baselineWindowOpenedAt == null) {
+      baselineWindowOpenedAt = now;
+      poseSamples.length = 0;
+      // Give the candidate a fresh settling window from this moment.
+      warmupUntil = now + WARMUP_MS;
+      return;
+    }
+
+    if (inWarmup) {
+      pushSample();
+      return;
+    }
+
+    if (!baseline) {
+      pushSample();
+      const settled = isSettled(poseSamples);
+      const timedOut =
+        now - baselineWindowOpenedAt >= BASELINE_MAX_WAIT_MS &&
+        poseSamples.length >= BASELINE_MIN_SAMPLES;
+      if (settled || timedOut) {
+        const captured = captureBaseline(poseSamples);
+        if (captured) {
+          baseline = captured;
+          baselineCapturedAt = now;
+          params.onBaseline?.({ capturedAt: now, settled });
+        }
+      }
+      // Pose-relative checks cannot run without a baseline.
+      return;
     }
 
     if (poseLandmarker) {
-      if (poseCount === 0 && !metrics && !classified.candidate) {
-        if (missingSince == null) missingSince = now;
-        if (now - missingSince >= PERSON_MISSING_MS) {
-          personWasMissing = true;
-          missingSince = now + 60_000;
-          await post("PERSON_MISSING", { faceCount: 0 });
-        }
-      } else {
-        if (personWasMissing) {
-          personWasMissing = false;
-          missingSince = null;
-          await post("PERSON_RETURNED");
-        } else {
-          missingSince = null;
-        }
+      // F-05 R2: each continuous condition reports once per episode. A brief
+      // flicker back into position no longer re-arms the hold timer, so one
+      // unbroken condition can no longer consume several termination slots.
+      const isMissing = poseCount === 0 && !metrics && !classified.candidate;
+      const missing = missingEpisode.update(isMissing, now);
+      if (missing.fire) {
+        personWasMissing = true;
+        await post("PERSON_MISSING", { faceCount: 0 }, missing.episodeId);
+      }
+      if (personWasMissing && missingEpisode.current() == null) {
+        personWasMissing = false;
+        await post("PERSON_RETURNED");
       }
 
       if (metrics && baseline) {
@@ -441,24 +534,18 @@ export function createSecondaryIntegrityMonitor(params: {
           shoulderSpan: metrics.shoulderSpan,
           noseX: metrics.noseX,
         };
-        if (isOutOfPosition(current, baseline)) {
-          if (movedSince == null) movedSince = now;
-          if (now - movedSince >= PERSON_MOVED_MS) {
-            movedSince = now + 60_000;
-            await post("PERSON_MOVED");
-          }
-        } else {
-          movedSince = null;
-        }
+        const moved = movedEpisode.update(
+          isOutOfPosition(current, baseline),
+          now,
+        );
+        if (moved.fire) await post("PERSON_MOVED", undefined, moved.episodeId);
 
-        if (attentionDeviated(metrics.noseX, baseline.noseX, metrics.torsoX)) {
-          if (attentionSince == null) attentionSince = now;
-          if (now - attentionSince >= ATTENTION_MS) {
-            attentionSince = now + 60_000;
-            await post("ATTENTION_DEVIATION");
-          }
-        } else {
-          attentionSince = null;
+        const attention = attentionEpisode.update(
+          attentionDeviated(metrics.noseX, baseline.noseX, metrics.torsoX),
+          now,
+        );
+        if (attention.fire) {
+          await post("ATTENTION_DEVIATION", undefined, attention.episodeId);
         }
       }
     }
@@ -522,7 +609,12 @@ export function createSecondaryIntegrityMonitor(params: {
       }
     }
 
-    if (phones.length > 0) {
+    // R7: the detector blinks on real phone video. Presence is debounced over a
+    // bounded absence window so one missed frame no longer restarts the
+    // DEVICE_MS hold; DEVICE_MS itself and every threshold are unchanged.
+    const devicePresent = devicePresence.update(phones.length > 0, now);
+
+    if (devicePresent) {
       deviceGoneSince = null;
       if (deviceSince == null) deviceSince = now;
       if (now - deviceSince >= DEVICE_MS) {
@@ -530,10 +622,16 @@ export function createSecondaryIntegrityMonitor(params: {
         deviceSince = now + 60_000;
         await post("DEVICE_VISIBLE");
       }
-      const phone = phones[0]!;
+      // R8: object detection only runs every OBJECT_EVERY_N-th sample, so a
+      // live box is absent on ~half of frames by construction. Evaluate the
+      // geometry against the most recently observed box instead of skipping —
+      // the wrist/head requirement itself is unchanged and still checked every
+      // frame, and the box expires when the phone genuinely leaves.
+      const phone = devicePhoneBox.update(phones[0] ?? null, now);
       const interacting =
         Boolean(
-          metrics &&
+          phone &&
+            metrics &&
             (wristNearBox(metrics.leftWrist, phone) ||
               wristNearBox(metrics.rightWrist, phone) ||
               headTowardBox(metrics.noseX, metrics.noseY, phone)),
@@ -626,7 +724,9 @@ export function createSecondaryIntegrityMonitor(params: {
       try {
         objectDetector = await ObjectDetector.createFromOptions(fileset, {
           baseOptions: {
-            modelAssetPath: "/mediapipe/models/efficientdet_lite0.tflite",
+            // R6.1: lite0 never classified a held phone as "cell phone" on real
+            // secondary-camera footage, so DEVICE_VISIBLE was unreachable.
+            modelAssetPath: "/mediapipe/models/efficientdet_lite2.tflite",
             delegate: "CPU",
           },
           runningMode: "VIDEO",
@@ -656,11 +756,16 @@ export function createSecondaryIntegrityMonitor(params: {
     personInteractSince = null;
     lookingSince = null;
     moveSince = null;
-    missingSince = null;
-    movedSince = null;
-    attentionSince = null;
+    // F-05 R2: abandon in-flight episodes on resume. The baseline is
+    // deliberately NOT cleared here — re-baselining after an acknowledged
+    // warning is R4, which is not approved.
+    missingEpisode.reset();
+    movedEpisode.reset();
+    attentionEpisode.reset();
     deviceSince = null;
     interactionSince = null;
+    devicePresence.reset();
+    devicePhoneBox.reset();
     posting = false;
   }
 
@@ -685,5 +790,5 @@ export function createSecondaryIntegrityMonitor(params: {
     audioBuf = null;
   }
 
-  return { start, stop, resume };
+  return { start, stop, resume, baselineCapturedAt: () => baselineCapturedAt };
 }

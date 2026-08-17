@@ -3,6 +3,7 @@
 import { useMemo, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { integritySignalLabel } from "@/lib/integrity";
+import { collapseConsecutiveSecondaryLinkEvents } from "@/lib/secondary-camera-signals";
 import {
   recordingMimeHasAudio,
   recordingStatusLabel,
@@ -73,11 +74,11 @@ export function SecondaryCameraReview({
       e.type === "SECONDARY_DEVICE_VISIBLE" ||
       e.type === "SECONDARY_DEVICE_INTERACTION",
   ).length;
-  const interruptCount = events.filter(
-    (e) =>
-      e.type === "SECONDARY_CAMERA_DISCONNECTED" ||
-      e.type === "SECONDARY_CAMERA_MOVED",
-  ).length;
+  const interruptCount =
+    events.filter((e) => e.type === "SECONDARY_CAMERA_MOVED").length +
+    collapseConsecutiveSecondaryLinkEvents(events).filter(
+      (e) => e.type === "SECONDARY_CAMERA_DISCONNECTED",
+    ).length;
   const additionalPersons = events.filter(
     (e) =>
       e.type === "SECONDARY_MULTIPLE_PERSONS" ||
@@ -97,7 +98,7 @@ export function SecondaryCameraReview({
       : events[0]
         ? new Date(events[0].timestamp).getTime()
         : null;
-    return events
+    return collapseConsecutiveSecondaryLinkEvents(events)
       .filter((e) =>
         e.type.startsWith("SECONDARY_") ||
         e.type === "TAB_BLUR" ||

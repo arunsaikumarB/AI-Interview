@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatDateTime } from "@/lib/format";
 import { integritySignalLabel } from "@/lib/integrity";
+import { collapseConsecutiveSecondaryLinkEvents } from "@/lib/secondary-camera-signals";
 
 type EventRow = {
   id: string;
@@ -17,8 +18,9 @@ function metaObj(meta: unknown): Record<string, unknown> | null {
 }
 
 function latestSecondary(events: EventRow[]): EventRow[] {
-  return events
-    .filter((e) => e.type.startsWith("SECONDARY_"))
+  return collapseConsecutiveSecondaryLinkEvents(
+    events.filter((e) => e.type.startsWith("SECONDARY_")),
+  )
     .slice(-8)
     .reverse();
 }

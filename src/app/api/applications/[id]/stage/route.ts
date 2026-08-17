@@ -5,6 +5,9 @@ import { getSession } from "@/lib/auth/session";
 import { canManagePipeline, requireUser, AuthError } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
 import { PIPELINE_STAGES } from "@/lib/constants";
+import { useDjangoStageWrites } from "@/lib/staff-writes/flag";
+import { djangoPostJson } from "@/lib/staff-reads/django-client";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
 
 const bodySchema = z.object({
   toStage: z.enum(PIPELINE_STAGES as unknown as [PipelineStage, ...PipelineStage[]]),
@@ -27,6 +30,36 @@ export async function POST(request: Request, { params }: Ctx) {
     }
 
     const body = bodySchema.parse(await request.json());
+
+    if (useDjangoStageWrites()) {
+      if (body.toStage === "SELECTED" || body.toStage === "REJECTED") {
+        if (!body.note || body.note.trim().length < 5) {
+          return Response.json(
+            { error: "Final decisions require a human rationale (note)" },
+            { status: 400 },
+          );
+        }
+      }
+      try {
+        const payload: Record<string, unknown> = { toStage: body.toStage };
+        if (body.note !== undefined) payload.note = body.note;
+        const data = await djangoPostJson<{
+          application: unknown;
+          advisoryNote: string;
+        }>(`/api/v1/applications/${id}/stage/`, payload, { request });
+        return jsonOk({
+          application: data.application,
+          advisoryNote:
+            data.advisoryNote ??
+            "AI recommendations are advisory only. This stage change was made by a human.",
+        });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) return mapped;
+        throw err;
+      }
+    }
+
     const application = await prisma.application.findUnique({
       where: { id },
       include: { job: { select: { organizationId: true } } },

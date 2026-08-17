@@ -17,6 +17,9 @@ import {
   parsePlan,
   turnsFromQuestions,
 } from "@/lib/ai/interview-session";
+import { enqueueDjangoJob } from "@/lib/staff-async/enqueue";
+import { useDjangoAsync } from "@/lib/staff-async/flag";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
 
 type Ctx = { params: { id: string } };
 
@@ -24,7 +27,7 @@ type Ctx = { params: { id: string } };
  * Re-run finalEvaluation for a COMPLETED session from stored turns.
  * Creates a new INTERVIEW_OVERALL AIEvaluation. Does not change Application.stage.
  */
-export async function POST(_request: Request, { params }: Ctx) {
+export async function POST(request: Request, { params }: Ctx) {
   try {
     const sessionUser = await getSession();
     const user = requireStaff(sessionUser);
@@ -63,6 +66,20 @@ export async function POST(_request: Request, { params }: Ctx) {
         { error: "Interview must be COMPLETED to regenerate evaluation" },
         { status: 400 },
       );
+    }
+
+    if (useDjangoAsync()) {
+      const queued = await enqueueDjangoJob(
+        "/api/v1/interviews/finalize/",
+        { session_id: params.id },
+        "INTERVIEW_FINALIZE",
+        request,
+      );
+      return jsonOk({
+        ...queued,
+        advisoryOnly: true,
+        message: "Final evaluation queued. Application stage unchanged.",
+      });
     }
 
     const plan = parsePlan(interview.plan);
@@ -136,6 +153,6 @@ export async function POST(_request: Request, { params }: Ctx) {
         { status: err.code === "VALIDATION" ? 400 : 503 },
       );
     }
-    return handleApiError(err);
+    return djangoReadToResponse(err) ?? handleApiError(err);
   }
 }

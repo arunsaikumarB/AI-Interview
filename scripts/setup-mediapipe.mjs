@@ -24,8 +24,14 @@ const MODELS = [
     url: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
   },
   {
-    file: "efficientdet_lite0.tflite",
-    url: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+    // R6.1 — lite2, not lite0. Measured against the Run F recording (a real
+    // secondary-camera capture with a phone and tablet held in view):
+    //   lite0: 0 cell-phone detections in 52 frames -> DEVICE_VISIBLE unreachable
+    //   lite2: 10 detections, 3200ms continuous -> DEVICE_VISIBLE fires
+    // False-positive control on 100 device-free frames: both models 0.
+    // Same COCO-90 vocabulary, so PHONE_LABELS/LAPTOP_LABELS are unchanged.
+    file: "efficientdet_lite2.tflite",
+    url: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float16/1/efficientdet_lite2.tflite",
   },
 ];
 

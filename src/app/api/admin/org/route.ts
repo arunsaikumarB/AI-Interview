@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { requireAdmin, requireOrganizationId } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
+import { djangoPatchJson } from "@/lib/staff-reads/django-client";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
+import { useDjangoAdminWrites } from "@/lib/staff-writes/flag";
 
 const patchSchema = z.object({
   name: z.string().min(1).max(120).optional(),
@@ -44,6 +47,23 @@ export async function PATCH(request: Request) {
     const session = await getSession();
     const user = requireAdmin(session);
     const body = patchSchema.parse(await request.json());
+
+    if (useDjangoAdminWrites()) {
+      const { organizationId: _ignored, ...forward } = body;
+      try {
+        const data = await djangoPatchJson<{ organization: unknown }>(
+          "/api/v1/admin/org/",
+          forward as Record<string, unknown>,
+          { request },
+        );
+        return jsonOk({ organization: data.organization });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) return mapped;
+        throw err;
+      }
+    }
+
     const organizationId = requireOrganizationId(user, body.organizationId);
 
     const organization = await prisma.organization.update({

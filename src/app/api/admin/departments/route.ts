@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { requireAdmin, requireOrganizationId } from "@/lib/auth/rbac";
 import { handleApiError, jsonCreated, jsonOk } from "@/lib/api";
+import { djangoPostJson } from "@/lib/staff-reads/django-client";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
+import { useDjangoAdminWrites } from "@/lib/staff-writes/flag";
 
 const createSchema = z.object({
   name: z.string().min(1).max(120),
@@ -36,6 +39,23 @@ export async function POST(request: Request) {
     const session = await getSession();
     const user = requireAdmin(session);
     const body = createSchema.parse(await request.json());
+
+    if (useDjangoAdminWrites()) {
+      const { organizationId: _ignored, ...forward } = body;
+      try {
+        const data = await djangoPostJson<{ department: unknown }>(
+          "/api/v1/admin/departments/",
+          forward as Record<string, unknown>,
+          { request },
+        );
+        return jsonCreated({ department: data.department });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) return mapped;
+        throw err;
+      }
+    }
+
     const organizationId = requireOrganizationId(user, body.organizationId);
 
     const department = await prisma.department.create({

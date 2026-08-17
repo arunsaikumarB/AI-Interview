@@ -1,3 +1,29 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"]
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "overrides": [
+    {
+      "files": ["src/app/api/**/*.ts", "src/app/api/**/*.tsx"],
+      "rules": {
+        "react-hooks/rules-of-hooks": "off",
+        "@typescript-eslint/no-unused-vars": [
+          "error",
+          {
+            "argsIgnorePattern": "^_",
+            "varsIgnorePattern": "^_",
+            "caughtErrorsIgnorePattern": "^_",
+            "ignoreRestSiblings": true
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/app/dashboard/interviews/*/page.tsx",
+        "src/lib/staff-reads/jobs-hub.ts"
+      ],
+      "rules": {
+        "react-hooks/rules-of-hooks": "off"
+      }
+    }
+  ]
 }

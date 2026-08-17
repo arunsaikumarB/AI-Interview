@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import {
+  buildSecurityHeaders,
+  createNonce,
+  requestIsHttps,
+} from "@/lib/security-headers";
 
 const PUBLIC_PATHS = [
   "/",
@@ -34,8 +39,45 @@ function secretKey() {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  /**
+   * R-1 — security headers. Built per request because the CSP carries a
+   * one-time nonce and HSTS is only valid once the request is already HTTPS
+   * (the LAN pilot proxy on :3443 sets x-forwarded-proto).
+   */
+  const nonce = createNonce();
+  const security = buildSecurityHeaders({
+    isProduction: process.env.NODE_ENV === "production",
+    isHttps: requestIsHttps({
+      forwardedProto: request.headers.get("x-forwarded-proto"),
+      url: request.url,
+    }),
+    nonce,
+  });
+
+  /** Every exit path from this middleware must carry the headers. */
+  function harden<T extends NextResponse>(response: T): T {
+    for (const [key, value] of Object.entries(security)) {
+      response.headers.set(key, value);
+    }
+    return response;
+  }
+
+  /**
+   * Next reads the nonce out of the *request* CSP header and stamps it onto
+   * its own inline bootstrap scripts, which is what lets production drop
+   * 'unsafe-inline' from script-src.
+   */
+  function withNonce(base: Headers): Headers {
+    const headers = new Headers(base);
+    headers.set("x-nonce", nonce);
+    headers.set("Content-Security-Policy", security["Content-Security-Policy"]);
+    return headers;
+  }
+
   if (isPublic(pathname)) {
-    return NextResponse.next();
+    return harden(
+      NextResponse.next({ request: { headers: withNonce(request.headers) } }),
+    );
   }
 
   const cookieName = process.env.AUTH_COOKIE_NAME ?? "aros_session";
@@ -43,17 +85,19 @@ export async function middleware(request: NextRequest) {
 
   if (!token) {
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return harden(
+        NextResponse.json({ error: "Authentication required" }, { status: 401 }),
+      );
     }
     const login = new URL("/login", request.url);
     login.searchParams.set("next", pathname);
-    return NextResponse.redirect(login);
+    return harden(NextResponse.redirect(login));
   }
 
   try {
     const { payload } = await jwtVerify(token, secretKey());
     const role = String(payload.role ?? "");
-    const requestHeaders = new Headers(request.headers);
+    const requestHeaders = withNonce(request.headers);
     requestHeaders.set("x-user-id", String(payload.sub ?? ""));
     requestHeaders.set("x-user-role", role);
     requestHeaders.set("x-user-email", String(payload.email ?? ""));
@@ -64,30 +108,34 @@ export async function middleware(request: NextRequest) {
       role === "CANDIDATE"
     ) {
       if (pathname.startsWith("/api/")) {
-        return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+        return harden(
+          NextResponse.json({ error: "Insufficient permissions" }, { status: 403 }),
+        );
       }
-      return NextResponse.redirect(new URL("/portal", request.url));
+      return harden(NextResponse.redirect(new URL("/portal", request.url)));
     }
 
     if (pathname.startsWith("/portal") && role !== "CANDIDATE") {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
+      return harden(NextResponse.redirect(new URL("/dashboard", request.url)));
     }
 
     // Legacy /candidate → /portal
     if (pathname.startsWith("/candidate")) {
       const dest = pathname.replace(/^\/candidate/, "/portal") || "/portal";
-      return NextResponse.redirect(new URL(dest, request.url));
+      return harden(NextResponse.redirect(new URL(dest, request.url)));
     }
 
-    return NextResponse.next({
-      request: { headers: requestHeaders },
-    });
+    return harden(
+      NextResponse.next({
+        request: { headers: requestHeaders },
+      }),
+    );
   } catch {
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      return harden(NextResponse.json({ error: "Invalid session" }, { status: 401 }));
     }
     const login = new URL("/login", request.url);
-    return NextResponse.redirect(login);
+    return harden(NextResponse.redirect(login));
   }
 }
 

@@ -278,6 +278,7 @@ export default async function JobDetailPage({ params, searchParams }: Ctx) {
                   id: job.id,
                   title: job.title,
                   departmentId: job.departmentId,
+                  departmentName: job.department?.name ?? null,
                   location: job.location,
                   description: job.description,
                   skills: job.skills,

@@ -8,6 +8,7 @@ import {
 import { handleApiError, jsonOk } from "@/lib/api";
 import { FinalResultSchema } from "@/lib/ai/interview";
 import { AnswerEvaluationSchema } from "@/lib/ai/interview";
+import { deriveEvaluationState } from "@/lib/ai/evaluation-status";
 
 type Ctx = { params: { id: string } };
 
@@ -84,6 +85,32 @@ export async function GET(_request: Request, { params }: Ctx) {
       ? FinalResultSchema.safeParse(overall.scores).data
       : null;
 
+    /**
+     * R-3: distinguish "still generating" from "gave up". Without this the UI
+     * only knows the evaluation is absent, which it showed as "missing" the
+     * instant the interview completed — a false alarm during the ~2 minutes
+     * generation legitimately takes, and no signal at all once it has failed.
+     */
+    const latestEvaluationEvent = await prisma.timelineEvent.findFirst({
+      where: {
+        applicationId: interview.applicationId,
+        type: "AI_EVALUATION",
+        payload: { path: ["sessionId"], equals: interview.id },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    const evaluationStatus = deriveEvaluationState({
+      sessionStatus: interview.status,
+      hasOverall: Boolean(overall),
+      latestEvent:
+        (latestEvaluationEvent?.payload as {
+          status?: string;
+          kind?: string;
+          attempts?: number;
+          error?: string;
+        } | null) ?? null,
+    });
+
     return jsonOk({
       interview: {
         id: interview.id,
@@ -113,6 +140,7 @@ export async function GET(_request: Request, { params }: Ctx) {
             result: finalParsed,
           }
         : null,
+      evaluationStatus,
       advisoryOnly: true,
     });
   } catch (err) {

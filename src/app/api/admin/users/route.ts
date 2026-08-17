@@ -10,6 +10,9 @@ import {
   AuthError,
 } from "@/lib/auth/rbac";
 import { handleApiError, jsonCreated, jsonOk } from "@/lib/api";
+import { djangoPostJson } from "@/lib/staff-reads/django-client";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
+import { useDjangoAdminWrites } from "@/lib/staff-writes/flag";
 
 const STAFF_CREATE_ROLES = [
   "SUPER_ADMIN",
@@ -65,6 +68,27 @@ export async function POST(request: Request) {
     const session = await getSession();
     const actor = requireAdmin(session);
     const body = createSchema.parse(await request.json());
+
+    if (useDjangoAdminWrites()) {
+      if (body.role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") {
+        throw new AuthError("Only Super Admin can create Super Admin users", 403);
+      }
+      const { organizationId: _ignored, ...forward } = body;
+      try {
+        const data = await djangoPostJson<{
+          user: unknown;
+          temporaryPassword?: string;
+        }>("/api/v1/admin/users/", forward as Record<string, unknown>, { request });
+        return jsonCreated({
+          user: data.user,
+          temporaryPassword: data.temporaryPassword,
+        });
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        if (mapped) return mapped;
+        throw err;
+      }
+    }
 
     if (body.role === "SUPER_ADMIN" && actor.role !== "SUPER_ADMIN") {
       throw new AuthError("Only Super Admin can create Super Admin users", 403);

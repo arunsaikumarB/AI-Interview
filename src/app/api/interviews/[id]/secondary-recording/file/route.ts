@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { AuthError, canManagePipeline, requireStaff } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api";
-import { readStoredFile } from "@/lib/storage";
+import { readStoredFile, verifyStoredFile } from "@/lib/storage";
 import { finalizeSecondaryRecording } from "@/lib/secondary-recording-server";
 
 type Ctx = { params: { id: string } };
@@ -38,11 +38,21 @@ export async function GET(request: Request, { params }: Ctx) {
       throw new AuthError("Insufficient permissions", 403);
     }
     let relativePath = interview.secondaryRecordingPath;
+    if (relativePath) {
+      const present = await verifyStoredFile(relativePath);
+      if (!present.ok) {
+        relativePath = null;
+      }
+    }
     if (!relativePath && interview.secondaryRecordingId) {
       const salvaged = await finalizeSecondaryRecording(interview.id);
       relativePath = salvaged.path;
     }
     if (!relativePath) {
+      return Response.json({ error: "No recording available" }, { status: 404 });
+    }
+    const verified = await verifyStoredFile(relativePath);
+    if (!verified.ok) {
       return Response.json({ error: "No recording available" }, { status: 404 });
     }
 

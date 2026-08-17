@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
+import { collapseConsecutiveSecondaryLinkEvents } from "@/lib/secondary-camera-signals";
 import { cn } from "@/lib/utils";
 
 type EventRow = {
@@ -35,7 +36,8 @@ export function ProctoringReportSection({
 }) {
   if (!enabled) return null;
 
-  const counts = events.reduce<Record<string, number>>((acc, e) => {
+  const displayEvents = collapseConsecutiveSecondaryLinkEvents(events);
+  const counts = displayEvents.reduce<Record<string, number>>((acc, e) => {
     acc[e.type] = (acc[e.type] ?? 0) + 1;
     return acc;
   }, {});
@@ -102,7 +104,7 @@ export function ProctoringReportSection({
               ))}
           </div>
           <ul className="max-h-80 space-y-2 overflow-y-auto text-sm">
-            {events.map((e) => (
+            {displayEvents.map((e) => (
               <li
                 key={e.id}
                 className="flex flex-wrap gap-2 border-t border-border pt-2 text-foreground/90"

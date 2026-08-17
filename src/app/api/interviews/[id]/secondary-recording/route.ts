@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { AuthError, canManagePipeline, requireStaff } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
 import { recordingStatusLabel } from "@/lib/secondary-recording-labels";
+import { verifyStoredFile } from "@/lib/storage";
 
 type Ctx = { params: { id: string } };
 
@@ -38,10 +39,14 @@ export async function GET(_request: Request, { params }: Ctx) {
     if (!interview) {
       return Response.json({ error: "Not found" }, { status: 404 });
     }
+    const onDisk = await verifyStoredFile(interview.secondaryRecordingPath);
     return jsonOk({
       status: interview.secondaryRecordingStatus,
-      label: recordingStatusLabel(interview.secondaryRecordingStatus),
-      hasRecording: Boolean(interview.secondaryRecordingPath),
+      label: recordingStatusLabel(
+        interview.secondaryRecordingStatus,
+        onDisk.ok,
+      ),
+      hasRecording: onDisk.ok,
       durationMs: interview.secondaryRecordingDurationMs,
       interruptedMs: interview.secondaryRecordingInterruptedMs,
       hasGap: interview.secondaryRecordingHasGap,

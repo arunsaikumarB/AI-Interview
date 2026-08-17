@@ -9,6 +9,7 @@ import {
 import { handleApiError, jsonCreated, jsonOk } from "@/lib/api";
 import { AIError } from "@/lib/ai/ollama";
 import {
+  buildFallbackInterviewPlan,
   generatePlan,
   initialAdaptiveState,
   type InterviewType,
@@ -21,6 +22,12 @@ import {
   createAccessToken,
   tokenExpiresInDays,
 } from "@/lib/ai/interview-session";
+import { enqueueDjangoJob } from "@/lib/staff-async/enqueue";
+import {
+  useDjangoAsync,
+  type AsyncEnqueueResult,
+} from "@/lib/staff-async/flag";
+import { djangoReadToResponse } from "@/lib/staff-reads/errors";
 
 type Ctx = { params: { id: string } };
 
@@ -146,19 +153,24 @@ export async function POST(request: Request, { params }: Ctx) {
       body.interviewType as InterviewType,
     );
 
-    const { plan, model, raw } = await generatePlan({
-      job: application.job,
-      candidate: {
-        firstName: application.candidate.firstName,
-        lastName: application.candidate.lastName,
-        summary: application.candidate.summary,
-        skills: application.candidate.skills,
-        experience: application.candidate.experience,
-      },
-      resumeText,
+    // Always create the magic link first. Waiting on Ollama here blocked the
+    // copy-link dialog for 1–3 minutes (or forever on CPU), so recruiters
+    // closed the dialog and created duplicate interviews.
+    const focusAreas = screeningFocus
+      ? [
+          ...(screeningFocus.missingRequirements ?? []),
+          ...(screeningFocus.concerns ?? []),
+        ]
+      : [];
+    const plan = buildFallbackInterviewPlan({
+      jobTitle: application.job.title,
+      skills: application.job.skills,
+      jobDescription: application.job.description,
       interviewType,
-      screeningFocus,
+      focusAreas,
     });
+    const model = "fallback-template";
+    const raw: unknown = { fallback: true, queued: true };
 
     const accessToken = createAccessToken();
     let proctoringMode =
@@ -217,6 +229,58 @@ export async function POST(request: Request, { params }: Ctx) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     const candidateLink = `${appUrl}/interview/${accessToken}`;
 
+    let asyncPlan: AsyncEnqueueResult | null = null;
+    let planEnqueueError: string | null = null;
+    if (useDjangoAsync()) {
+      try {
+        asyncPlan = await enqueueDjangoJob(
+          "/api/v1/interviews/plan/",
+          { session_id: interview.id },
+          "INTERVIEW_PLAN",
+          request,
+        );
+      } catch (err) {
+        const mapped = djangoReadToResponse(err);
+        planEnqueueError =
+          mapped != null
+            ? "Interview created but AI plan was not queued."
+            : err instanceof Error
+              ? err.message
+              : "Interview created but AI plan was not queued.";
+      }
+    } else {
+      const sessionId = interview.id;
+      const job = application.job;
+      const candidate = application.candidate;
+      void generatePlan({
+        job,
+        candidate: {
+          firstName: candidate.firstName,
+          lastName: candidate.lastName,
+          summary: candidate.summary,
+          skills: candidate.skills,
+          experience: candidate.experience,
+        },
+        resumeText,
+        interviewType,
+        screeningFocus,
+      })
+        .then(async (generated) => {
+          await prisma.interviewSession.update({
+            where: { id: sessionId },
+            data: {
+              plan: asJson(generated.plan),
+              adaptiveState: asJson(
+                initialAdaptiveState(generated.plan.openingQuestion.difficulty),
+              ),
+            },
+          });
+        })
+        .catch((err) => {
+          console.warn("[interviews] background plan failed; keeping fallback", err);
+        });
+    }
+
     return jsonCreated({
       interview: {
         id: interview.id,
@@ -237,9 +301,10 @@ export async function POST(request: Request, { params }: Ctx) {
         openingTopic: plan.openingQuestion.topic,
         model,
       },
-      // Plan details are recruiter-only; not returned on token routes
       plan,
       rawStored: Boolean(raw),
+      asyncPlan,
+      planEnqueueError,
     });
   } catch (err) {
     if (err instanceof AIError) {
@@ -252,6 +317,6 @@ export async function POST(request: Request, { params }: Ctx) {
         { status: err.code === "VALIDATION" ? 400 : 503 },
       );
     }
-    return handleApiError(err);
+    return djangoReadToResponse(err) ?? handleApiError(err);
   }
 }

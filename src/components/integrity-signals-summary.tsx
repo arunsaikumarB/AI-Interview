@@ -8,6 +8,7 @@ import {
   parseIntegrityMode,
   terminationReasonLabel,
 } from "@/lib/integrity";
+import { collapseConsecutiveSecondaryLinkEvents } from "@/lib/secondary-camera-signals";
 
 type EventRow = {
   id: string;
@@ -46,14 +47,13 @@ export function IntegritySignalsSummary({
 
   const tabSwitches = events.filter(isTabSwitch).length;
   const pasteEvents = events.filter((e) => e.type === "COPY_PASTE").length;
-  const cameraInterruptions = events.filter(
-    (e) =>
-      e.type === "SECONDARY_CAMERA_DISCONNECTED" ||
-      e.type === "SECONDARY_CAMERA_MOVED",
-  ).length;
-  const connectionInterruptions = events.filter(
+  const collapsedLinks = collapseConsecutiveSecondaryLinkEvents(events);
+  const connectionInterruptions = collapsedLinks.filter(
     (e) => e.type === "SECONDARY_CAMERA_DISCONNECTED",
   ).length;
+  const cameraInterruptions =
+    events.filter((e) => e.type === "SECONDARY_CAMERA_MOVED").length +
+    connectionInterruptions;
   const visibilityInterruptions = events.filter(
     (e) =>
       e.type === "SECONDARY_NO_FACE" ||
@@ -154,10 +154,10 @@ export function IntegritySignalsSummary({
         </button>
         {techOpen ? (
           <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs text-muted-foreground">
-            {events.length === 0 ? (
+            {collapsedLinks.length === 0 ? (
               <li>No stored events.</li>
             ) : (
-              events.map((e) => (
+              collapsedLinks.map((e) => (
                 <li key={e.id} className="flex flex-wrap gap-2">
                   <span className="font-mono">{formatDateTime(e.timestamp)}</span>
                   <span>{e.type}</span>

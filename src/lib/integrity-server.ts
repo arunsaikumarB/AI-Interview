@@ -8,6 +8,7 @@ import {
   type IntegrityViolationKind,
   type SecondaryIntegrityKind,
   parseIntegrityMode,
+  shouldTerminateSecondary,
 } from "@/lib/integrity";
 
 export type IntegrityViolationResult = {
@@ -531,8 +532,13 @@ export async function recordSecondaryIntegrityViolation(params: {
     }
 
     const nextMoves = fresh.integrityCameraMoveCount + 1;
-    const shouldTerminate =
-      nextMoves >= SECONDARY_INTEGRITY_POLICY.terminateAt;
+    // F-05 R5: only STRICT may end an interview from secondary-camera signals.
+    // STANDARD still records every timestamped signal and still warns, so the
+    // recruiter keeps full review visibility — it simply never terminates.
+    const shouldTerminate = shouldTerminateSecondary({
+      mode,
+      nextCount: nextMoves,
+    });
     const reason = shouldTerminate
       ? secondaryTerminateReason(params.kind)
       : null;

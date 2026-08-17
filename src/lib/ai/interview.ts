@@ -420,7 +420,7 @@ const FINAL_RESULT_JSON_SCHEMA = `{ "overall": <0-100>, "dimensions": { "technic
 // LLM calls
 // -----------------------------------------------------------------------------
 
-const PLAN_SYSTEM = `You are designing an adaptive interview plan for a self-hosted ATS.
+export const PLAN_SYSTEM = `You are designing an adaptive interview plan for a self-hosted ATS.
 Return ONLY valid JSON matching the schema.
 Rules:
 - Topics MUST come from the JOB title, job description, and job skills. Resume text is only for validating claims ABOUT those job skills.
