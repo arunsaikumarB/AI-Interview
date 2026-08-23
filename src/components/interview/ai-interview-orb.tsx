@@ -1,59 +1,110 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useState } from "react";
+import { ThinkingOrb } from "thinking-orbs";
 import { cn } from "@/lib/utils";
-import type { OrbState } from "./orb-state";
-import styles from "./interview-ui.module.css";
+import {
+  THINKING_ORB_CANVAS_SIZE,
+  THINKING_ORB_SPEED,
+  type InterviewThinkingOrbState,
+} from "./orb-state";
 
 interface AIInterviewOrbProps {
-  state: OrbState;
-  size?: number;
-  reducedMotion?: boolean;
+  state: InterviewThinkingOrbState;
+  heading?: string;
   statusLabel?: string;
+  guidance?: string;
+  reducedMotion?: boolean;
+  className?: string;
+  /** Visual diameter — smaller in the two-column layout so the question stays primary. */
+  size?: number;
 }
 
 export function AIInterviewOrb({
   state,
-  size,
-  reducedMotion = false,
+  heading = "AI Interviewer",
   statusLabel,
+  guidance,
+  reducedMotion = false,
+  className,
+  size: sizeProp,
 }: AIInterviewOrbProps) {
-  const announced =
-    statusLabel ??
-    (state === "CANDIDATE_SPEAKING" ? "Recording" : "AI Interviewer");
+  const [displaySize, setDisplaySize] = useState(sizeProp ?? 200);
+
+  useEffect(() => {
+    if (sizeProp != null) {
+      setDisplaySize(sizeProp);
+      return;
+    }
+    const apply = () => {
+      const vw = window.innerWidth;
+      if (vw >= 1280) setDisplaySize(220);
+      else if (vw >= 1024) setDisplaySize(180);
+      else setDisplaySize(148);
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [sizeProp]);
 
   return (
     <div
-      className={styles.root}
-      data-state={state}
-      data-reduced={reducedMotion ? "true" : "false"}
-      style={
-        size
-          ? ({
-              "--orb-size": `${size}px`,
-            } as CSSProperties)
-          : undefined
-      }
+      className={cn("relative flex flex-col items-center text-center", className)}
+      data-orb-state={state}
+      data-thinking-orb={state}
       role="status"
       aria-live="polite"
-      aria-label={announced}
+      aria-label={`${heading}. ${statusLabel ?? ""}. ${guidance ?? ""}`}
     >
-      <div className={styles.stage}>
-        <div className={cn(styles.layer, styles.aura)} />
-        <div className={cn(styles.layer, styles.blob)} />
-        <div className={cn(styles.layer, styles.core)}>
-          <div className={styles.sphere} />
-          <div className={styles.drift} />
-          <div className={styles.specular} />
-          <div className={cn(styles.tint, styles.tintCyan)} />
-          <div className={cn(styles.tint, styles.tintCalm)} />
-          <div className={cn(styles.tint, styles.tintDone)} />
-        </div>
-      </div>
-      <p className={styles.title}>AI Interviewer</p>
-      <p className={cn(styles.label, statusLabel && styles.labelOn)}>
-        {statusLabel ?? "\u00a0"}
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-300/90">
+        {heading}
       </p>
+      {statusLabel ? (
+        <p className="mb-3 max-w-md text-sm text-zinc-300">{statusLabel}</p>
+      ) : null}
+      {guidance ? (
+        <p className="mb-4 max-w-lg text-xs leading-relaxed text-zinc-500">
+          {guidance}
+        </p>
+      ) : null}
+
+      <div
+        className="relative flex items-center justify-center"
+        style={{ width: displaySize, height: displaySize }}
+      >
+        <ThinkingOrb
+          state={state}
+          size={THINKING_ORB_CANVAS_SIZE}
+          speed={THINKING_ORB_SPEED}
+          paused={reducedMotion}
+          theme="dark"
+          style={{
+            width: displaySize,
+            height: displaySize,
+            display: "block",
+          }}
+          aria-hidden
+        />
+      </div>
+
+      <span
+        className={cn(
+          "mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium tracking-wide",
+          state === "breathing" &&
+            "border-violet-400/30 bg-violet-500/10 text-violet-200",
+          state === "listening" &&
+            "border-sky-400/30 bg-sky-500/10 text-sky-200",
+          state === "composing" &&
+            "border-amber-400/30 bg-amber-500/10 text-amber-100",
+          state === "connecting" &&
+            "border-indigo-400/30 bg-indigo-500/10 text-indigo-200",
+        )}
+      >
+        <span className="opacity-70" aria-hidden>
+          ✦
+        </span>
+        {state}
+      </span>
     </div>
   );
 }

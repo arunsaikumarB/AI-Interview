@@ -5,6 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Check, Circle, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand-logo";
+import {
+  pickVideoDeviceId,
+  storePrimaryCameraSkipped,
+  storePrimaryDeviceId,
+} from "@/lib/primary-camera";
+import {
+  discardPrimaryCameraStream,
+  holdPrimaryCameraStream,
+} from "@/lib/primary-camera-handoff";
 
 type CheckStatus = "pending" | "checking" | "ready" | "failed" | "skipped";
 
@@ -81,11 +90,14 @@ function checkBrowser(): { ok: boolean; detail: string } {
 export function PreInterviewSystemCheck({
   mode,
   proctoringEnabled,
+  token,
   onContinue,
   onUseText,
 }: {
   mode: "TEXT" | "VOICE";
   proctoringEnabled: boolean;
+  /** Interview access token — used to persist validated camera deviceId. */
+  token?: string;
   onContinue: () => void;
   /** Voice interviews may fall back to typing. */
   onUseText?: () => void;
@@ -110,10 +122,22 @@ export function PreInterviewSystemCheck({
 
   const streamRef = useRef<MediaStream | null>(null);
   const camStreamRef = useRef<MediaStream | null>(null);
+  const camPreviewRef = useRef<HTMLVideoElement | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    const el = camPreviewRef.current;
+    if (!el) return;
+    if (camera === "ready" && camStreamRef.current) {
+      el.srcObject = camStreamRef.current;
+      void el.play().catch(() => undefined);
+    } else {
+      el.srcObject = null;
+    }
+  }, [camera]);
 
   useEffect(() => {
     const result = checkBrowser();
@@ -241,27 +265,43 @@ export function PreInterviewSystemCheck({
     setCameraDetail(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       });
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
       camStreamRef.current = stream;
-      // Immediate stop — we only verify access; consent still decides later.
-      stream.getTracks().forEach((t) => t.stop());
-      camStreamRef.current = null;
+      const deviceId = pickVideoDeviceId(stream);
+      if (token) {
+        storePrimaryDeviceId(token, deviceId);
+        storePrimaryCameraSkipped(token, false);
+      }
+      // Keep live stream for preview + handoff into the interview (do not stop).
+      holdPrimaryCameraStream(stream, deviceId);
       setCamera("ready");
-      setCameraDetail("Camera available (optional for proctoring)");
-    } catch {
+      setCameraDetail("Camera ready — preview below");
+    } catch (err) {
+      discardPrimaryCameraStream();
+      camStreamRef.current = null;
+      const name = err instanceof DOMException ? err.name : "";
+      const denied =
+        name === "NotAllowedError" || name === "PermissionDeniedError";
       setCamera("failed");
       setCameraDetail(
-        "Camera not available. You can skip — camera is optional for this interview.",
+        denied
+          ? "Camera access denied. You can skip — camera is optional for this interview."
+          : "Camera not available. You can skip — camera is optional for this interview.",
       );
     }
   }
 
   function skipCamera() {
+    discardPrimaryCameraStream();
     camStreamRef.current?.getTracks().forEach((t) => t.stop());
     camStreamRef.current = null;
+    if (token) {
+      storePrimaryCameraSkipped(token, true);
+      storePrimaryDeviceId(token, null);
+    }
     setCamera("skipped");
     setCameraDetail("Skipped — you can continue without camera");
   }
@@ -429,25 +469,45 @@ export function PreInterviewSystemCheck({
       ) : null}
 
       {showCamera ? (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={checkCamera}
-            disabled={camera === "checking"}
-          >
-            Check camera
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={skipCamera}
-            disabled={camera === "checking"}
-          >
-            Skip camera
-          </Button>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={checkCamera}
+              disabled={camera === "checking"}
+            >
+              Check camera
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={skipCamera}
+              disabled={camera === "checking"}
+            >
+              Skip camera
+            </Button>
+          </div>
+          {camera === "ready" ? (
+            <div
+              className="relative w-full max-w-[280px] overflow-hidden rounded-[16px] border border-border bg-black shadow-md"
+              style={{ aspectRatio: "16 / 9" }}
+            >
+              <video
+                ref={camPreviewRef}
+                className="h-full w-full object-cover"
+                autoPlay
+                muted
+                playsInline
+              />
+              <div className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                LIVE · Camera ready
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

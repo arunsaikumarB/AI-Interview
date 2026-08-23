@@ -15,7 +15,14 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
     include: {
       application: {
         include: {
-          job: { select: { title: true } },
+          job: {
+            select: {
+              title: true,
+              experienceMin: true,
+              experienceMax: true,
+              department: { select: { name: true } },
+            },
+          },
           candidate: { select: { firstName: true } },
         },
       },
@@ -37,6 +44,14 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
 
   const deliveryMode = session.deliveryMode === "VOICE" ? "VOICE" : "TEXT";
   const endsAt = sessionEndsAt(session.startedAt, session.durationMinutes);
+  const expMin = session.application.job.experienceMin;
+  const expMax = session.application.job.experienceMax;
+  const experienceLabel =
+    expMax != null
+      ? `${expMin}–${expMax} Years`
+      : expMin > 0
+        ? `${expMin}+ Years`
+        : null;
 
   return jsonOk({
     status: session.status,
@@ -57,6 +72,8 @@ export const GET = withApiHandler<Ctx>(async (_request, { params }) => {
     durationMinutes: session.durationMinutes,
     endsAt: endsAt?.toISOString() ?? null,
     jobTitle: session.application.job.title,
+    departmentName: session.application.job.department?.name ?? null,
+    experienceLabel,
     candidateFirstName: session.application.candidate.firstName,
     questionsAsked: session._count.questions,
     instructions:

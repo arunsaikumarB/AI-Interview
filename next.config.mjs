@@ -13,7 +13,7 @@ const STATIC_ASSET_SECURITY_HEADERS = [
 const nextConfig = {
   output: "standalone",
   poweredByHeader: false,
-  transpilePackages: ["three", "@react-three/fiber", "@react-three/drei"],
+  transpilePackages: ["three", "@react-three/fiber", "@react-three/drei", "thinking-orbs"],
   experimental: {
     serverComponentsExternalPackages: ["pdf-parse", "mammoth"],
     instrumentationHook: true,

@@ -173,6 +173,12 @@ export function createProctoringCollector(params: {
 
   async function enableCamera(stream: MediaStream) {
     if (!params.cameraAllowed) return;
+    // Reuse existing face sampler when the same primary stream is re-attached
+    // (React rerenders / collector remounts must not spawn duplicate detectors).
+    if (videoEl?.srcObject === stream) {
+      return;
+    }
+    disableCamera();
     videoEl = document.createElement("video");
     videoEl.muted = true;
     videoEl.playsInline = true;

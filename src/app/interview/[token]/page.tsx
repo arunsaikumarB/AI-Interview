@@ -9,7 +9,7 @@ type Ctx = { params: { token: string } };
 
 export default function PublicInterviewPage({ params }: Ctx) {
   return (
-    <div className="app-canvas min-h-dvh px-4 py-4 md:py-3">
+    <div className="min-h-dvh bg-[#070b14]">
       <InterviewRoom token={params.token} />
     </div>
   );

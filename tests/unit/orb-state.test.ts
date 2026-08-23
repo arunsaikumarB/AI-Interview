@@ -1,47 +1,135 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { deriveOrbState } from "../../src/components/interview/orb-state";
+import {
+  deriveInterviewThinkingOrbState,
+  deriveInterviewUiPhase,
+  thinkingOrbStatusLabel,
+} from "../../src/components/interview/orb-state";
 
-describe("deriveOrbState", () => {
-  const base = {
-    concluded: false,
-    status: "IN_PROGRESS",
-    thinking: false,
-    pendingProcessing: false,
-    recording: false,
-    hasActiveQuestion: true,
-    hasError: false,
-    questionJustArrived: false,
+describe("deriveInterviewThinkingOrbState — required mapping", () => {
+  const idle = {
+    aiSpeaking: false,
+    candidateRecording: false,
+    voiceSubmitting: false,
+    processing: false,
   };
 
-  it("uses AI_SPEAKING while a new question has just arrived", () => {
-    assert.equal(deriveOrbState({ ...base, questionJustArrived: true }), "AI_SPEAKING");
-  });
-
-  it("listens after the question is delivered", () => {
-    assert.equal(deriveOrbState(base), "CANDIDATE_LISTENING");
-  });
-
-  it("marks candidate speaking while recording", () => {
+  it("AI asking / speaking → breathing", () => {
     assert.equal(
-      deriveOrbState({ ...base, recording: true, questionJustArrived: true }),
-      "CANDIDATE_SPEAKING",
+      deriveInterviewThinkingOrbState({ ...idle, aiSpeaking: true }),
+      "breathing",
     );
   });
 
-  it("thinks while generating the next question", () => {
+  it("candidate recording → listening", () => {
     assert.equal(
-      deriveOrbState({ ...base, thinking: true, hasActiveQuestion: false }),
-      "THINKING",
+      deriveInterviewThinkingOrbState({ ...idle, candidateRecording: true }),
+      "listening",
     );
   });
 
-  it("processes a saved answer while a question is still on screen", () => {
-    assert.equal(deriveOrbState({ ...base, thinking: true }), "PROCESSING");
-    assert.equal(deriveOrbState({ ...base, pendingProcessing: true }), "PROCESSING");
+  it("candidate submits voice → composing", () => {
+    assert.equal(
+      deriveInterviewThinkingOrbState({ ...idle, voiceSubmitting: true }),
+      "composing",
+    );
   });
 
-  it("completes when the interview has concluded", () => {
-    assert.equal(deriveOrbState({ ...base, concluded: true }), "COMPLETED");
+  it("AI understanding → connecting", () => {
+    assert.equal(
+      deriveInterviewThinkingOrbState({ ...idle, processing: true }),
+      "connecting",
+    );
+  });
+
+  it("never shows conflicting priorities incorrectly", () => {
+    assert.equal(
+      deriveInterviewThinkingOrbState({
+        aiSpeaking: true,
+        candidateRecording: true,
+        voiceSubmitting: true,
+        processing: true,
+      }),
+      "breathing",
+    );
+    assert.equal(
+      deriveInterviewThinkingOrbState({
+        aiSpeaking: false,
+        candidateRecording: true,
+        voiceSubmitting: true,
+        processing: true,
+      }),
+      "composing",
+    );
+  });
+
+  it("full cycle: breathing → listening → composing → connecting → breathing", () => {
+    assert.equal(
+      deriveInterviewThinkingOrbState({ ...idle, aiSpeaking: true }),
+      "breathing",
+    );
+    assert.equal(
+      deriveInterviewThinkingOrbState({ ...idle, candidateRecording: true }),
+      "listening",
+    );
+    assert.equal(
+      deriveInterviewThinkingOrbState({ ...idle, voiceSubmitting: true }),
+      "composing",
+    );
+    assert.equal(
+      deriveInterviewThinkingOrbState({ ...idle, processing: true }),
+      "connecting",
+    );
+    assert.equal(deriveInterviewThinkingOrbState(idle), "breathing");
+  });
+});
+
+describe("deriveInterviewUiPhase", () => {
+  it("maps to exclusive phases", () => {
+    assert.equal(
+      deriveInterviewUiPhase({
+        aiSpeaking: true,
+        candidateRecording: false,
+        voiceSubmitting: false,
+        processing: false,
+      }),
+      "AI_SPEAKING",
+    );
+    assert.equal(
+      deriveInterviewUiPhase({
+        aiSpeaking: false,
+        candidateRecording: true,
+        voiceSubmitting: false,
+        processing: false,
+      }),
+      "CANDIDATE_RECORDING",
+    );
+    assert.equal(
+      deriveInterviewUiPhase({
+        aiSpeaking: false,
+        candidateRecording: false,
+        voiceSubmitting: true,
+        processing: false,
+      }),
+      "ANSWER_SUBMITTING",
+    );
+    assert.equal(
+      deriveInterviewUiPhase({
+        aiSpeaking: false,
+        candidateRecording: false,
+        voiceSubmitting: false,
+        processing: true,
+      }),
+      "AI_ANALYZING",
+    );
+  });
+});
+
+describe("thinkingOrbStatusLabel", () => {
+  it("uses premium candidate-facing copy", () => {
+    assert.match(thinkingOrbStatusLabel("breathing"), /asking|question/i);
+    assert.match(thinkingOrbStatusLabel("listening"), /Listening/i);
+    assert.match(thinkingOrbStatusLabel("composing"), /Processing/i);
+    assert.match(thinkingOrbStatusLabel("connecting"), /Understanding/i);
   });
 });

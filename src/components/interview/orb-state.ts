@@ -1,67 +1,121 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-export type OrbState =
-  | "IDLE"
-  | "THINKING"
+/**
+ * ThinkingOrb package states used by the interview UI.
+ * Deterministic mapping from real lifecycle flags — no timers.
+ */
+export type InterviewThinkingOrbState =
+  | "breathing"
+  | "listening"
+  | "composing"
+  | "connecting";
+
+export const THINKING_ORB_DESIGN_SIZE = 512;
+export const THINKING_ORB_SPEED = 0.45;
+/** thinking-orbs only ships canvas presets 64 | 20; we stretch 64 → design size. */
+export const THINKING_ORB_CANVAS_SIZE = 64 as const;
+
+/** Primary UI phase — only one active at a time. */
+export type InterviewUiPhase =
   | "AI_SPEAKING"
-  | "CANDIDATE_LISTENING"
-  | "CANDIDATE_SPEAKING"
-  | "PROCESSING"
-  | "COMPLETED";
+  | "CANDIDATE_READY"
+  | "CANDIDATE_RECORDING"
+  | "ANSWER_SUBMITTING"
+  | "AI_ANALYZING"
+  | "IDLE";
 
-/** Read-only snapshot of existing InterviewRoom flags — no engine state. */
-export type ExistingInterviewVisualState = {
-  concluded: boolean;
-  status?: string | null;
-  thinking: boolean;
-  pendingProcessing: boolean;
-  recording: boolean;
-  hasActiveQuestion: boolean;
-  hasError: boolean;
-  /** True for ~2s after a new question sequence appears (TTS may be playing). */
-  questionJustArrived: boolean;
+export type InterviewOrbLifecycle = {
+  aiSpeaking: boolean;
+  /** Mic is actively recording the candidate answer. */
+  candidateRecording: boolean;
+  voiceSubmitting: boolean;
+  processing: boolean;
+  concluded?: boolean;
 };
 
-export function deriveOrbState(s: ExistingInterviewVisualState): OrbState {
-  if (s.concluded || s.status === "COMPLETED") return "COMPLETED";
-  if (s.pendingProcessing) return "PROCESSING";
-  if (s.thinking) {
-    return s.hasActiveQuestion ? "PROCESSING" : "THINKING";
-  }
-  if (s.recording) return "CANDIDATE_SPEAKING";
-  if (
-    s.hasError &&
-    !s.recording &&
-    !s.thinking &&
-    !s.pendingProcessing
-  ) {
-    return "IDLE";
-  }
-  if (s.hasActiveQuestion && s.questionJustArrived) return "AI_SPEAKING";
-  if (s.hasActiveQuestion) return "CANDIDATE_LISTENING";
-  return "IDLE";
+/**
+ * Priority (highest first):
+ * 1. AI speaking → breathing
+ * 2. Voice submitting (upload) → composing
+ * 3. AI analyzing → connecting
+ * 4. Candidate recording → listening
+ * 5. Otherwise → breathing (calm idle while candidate is ready)
+ */
+export function deriveInterviewThinkingOrbState(
+  s: InterviewOrbLifecycle,
+): InterviewThinkingOrbState {
+  if (s.aiSpeaking) return "breathing";
+  if (s.voiceSubmitting) return "composing";
+  if (s.processing) return "connecting";
+  if (s.candidateRecording) return "listening";
+  return "breathing";
 }
 
-export function orbStatusLabel(
-  state: OrbState,
-  opts?: { hasError?: boolean },
-): string | undefined {
-  if (opts?.hasError && (state === "IDLE" || state === "THINKING")) {
-    return "One moment…";
+export function deriveInterviewUiPhase(
+  s: InterviewOrbLifecycle,
+): InterviewUiPhase {
+  if (s.aiSpeaking) return "AI_SPEAKING";
+  if (s.voiceSubmitting) return "ANSWER_SUBMITTING";
+  if (s.processing) return "AI_ANALYZING";
+  if (s.candidateRecording) return "CANDIDATE_RECORDING";
+  return "CANDIDATE_READY";
+}
+
+export function thinkingOrbStatusLabel(
+  state: InterviewThinkingOrbState,
+  phase?: InterviewUiPhase,
+): string {
+  if (phase === "CANDIDATE_READY") return "Click the mic when you are ready";
+  switch (state) {
+    case "listening":
+      return "Listening…";
+    case "composing":
+      return "Processing your answer…";
+    case "connecting":
+      return "Understanding your response…";
+    case "breathing":
+    default:
+      return "AI is asking a question";
+  }
+}
+
+export function thinkingOrbHeading(
+  state: InterviewThinkingOrbState,
+  phase?: InterviewUiPhase,
+): string {
+  if (phase === "CANDIDATE_READY") return "Your turn";
+  switch (state) {
+    case "listening":
+      return "Your turn";
+    case "composing":
+      return "Processing your answer";
+    case "connecting":
+      return "AI is analyzing";
+    case "breathing":
+    default:
+      return "AI Interviewer";
+  }
+}
+
+export function thinkingOrbGuidance(
+  state: InterviewThinkingOrbState,
+  phase?: InterviewUiPhase,
+): string {
+  if (phase === "CANDIDATE_READY") {
+    return "Speak clearly and take your time to respond.";
   }
   switch (state) {
-    case "THINKING":
-      return "Thinking…";
-    case "PROCESSING":
-      return "Reviewing your response…";
-    case "CANDIDATE_LISTENING":
-      return "Your turn — take your time";
-    case "COMPLETED":
-      return "Interview complete";
+    case "listening":
+      return "Speak clearly and take your time.";
+    case "composing":
+      return "Your response is being prepared…";
+    case "connecting":
+      return "Understanding your response…";
+    case "breathing":
     default:
-      return undefined;
+      return "Please listen carefully and take your time to respond.";
   }
 }
 
@@ -77,70 +131,23 @@ export function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-const ORB_DEBOUNCE_MS = 280;
-const AI_SPEAKING_MS = 2000;
-
-export function useOrbState(input: {
-  concluded: boolean;
-  status?: string | null;
-  thinking: boolean;
-  pendingProcessing: boolean;
-  recording: boolean;
-  hasActiveQuestion: boolean;
-  hasError: boolean;
-  questionSequence: number | null;
-  answeredCount: number;
-}): { orbState: OrbState; statusLabel: string | undefined } {
-  const [questionJustArrived, setQuestionJustArrived] = useState(false);
-  const seenSequenceRef = useRef<number | null>(null);
-  const hydratedRef = useRef(false);
-
-  useEffect(() => {
-    const seq = input.questionSequence;
-    if (seq == null) return;
-
-    const prev = seenSequenceRef.current;
-    seenSequenceRef.current = seq;
-
-    if (!hydratedRef.current) {
-      hydratedRef.current = true;
-      // Resume with existing answers: don't flash AI_SPEAKING on the current question.
-      if (input.answeredCount > 0) return;
-    }
-
-    if (prev === seq) return;
-
-    setQuestionJustArrived(true);
-    const t = window.setTimeout(() => setQuestionJustArrived(false), AI_SPEAKING_MS);
-    return () => window.clearTimeout(t);
-  }, [input.questionSequence, input.answeredCount]);
-
-  const derived = deriveOrbState({
-    concluded: input.concluded,
-    status: input.status,
-    thinking: input.thinking,
-    pendingProcessing: input.pendingProcessing,
-    recording: input.recording,
-    hasActiveQuestion: input.hasActiveQuestion,
-    hasError: input.hasError,
-    questionJustArrived,
-  });
-
-  const [orbState, setOrbState] = useState<OrbState>(derived);
-  const skipDebounceRef = useRef(true);
-
-  useEffect(() => {
-    if (skipDebounceRef.current) {
-      skipDebounceRef.current = false;
-      setOrbState(derived);
-      return;
-    }
-    const t = window.setTimeout(() => setOrbState(derived), ORB_DEBOUNCE_MS);
-    return () => window.clearTimeout(t);
-  }, [derived]);
-
+export function useInterviewThinkingOrb(lifecycle: InterviewOrbLifecycle): {
+  orbState: InterviewThinkingOrbState;
+  statusLabel: string;
+  heading: string;
+  guidance: string;
+  phase: InterviewUiPhase;
+} {
+  const orbState = deriveInterviewThinkingOrbState(lifecycle);
+  const phase = deriveInterviewUiPhase(lifecycle);
   return {
     orbState,
-    statusLabel: orbStatusLabel(orbState, { hasError: input.hasError }),
+    statusLabel: thinkingOrbStatusLabel(orbState, phase),
+    heading: thinkingOrbHeading(orbState, phase),
+    guidance: thinkingOrbGuidance(orbState, phase),
+    phase,
   };
 }
+
+/** @deprecated */
+export type OrbState = InterviewThinkingOrbState;
