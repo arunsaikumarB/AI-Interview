@@ -28,6 +28,7 @@ export function createIntegrityEpisodeController(params: {
 }): IntegrityEpisodeController {
   let episodeOpen = false;
   let episodeId: string | null = null;
+  let lostAt: number | null = null;
   let disposed = false;
   let inFlight = false;
 
@@ -77,6 +78,7 @@ export function createIntegrityEpisodeController(params: {
     if (!params.enabled || disposed) return;
     if (episodeOpen) return;
     episodeOpen = true;
+    lostAt = Date.now();
     episodeId = `ep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
@@ -85,11 +87,17 @@ export function createIntegrityEpisodeController(params: {
     if (!episodeOpen || !episodeId) {
       episodeOpen = false;
       episodeId = null;
+      lostAt = null;
       return;
     }
     const id = episodeId;
+    const started = lostAt;
     episodeOpen = false;
     episodeId = null;
+    lostAt = null;
+    if (started == null || Date.now() - started < STRICT_POLICY.focusLossMinMs) {
+      return;
+    }
     void post("FOCUS_LOSS", { episodeId: id });
   }
 
@@ -106,6 +114,7 @@ export function createIntegrityEpisodeController(params: {
     disposed = true;
     episodeOpen = false;
     episodeId = null;
+    lostAt = null;
   }
 
   return { onLoss, onReturn, reportImmediate, dispose };

@@ -12,9 +12,9 @@ const ROWS: {
 }[] = [
   {
     id: "AI_SPEAKING",
-    title: "AI is speaking",
+    title: "AI is asking a question",
     idleDetail: "Waiting for the next question",
-    activeDetail: "Please listen to the question",
+    activeDetail: "Please listen carefully.",
     badge: "breathing",
   },
   {
@@ -38,13 +38,20 @@ const ROWS: {
     activeDetail: "Understanding your response",
     badge: "connecting",
   },
+  {
+    id: "ANSWER_SUBMITTING",
+    title: "Processing your answer",
+    idleDetail: "Waiting…",
+    activeDetail: "Your response is being submitted",
+    badge: "composing",
+  },
 ];
 
 function isActive(phase: InterviewUiPhase, rowId: (typeof ROWS)[number]["id"]) {
   if (rowId === "AI_SPEAKING") return phase === "AI_SPEAKING";
   if (rowId === "CANDIDATE_RECORDING") return phase === "CANDIDATE_RECORDING";
-  if (rowId === "AI_ANALYZING")
-    return phase === "AI_ANALYZING" || phase === "ANSWER_SUBMITTING";
+  if (rowId === "AI_ANALYZING") return phase === "AI_ANALYZING";
+  if (rowId === "ANSWER_SUBMITTING") return phase === "ANSWER_SUBMITTING";
   if (rowId === "READY")
     return phase === "CANDIDATE_READY" || phase === "IDLE";
   return false;

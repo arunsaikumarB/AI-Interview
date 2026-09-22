@@ -10,6 +10,8 @@ import {
   DEVICE_GONE_MS,
   DEVICE_MS,
   EVENT_COOLDOWN_MS,
+  EMPTY_SUSTAINED,
+  EXTRA_PERSON_FRAME_GRACE_MS,
   EXTRA_PERSON_GONE_MS,
   EXTRA_PERSON_MS,
   INTERACTION_MS,
@@ -31,6 +33,7 @@ import {
   extraPersonsInPrimaryZone,
   headTowardBox,
   isOutOfPosition,
+  largestDeskSurfaceBox,
   largestLaptopBox,
   mergePersonBoxes,
   personBoxesFromDetections,
@@ -38,8 +41,10 @@ import {
   poseToBox,
   poseVisible,
   primaryZoneFromBaseline,
+  stepSustainedCondition,
   type PoseBaseline,
   type NormBox,
+  type SustainedCondition,
   unexpectedPhones,
   wristNearBox,
 } from "@/lib/secondary-integrity-cv";
@@ -215,10 +220,7 @@ export function createSecondaryIntegrityMonitor(params: {
   let canvas: HTMLCanvasElement | null = null;
   let prevGrid: Float32Array | null = null;
   let emptySceneSince: number | null = null;
-  let extraSince: number | null = null;
-  let extraGoneSince: number | null = null;
-  let extraConfirmed = false;
-  let extraConfirmedAt = 0;
+  let extraEventAt = 0;
   let personInteractSince: number | null = null;
   let lastExtras: NormBox[] = [];
   let audioCtx: AudioContext | null = null;
@@ -267,6 +269,10 @@ export function createSecondaryIntegrityMonitor(params: {
     Math.round(WARMUP_MS / SAMPLE_MS),
   );
   let laptopBaseline: NormBox | null = null;
+  const keyboardMemory = createBoxMemory({ ttlMs: 2_000 });
+  const keyboardPresence = createPresenceDebouncer({ graceMs: 4_000 });
+  let extraUi: SustainedCondition = { ...EMPTY_SUSTAINED };
+  let extraEventSent = false;
   const sampleCanvasW = 160;
 
   function audioLikelyActive(): boolean {
@@ -408,6 +414,7 @@ export function createSecondaryIntegrityMonitor(params: {
     objectTick += 1;
     let phones: NormBox[] = [];
     let detectedPeople: NormBox[] = [];
+    let frameKeyboard: NormBox | null = null;
     if (objectDetector && objectTick % OBJECT_EVERY_N === 0) {
       try {
         const od = objectDetector.detectForVideo(video, performance.now());
@@ -426,6 +433,7 @@ export function createSecondaryIntegrityMonitor(params: {
         if (!laptopBaseline) {
           laptopBaseline = largestLaptopBox(dets);
         }
+        frameKeyboard = largestDeskSurfaceBox(dets);
         phones = unexpectedPhones(dets, laptopBaseline);
         detectedPeople = personBoxesFromDetections(dets);
       } catch {
@@ -433,9 +441,15 @@ export function createSecondaryIntegrityMonitor(params: {
       }
     }
 
+    const rememberedDesk = keyboardMemory.update(frameKeyboard, now);
+    const furniture: NormBox[] = [];
+    if (laptopBaseline) furniture.push(laptopBaseline);
+    if (rememberedDesk) furniture.push(rememberedDesk);
+    const deskVisible = keyboardPresence.update(Boolean(rememberedDesk), now);
+
     const zone = primaryZoneFromBaseline(baseline);
     const mergedPeople = mergePersonBoxes([...poseBoxes, ...detectedPeople]);
-    const classified = extraPersonsInPrimaryZone(mergedPeople, zone);
+    const classified = extraPersonsInPrimaryZone(mergedPeople, zone, furniture);
     lastExtras = classified.extras;
     const extraInZone = classified.extras.length > 0;
     const personCount = Math.max(
@@ -443,10 +457,15 @@ export function createSecondaryIntegrityMonitor(params: {
       mergedPeople.length,
       (classified.candidate ? 1 : 0) + classified.extras.length,
     );
+    extraUi = stepSustainedCondition(extraUi, extraInZone, now, {
+      holdMs: EXTRA_PERSON_MS,
+      clearMs: EXTRA_PERSON_GONE_MS,
+      graceMs: EXTRA_PERSON_FRAME_GRACE_MS,
+    });
     params.onFraming?.({
       candidateVisible: Boolean(metrics || classified.candidate),
-      extraPersonInPrimaryZone: extraInZone,
-      laptopVisible: Boolean(laptopBaseline),
+      extraPersonInPrimaryZone: extraUi.confirmed,
+      laptopVisible: Boolean(laptopBaseline) || deskVisible,
       personCount,
     });
 
@@ -550,17 +569,25 @@ export function createSecondaryIntegrityMonitor(params: {
       }
     }
 
-    if (extraInZone) {
-      extraGoneSince = null;
-      if (extraSince == null) extraSince = now;
-      if (!extraConfirmed && extraSince != null && now - extraSince >= EXTRA_PERSON_MS) {
-        extraConfirmed = true;
-        extraConfirmedAt = extraSince;
-        await post("EXTRA_PERSON", {
-          faceCount: personCount,
-          personCount,
-        });
-      }
+    if (extraUi.confirmed && !extraEventSent) {
+      extraEventSent = true;
+      extraEventAt = extraUi.confirmedAt ?? now;
+      await post("EXTRA_PERSON", {
+        faceCount: personCount,
+        personCount,
+      });
+    }
+    if (!extraUi.confirmed && extraEventSent) {
+      const durationMs = extraEventAt > 0 ? now - extraEventAt : EXTRA_PERSON_MS;
+      extraEventSent = false;
+      extraEventAt = 0;
+      await post("PERSON_RETURNED_TO_ONE", {
+        personCount: 1,
+        durationMs,
+      });
+    }
+
+    if (extraUi.confirmed) {
       const extraBox = lastExtras[0];
       const toward =
         Boolean(metrics && extraBox && headTowardBox(metrics.noseX, metrics.noseY, extraBox));
@@ -578,8 +605,7 @@ export function createSecondaryIntegrityMonitor(params: {
             baseline &&
             attentionDeviated(metrics.noseX, baseline.noseX, metrics.torsoX),
         );
-      const combined =
-        extraConfirmed && toward && (gesture || talking || attentionOff);
+      const combined = toward && (gesture || talking || attentionOff);
       if (combined) {
         if (personInteractSince == null) personInteractSince = now;
         if (now - personInteractSince >= PERSON_INTERACTION_MS) {
@@ -590,23 +616,7 @@ export function createSecondaryIntegrityMonitor(params: {
         personInteractSince = null;
       }
     } else {
-      extraSince = null;
       personInteractSince = null;
-      if (extraConfirmed) {
-        if (extraGoneSince == null) extraGoneSince = now;
-        if (now - extraGoneSince >= EXTRA_PERSON_GONE_MS) {
-          const durationMs = extraConfirmedAt
-            ? now - extraConfirmedAt
-            : EXTRA_PERSON_MS;
-          extraConfirmed = false;
-          extraConfirmedAt = 0;
-          extraGoneSince = null;
-          await post("PERSON_RETURNED_TO_ONE", {
-            personCount: 1,
-            durationMs,
-          });
-        }
-      }
     }
 
     // R7: the detector blinks on real phone video. Presence is debounced over a
@@ -749,10 +759,11 @@ export function createSecondaryIntegrityMonitor(params: {
   function resume() {
     warmupUntil = Date.now() + Math.min(WARMUP_MS, 2_500);
     emptySceneSince = null;
-    extraSince = null;
-    extraGoneSince = null;
-    extraConfirmed = false;
-    extraConfirmedAt = 0;
+    extraUi = { ...EMPTY_SUSTAINED };
+    extraEventSent = false;
+    extraEventAt = 0;
+    keyboardMemory.reset();
+    keyboardPresence.reset();
     personInteractSince = null;
     lookingSince = null;
     moveSince = null;

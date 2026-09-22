@@ -22,7 +22,12 @@ import {
   createIntegrityEpisodeController,
   type IntegrityEpisodeController,
 } from "@/lib/integrity-episode";
-import { STRICT_POLICY } from "@/lib/integrity";
+import {
+  STRICT_POLICY,
+  isSecondaryIntegrityKind,
+  secondaryCandidateWarning,
+  strictCandidateWarning,
+} from "@/lib/integrity";
 import { BrandLogo } from "@/components/brand-logo";
 import { AIInterviewOrb } from "@/components/interview/ai-interview-orb";
 import { InterviewMicControl } from "@/components/interview/interview-mic-control";
@@ -35,7 +40,7 @@ import { postFormDataWithUploadLifecycle } from "@/lib/interview-answer-upload";
 import { Shield, HelpCircle, Mic, LogOut } from "lucide-react";
 
 const FOCUS_NUDGE_COPY =
-  "Please stay focused on the interview â€” activity signals are shared with the recruiter.";
+  "Please stay focused on the interview — activity signals are shared with the recruiter.";
 const MAX_FOCUS_NUDGES = 2;
 const FOCUS_GAP_MS = 3000;
 
@@ -103,11 +108,14 @@ export function InterviewRoom({ token }: { token: string }) {
   const [integrityConsented, setIntegrityConsented] = useState(false);
   const [fullscreenReady, setFullscreenReady] = useState(false);
   const [integrityWarning, setIntegrityWarning] = useState<{
+    title: string;
     message: string;
     warningNumber: number;
     warningOf: number;
     source: "strict" | "secondary";
+    kind?: string;
   } | null>(null);
+  const dismissedSecondaryKind = useRef<string | null>(null);
   const [integrityTerminated, setIntegrityTerminated] = useState(false);
   const [cameraAllowed, setCameraAllowed] = useState(false);
   const [primaryCameraDone, setPrimaryCameraDone] = useState(false);
@@ -235,7 +243,7 @@ export function InterviewRoom({ token }: { token: string }) {
         return;
       }
 
-      // STANDARD: soft nudge only â€” never terminate from the client.
+      // STANDARD: soft nudge only — never terminate from the client.
       if (type === "TAB_BLUR" || (type === "WINDOW_SWITCH" && meta?.kind === "blur")) {
         hiddenSinceRef.current = Date.now();
         return;
@@ -258,7 +266,7 @@ export function InterviewRoom({ token }: { token: string }) {
       if (voiceModeRef.current) {
         const audio = new Audio(`/api/interview/${token}/nudge-audio`);
         audio.play().catch(() => {
-          /* TTS optional â€” banner still shown */
+          /* TTS optional — banner still shown */
         });
       }
     },
@@ -278,7 +286,7 @@ export function InterviewRoom({ token }: { token: string }) {
     setPendingProcessing(Boolean(data.pendingProcessing));
     if (data.pendingProcessing) {
       setError(
-        "AI is still processing your last answer â€” your text was saved. Retry when ready.",
+        "AI is still processing your last answer — your text was saved. Retry when ready.",
       );
     } else {
       setError((prev) =>
@@ -344,12 +352,19 @@ export function InterviewRoom({ token }: { token: string }) {
         setEnhancedSetupReady(true);
         setIntegrityConsented(true);
         setFullscreenReady(true);
-      } else if (data.pendingIntegrityWarning) {
+      } else if (
+        data.pendingIntegrityWarning &&
+        isSecondaryIntegrityKind(data.pendingIntegrityWarning.kind)
+      ) {
+        const pending = data.pendingIntegrityWarning;
+        const copy = secondaryCandidateWarning(pending.kind);
         setIntegrityWarning({
-          message: data.pendingIntegrityWarning.message,
-          warningNumber: data.pendingIntegrityWarning.warningNumber,
-          warningOf: data.pendingIntegrityWarning.warningOf,
+          title: copy.title,
+          message: copy.detail,
+          warningNumber: pending.warningNumber,
+          warningOf: pending.warningOf,
           source: "secondary",
+          kind: pending.kind,
         });
       }
       if (data.proctoringConsentAt) {
@@ -443,17 +458,14 @@ export function InterviewRoom({ token }: { token: string }) {
           return;
         }
         if (result.showWarning) {
-          const message =
-            result.kind === "PASTE"
-              ? "External paste was detected in the interview window."
-              : result.kind === "FULLSCREEN_EXIT"
-                ? "Fullscreen was exited."
-                : "Your interview window lost focus.";
+          const copy = strictCandidateWarning(result.kind);
           setIntegrityWarning({
-            message,
+            title: copy.title,
+            message: copy.detail,
             warningNumber: result.warningNumber,
             warningOf: result.warningOf,
             source: "strict",
+            kind: result.kind,
           });
         }
       },
@@ -491,20 +503,28 @@ export function InterviewRoom({ token }: { token: string }) {
         }
         const pending = data.pendingIntegrityWarning as
           | {
+              kind: string;
               message: string;
               warningNumber: number;
               warningOf: number;
             }
           | null
           | undefined;
-        if (pending) {
+        if (pending && isSecondaryIntegrityKind(pending.kind)) {
+          if (dismissedSecondaryKind.current === pending.kind) {
+            return;
+          }
+          const copy = secondaryCandidateWarning(pending.kind);
           setIntegrityWarning({
-            message: pending.message,
+            title: copy.title,
+            message: copy.detail,
             warningNumber: pending.warningNumber,
             warningOf: pending.warningOf,
             source: "secondary",
+            kind: pending.kind,
           });
         } else {
+          dismissedSecondaryKind.current = null;
           setIntegrityWarning((prev) =>
             prev?.source === "secondary" ? null : prev,
           );
@@ -717,7 +737,7 @@ export function InterviewRoom({ token }: { token: string }) {
     const data = await res.json();
     setThinking(false);
     if (!res.ok) {
-      // No answer saved yet (e.g. speech was down) â€” refresh room, don't look like an outage.
+      // No answer saved yet (e.g. speech was down) — refresh room, don't look like an outage.
       if (res.status === 400 && data.code === "VALIDATION") {
         setPendingProcessing(false);
         setError(
@@ -728,7 +748,7 @@ export function InterviewRoom({ token }: { token: string }) {
         await loadState();
         return;
       }
-      setError(data.error ?? "Still processing â€” retry shortly");
+      setError(data.error ?? "Still processing — retry shortly");
       return;
     }
     if (data.concluded) {
@@ -766,8 +786,8 @@ export function InterviewRoom({ token }: { token: string }) {
     if (res.status === 503 && data.retryable) {
       setError(
         data.ollamaDown
-          ? "AI is offline â€” your answer was saved. Retry when ready."
-          : "AI is busy â€” your answer was saved. Retry processing.",
+          ? "AI is offline — your answer was saved. Retry when ready."
+          : "AI is busy — your answer was saved. Retry processing.",
       );
       await loadState();
       return;
@@ -996,7 +1016,7 @@ export function InterviewRoom({ token }: { token: string }) {
     return (
       <div className="mx-auto max-w-lg space-y-3 p-6 text-center">
         <BrandLogo size="header" />
-        <p className="text-sm text-muted-foreground">Loading interviewâ€¦</p>
+        <p className="text-sm text-muted-foreground">Loading interview…</p>
       </div>
     );
   }
@@ -1143,13 +1163,13 @@ export function InterviewRoom({ token }: { token: string }) {
           Hi {info.candidateFirstName}. You&apos;ll get about {info.maxQuestions} questions
           {info.durationMinutes ? ` within ${info.durationMinutes} minutes` : ""}.
           {info.mode === "VOICE"
-            ? " Answer by voice. You may switch to typing once â€” you cannot switch back to voice, and you cannot re-record."
-            : " Answer in text â€” take your time."}
+            ? " Answer by voice. You may switch to typing once — you cannot switch back to voice, and you cannot re-record."
+            : " Answer in text — take your time."}
         </p>
         <p className="mt-2 text-sm text-muted-foreground">{info.instructions}</p>
         {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
         <Button className="mt-6 w-full" onClick={start} disabled={thinking}>
-          {thinking ? "Startingâ€¦" : "Start interview"}
+          {thinking ? "Starting…" : "Start interview"}
         </Button>
       </div>
     );
@@ -1188,18 +1208,21 @@ export function InterviewRoom({ token }: { token: string }) {
 
       <IntegrityWarningDialog
         open={integrityWarning != null}
+        title={integrityWarning?.title ?? "Interview warning"}
         warningNumber={integrityWarning?.warningNumber ?? 1}
-        warningOf={integrityWarning?.warningOf ?? 3}
+        warningOf={integrityWarning?.warningOf ?? STRICT_POLICY.focusTerminateAt}
         message={
-          integrityWarning?.message ?? "Your interview window lost focus."
+          integrityWarning?.message ??
+          "Please return to the interview and continue."
         }
         stayHint={
           integrityWarning?.source === "secondary"
-            ? "Please remain focused on the interview. Return to your normal position, then continue."
+            ? "You can continue once this is corrected. This warning will not repeat until the situation changes."
             : "Please remain on the interview screen for the rest of the interview."
         }
         onDismiss={() => {
           if (integrityWarning?.source === "secondary") {
+            dismissedSecondaryKind.current = integrityWarning.kind ?? null;
             void fetch(`/api/interview/${token}/integrity/ack`, {
               method: "POST",
             });
@@ -1213,7 +1236,7 @@ export function InterviewRoom({ token }: { token: string }) {
         <div className="min-w-0 shrink">
           <BrandLogo
             size="nav"
-            className="h-8 w-[min(100%,10.5rem)] justify-start sm:h-9 sm:w-[min(100%,12rem)]"
+            className="h-10 w-[min(100%,12.5rem)] justify-start sm:h-11 sm:w-[min(100%,14rem)]"
           />
           <p className="mt-0.5 hidden text-[10px] leading-tight text-zinc-500 sm:block sm:text-[11px]">
             AI-Powered Interview Platform
@@ -1276,9 +1299,9 @@ export function InterviewRoom({ token }: { token: string }) {
         </p>
       ) : null}
 
-      <div className="relative z-10 grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,32%)]">
+      <div className="relative z-10 grid min-h-0 flex-1 gap-4 overflow-y-auto lg:overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(280px,32%)]">
         {/* LEFT */}
-        <div className="flex min-h-0 flex-col gap-3 overflow-hidden">
+        <div className="flex min-h-0 flex-col gap-3 lg:overflow-hidden">
           {/* Context bar */}
           <div className="grid shrink-0 gap-3 sm:grid-cols-[1.2fr_1fr]">
             <div className="rounded-2xl border border-white/10 bg-[#0d121c]/90 px-4 py-3">
@@ -1340,7 +1363,7 @@ export function InterviewRoom({ token }: { token: string }) {
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-300/80">
                     Current question
                   </p>
-                  <p className="mt-3 text-[clamp(1.15rem,2.2vw,1.75rem)] font-medium leading-snug tracking-tight text-zinc-50">
+                  <p className="mt-2 max-w-[65ch] text-xl font-medium leading-[1.45] text-zinc-50 md:text-[1.375rem]">
                     {activeQuestion.question}
                   </p>
                 </div>
@@ -1501,9 +1524,7 @@ export function InterviewRoom({ token }: { token: string }) {
         <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto lg:overflow-hidden">
           <PrimaryCameraPanel
             stream={primaryCameraStream}
-            cameraStatus={
-              cameraAllowed ? primaryCameraStatus : "unavailable"
-            }
+            cameraStatus={primaryCameraStatus}
             recordingStatus={
               cameraAllowed ? primaryRecordingStatus : "skipped"
             }

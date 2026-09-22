@@ -201,7 +201,7 @@ export function candidateSecondaryFixMessage(
     case "PERSON_RETURNED":
       return "You are visible again. Continue the interview.";
     case "EXTRA_PERSON":
-      return "Another person has been detected in the interview area. Please ensure that you are alone and return your attention to the interview.";
+      return "Another person appears to be visible in the camera frame. Please ensure only the candidate is present.";
     case "PERSON_RETURNED_TO_ONE":
       return "Only you are visible again. Continue the interview.";
     case "PERSON_INTERACTION":
@@ -258,7 +258,94 @@ export const STRICT_POLICY = {
    * Server: ignore duplicate episode posts within this window (idempotency aid).
    */
   episodeCooldownMs: 800,
+  /**
+   * A focus-loss episode must last at least this long before it becomes a
+   * candidate warning. Brief blips (a notification, a screenshot tool, a
+   * click on the browser chrome) are not a warning. The proctoring signal
+   * is still recorded separately.
+   */
+  focusLossMinMs: 3_000,
 } as const;
+
+export function strictCandidateWarning(kind: "FOCUS_LOSS" | "FULLSCREEN_EXIT" | "PASTE"): {
+  title: string;
+  detail: string;
+} {
+  switch (kind) {
+    case "PASTE":
+      return {
+        title: "External paste detected",
+        detail:
+          "Pasted text was detected in the interview window. Please type your own answer.",
+      };
+    case "FULLSCREEN_EXIT":
+      return {
+        title: "Fullscreen was exited",
+        detail:
+          "This interview must stay in fullscreen. Return to fullscreen to continue.",
+      };
+    default:
+      return {
+        title: "Interview window lost focus",
+        detail:
+          "The interview window was moved out of focus. Please return to the interview screen.",
+      };
+  }
+}
+
+export function secondaryCandidateWarning(kind: SecondaryIntegrityKind): {
+  title: string;
+  detail: string;
+} {
+  switch (kind) {
+    case "PERSON_MISSING":
+      return {
+        title: "Candidate not visible",
+        detail:
+          "We cannot clearly see you in the interview area. Please remain visible in the camera frame.",
+      };
+    case "EXTRA_PERSON":
+      return {
+        title: "Additional person detected",
+        detail:
+          "Another person appears to be visible in the camera frame. Please ensure only the candidate is present.",
+      };
+    case "PERSON_INTERACTION":
+      return {
+        title: "Additional person detected",
+        detail:
+          "Please continue the interview without assistance from another person.",
+      };
+    case "CAMERA_MOVED":
+      return {
+        title: "Camera visibility issue",
+        detail:
+          "The side camera appears to have moved. Please return it to the confirmed position.",
+      };
+    case "LOOKING_AT_SECONDARY":
+      return {
+        title: "Look at the interview laptop",
+        detail: "Please look at the interview laptop, not the side camera.",
+      };
+    case "DEVICE_VISIBLE":
+      return {
+        title: "Additional device detected",
+        detail:
+          "Additional device activity detected. Please put other phones or tablets away.",
+      };
+    case "DEVICE_INTERACTION":
+      return {
+        title: "Additional device detected",
+        detail:
+          "Possible external-device activity. Please keep your attention on the interview laptop.",
+      };
+    default:
+      return {
+        title: "Interview warning",
+        detail: candidateSecondaryFixMessage(kind),
+      };
+  }
+}
 
 export function parseIntegrityMode(raw: unknown): IntegrityMode {
   return raw === "STRICT" ? "STRICT" : "STANDARD";

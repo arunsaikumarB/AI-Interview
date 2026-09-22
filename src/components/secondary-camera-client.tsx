@@ -18,7 +18,7 @@ import {
 } from "@/lib/secondary-recording-client";
 import { createSecondaryIntegrityMonitor } from "@/lib/secondary-integrity-client";
 import type { SecondaryFramingStatus } from "@/lib/secondary-integrity-client";
-import { candidateSecondaryFixMessage } from "@/lib/integrity";
+import { secondaryCandidateWarning } from "@/lib/integrity";
 import type { SecondaryIntegrityKind } from "@/lib/integrity";
 import { createOrientedRecordStream, cameraBufferNeedsPortraitRotate } from "@/lib/secondary-record-orientation";
 
@@ -119,9 +119,11 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   const [recLabel, setRecLabel] = useState<string | null>(null);
   const [phoneTerminated, setPhoneTerminated] = useState(false);
   const [integrityWarning, setIntegrityWarning] = useState<{
+    title: string;
     warningNumber: number;
     warningOf: number;
     message: string;
+    kind: string;
   } | null>(null);
   const [orientHint, setOrientHint] = useState<string | null>(null);
   const [framing, setFraming] = useState<SecondaryFramingStatus | null>(null);
@@ -143,6 +145,7 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   const interruptedAtRef = useRef<number | null>(null);
   const recordingActiveRef = useRef(false);
   const warningOpenRef = useRef(false);
+  const dismissedSecondaryKind = useRef<string | null>(null);
   const framingRef = useRef<SecondaryFramingStatus | null>(null);
   const emitEventsRef = useRef(false);
   /** F-05 R1: gates when the pose baseline may be taken. */
@@ -478,14 +481,23 @@ export function SecondaryCameraClient({ code }: { code: string }) {
         }
         setMeta(data);
         if (data.pendingIntegrityWarning) {
-          setIntegrityWarning({
-            warningNumber: data.pendingIntegrityWarning.warningNumber,
-            warningOf: data.pendingIntegrityWarning.warningOf,
-            message: data.pendingIntegrityWarning.message,
-          });
-        } else if (warningOpenRef.current) {
-          setIntegrityWarning(null);
-          monitorRef.current?.resume();
+          const pending = data.pendingIntegrityWarning;
+          if (dismissedSecondaryKind.current !== pending.kind) {
+            const copy = secondaryCandidateWarning(pending.kind);
+            setIntegrityWarning({
+              title: copy.title,
+              warningNumber: pending.warningNumber,
+              warningOf: pending.warningOf,
+              message: copy.detail,
+              kind: pending.kind,
+            });
+          }
+        } else {
+          dismissedSecondaryKind.current = null;
+          if (warningOpenRef.current) {
+            setIntegrityWarning(null);
+            monitorRef.current?.resume();
+          }
         }
         if (data.shouldRecord && !recordingActiveRef.current) {
           await startRecorder();
@@ -541,16 +553,19 @@ export function SecondaryCameraClient({ code }: { code: string }) {
         if (result.showWarning && result.kind) {
           const n = result.warningNumber ?? 1;
           const of = result.warningOf ?? 3;
-          const base = candidateSecondaryFixMessage(result.kind);
+          const copy = secondaryCandidateWarning(result.kind);
+          if (dismissedSecondaryKind.current === result.kind) {
+            return;
+          }
           setIntegrityWarning({
+            title: copy.title,
             warningNumber: n,
             warningOf: of,
+            kind: result.kind,
             message:
               n >= of
-                ? `${base} Your interview may be paused for recruiter review if this continues.`
-                : n >= 2
-                  ? `Integrity warning: unusual activity detected. ${base}`
-                  : base,
+                ? `${copy.detail} Your interview may be paused for recruiter review if this continues.`
+                : copy.detail,
           });
         }
       },
@@ -716,14 +731,16 @@ export function SecondaryCameraClient({ code }: { code: string }) {
     <div className="mx-auto max-w-md space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
       <IntegrityWarningDialog
         open={Boolean(integrityWarning)}
+        title={integrityWarning?.title ?? "Interview warning"}
         warningNumber={integrityWarning?.warningNumber ?? 1}
         warningOf={integrityWarning?.warningOf ?? 3}
         message={
           integrityWarning?.message ??
-          "Please correct the side-camera issue, then tap I’ve fixed this."
+          "Please correct the side-camera issue, then continue."
         }
-        stayHint="Please remain focused on the interview. Return to your normal position, then continue."
+        stayHint="Please remain focused on the interview. This warning will not repeat until the situation changes."
         onDismiss={() => {
+          dismissedSecondaryKind.current = integrityWarning?.kind ?? null;
           void fetch(`/api/interview/secondary/${code}/integrity/ack`, {
             method: "POST",
           });

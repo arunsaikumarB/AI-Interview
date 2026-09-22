@@ -96,7 +96,7 @@ export default function InterviewPreviewPage() {
           <div className="min-w-0 shrink">
             <BrandLogo
               size="nav"
-              className="h-8 w-[min(100%,10.5rem)] justify-start sm:h-9 sm:w-[min(100%,12rem)]"
+              className="h-10 w-[min(100%,12.5rem)] justify-start sm:h-11 sm:w-[min(100%,14rem)]"
             />
             <p className="mt-0.5 hidden text-[10px] leading-tight text-zinc-500 sm:block sm:text-[11px]">
               AI-Powered Interview Platform · UI preview
@@ -125,8 +125,8 @@ export default function InterviewPreviewPage() {
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,32%)]">
-          <div className="flex min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#0d121c]/70 p-4">
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto lg:overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(280px,32%)]">
+          <div className="flex min-h-0 flex-col gap-3 rounded-2xl border border-white/10 bg-[#0d121c]/70 p-4 lg:overflow-hidden">
             <AIInterviewOrb
               state={orbState}
               heading={thinkingOrbHeading(orbState)}
@@ -137,7 +137,7 @@ export default function InterviewPreviewPage() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-300/80">
                 Current question
               </p>
-              <p className="mt-3 text-xl font-medium leading-snug text-zinc-50 md:text-2xl">
+              <p className="mt-2 max-w-[65ch] text-xl font-medium leading-[1.45] text-zinc-50 md:text-[1.375rem]">
                 {SAMPLE_QUESTION}
               </p>
             </div>

@@ -55,17 +55,15 @@ export function PrimaryCameraPanel({
       });
   }, [stream]);
 
-  const live =
-    (cameraStatus === "ready" || cameraStatus === "previewing") &&
-    videoTrackLive(stream);
+  const live = videoTrackLive(stream);
   const recording = recordingStatus === "recording";
 
   let title = "Your camera";
   let detail = "Camera is optional for this interview.";
-  if (!cameraAllowed) {
+  if (!cameraAllowed || recordingStatus === "skipped") {
     title = "Camera skipped";
-    detail = "You can continue without video.";
-  } else if (cameraStatus === "requesting") {
+    detail = "You can continue the interview without video.";
+  } else if (cameraStatus === "requesting" || cameraStatus === "idle") {
     title = "Starting camera…";
     detail = "Please allow camera access if prompted.";
   } else if (cameraStatus === "denied") {
@@ -115,23 +113,27 @@ export function PrimaryCameraPanel({
         className="relative w-full overflow-hidden rounded-xl border border-white/10 bg-black"
         style={{ aspectRatio: "16 / 10" }}
       >
-        {live && stream ? (
+        {stream ? (
           <video
             ref={videoRef}
-            className="h-full w-full object-cover"
+            className={cn(
+              "h-full w-full object-cover",
+              live ? "block" : "hidden",
+            )}
             autoPlay
             muted
             playsInline
           />
-        ) : (
+        ) : null}
+        {live ? null : (
           <div className="flex h-full min-h-[140px] w-full items-center justify-center px-4 text-center text-sm text-zinc-400">
-            {cameraStatus === "requesting"
+            {cameraStatus === "requesting" || (cameraAllowed && cameraStatus === "idle")
               ? "Starting camera…"
               : cameraStatus === "denied"
                 ? "Camera access blocked"
                 : cameraStatus === "lost"
                   ? "Camera connection lost"
-                  : !cameraAllowed
+                  : !cameraAllowed || recordingStatus === "skipped"
                     ? "Camera skipped"
                     : "Camera unavailable"}
           </div>

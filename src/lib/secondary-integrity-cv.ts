@@ -31,6 +31,11 @@ export const CAMERA_MOVE_HOLD_MS = 1_600;
 /** Additional person in the primary interview zone (not far background). */
 export const EXTRA_PERSON_MS = 1_800;
 export const EXTRA_PERSON_GONE_MS = 1_600;
+/**
+ * One missed detector tick must not restart the extra-person hold or
+ * re-arm a warning. Object detection runs every other sample (~800ms).
+ */
+export const EXTRA_PERSON_FRAME_GRACE_MS = 900;
 export const PERSON_INTERACTION_MS = 2_000;
 export const LOOKING_MS = 4_000;
 export const EVENT_COOLDOWN_MS = 8_000;
@@ -277,6 +282,8 @@ export function createEpisodeTracker(opts: {
 
 const PHONE_LABELS = new Set(["cell phone", "mobile phone", "phone"]);
 const LAPTOP_LABELS = new Set(["laptop", "tv", "monitor", "computer"]);
+/** COCO "keyboard" — desk evidence. Not a laptop label and not a person. */
+const DESK_SURFACE_LABELS = new Set(["keyboard"]);
 
 export function boxIou(a: NormBox, b: NormBox): number {
   const ax2 = a.originX + a.width;
@@ -300,6 +307,10 @@ export function isPhoneLabel(name: string): boolean {
 
 export function isLaptopLikeLabel(name: string): boolean {
   return LAPTOP_LABELS.has(name.trim().toLowerCase());
+}
+
+export function isDeskSurfaceLabel(name: string): boolean {
+  return DESK_SURFACE_LABELS.has(name.trim().toLowerCase());
 }
 
 export function poseVisible(
@@ -464,6 +475,50 @@ export function largestLaptopBox(
   return best?.box ?? null;
 }
 
+/** Keyboard in frame is the desk/laptop the placement guide asks for. */
+export function largestDeskSurfaceBox(
+  detections: Array<{ label: string; score: number; box: NormBox }>,
+): NormBox | null {
+  let best: { box: NormBox; area: number } | null = null;
+  for (const d of detections) {
+    if (d.score < 0.4 || !isDeskSurfaceLabel(d.label)) continue;
+    const area = d.box.width * d.box.height;
+    if (area < 0.012) continue;
+    if (!best || area > best.area) best = { box: d.box, area };
+  }
+  return best?.box ?? null;
+}
+
+/** Fraction of `inner` that lies inside `outer`. */
+export function boxContainedRatio(inner: NormBox, outer: NormBox): number {
+  const ax2 = inner.originX + inner.width;
+  const ay2 = inner.originY + inner.height;
+  const bx2 = outer.originX + outer.width;
+  const by2 = outer.originY + outer.height;
+  const ix = Math.max(0, Math.min(ax2, bx2) - Math.max(inner.originX, outer.originX));
+  const iy = Math.max(0, Math.min(ay2, by2) - Math.max(inner.originY, outer.originY));
+  const area = inner.width * inner.height;
+  if (area <= 0) return 0;
+  return (ix * iy) / area;
+}
+
+/** Same seated candidate split into torso + arms, or a box inside their body. */
+export function isCandidateBodyPart(box: NormBox, candidate: NormBox): boolean {
+  if (boxIou(box, candidate) >= 0.28) return true;
+  if (boxContainedRatio(box, candidate) >= 0.5) return true;
+  return false;
+}
+
+/** Laptop, screen, or keyboard mistaken for a second person. */
+export function overlapsInterviewFurniture(
+  box: NormBox,
+  furniture: NormBox[],
+): boolean {
+  return furniture.some(
+    (item) => boxIou(box, item) >= 0.22 || boxContainedRatio(box, item) >= 0.45,
+  );
+}
+
 export function personBoxesFromDetections(
   detections: Array<{ label: string; score: number; box: NormBox }>,
 ): NormBox[] {
@@ -548,6 +603,7 @@ function boxCenterInZone(box: NormBox, zone: NormBox): boolean {
 export function extraPersonsInPrimaryZone(
   boxes: NormBox[],
   zone: NormBox,
+  furniture: NormBox[] = [],
 ): { candidate: NormBox | null; extras: NormBox[] } {
   const close = boxes.filter((b) => !isFarBackground(b));
   if (close.length === 0) return { candidate: null, extras: [] };
@@ -559,9 +615,59 @@ export function extraPersonsInPrimaryZone(
     b.width * b.height > best.width * best.height ? b : best,
   );
   const extras = close.filter((b) => {
-    if (boxIou(b, candidate) >= 0.4) return false;
+    if (isCandidateBodyPart(b, candidate)) return false;
+    if (overlapsInterviewFurniture(b, furniture)) return false;
     if (b.width * b.height < MIN_CLOSE_PERSON_AREA) return false;
     return boxCenterInZone(b, zone) || boxIou(b, zone) >= 0.12;
   });
   return { candidate, extras };
+}
+
+export type SustainedCondition = {
+  activeSince: number | null;
+  clearSince: number | null;
+  confirmed: boolean;
+  confirmedAt: number | null;
+};
+
+export const EMPTY_SUSTAINED: SustainedCondition = {
+  activeSince: null,
+  clearSince: null,
+  confirmed: false,
+  confirmedAt: null,
+};
+
+/**
+ * A user-facing condition becomes confirmed only after it holds for `holdMs`.
+ * A single clear frame inside `graceMs` does not reset the hold. Once
+ * confirmed, it stays confirmed until it has been clear for `clearMs`.
+ */
+export function stepSustainedCondition(
+  prev: SustainedCondition,
+  raw: boolean,
+  now: number,
+  opts: { holdMs: number; clearMs: number; graceMs: number },
+): SustainedCondition {
+  if (raw) {
+    const activeSince = prev.activeSince ?? now;
+    const confirmed = prev.confirmed || now - activeSince >= opts.holdMs;
+    return {
+      activeSince,
+      clearSince: null,
+      confirmed,
+      confirmedAt: confirmed ? (prev.confirmedAt ?? activeSince) : null,
+    };
+  }
+  const clearSince = prev.clearSince ?? now;
+  const elapsed = now - clearSince;
+  if (!prev.confirmed) {
+    if (prev.activeSince != null && elapsed < opts.graceMs) {
+      return { ...prev, clearSince };
+    }
+    return { ...EMPTY_SUSTAINED };
+  }
+  if (elapsed < opts.clearMs) {
+    return { ...prev, clearSince };
+  }
+  return { ...EMPTY_SUSTAINED };
 }
