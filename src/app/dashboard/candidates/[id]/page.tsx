@@ -345,7 +345,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
               value={STAGE_LABELS[selectedApp.stage]}
             />
             <SnapshotCell
-              label="Proctoring"
+              label="Monitoring level"
               value={proctoringSnapshotLabel({
                 enabled: Boolean(latestInterview?.proctoringEnabled),
                 eventCount: latestInterview?._count.proctoring ?? 0,

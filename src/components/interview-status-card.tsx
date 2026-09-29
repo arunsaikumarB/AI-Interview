@@ -132,7 +132,7 @@ export function InterviewStatusCard({
               }
             />
             <Metric
-              label="Proctoring"
+              label="Monitoring level"
               value={
                 latest.proctoringEnabled
                   ? latest.proctoringEventCount > 0

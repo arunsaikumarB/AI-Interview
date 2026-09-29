@@ -444,7 +444,7 @@ export function CreateInterviewDialog({
                 </fieldset>
 
                 <fieldset className="space-y-2">
-                  <legend className="text-sm font-medium text-foreground">Proctoring</legend>
+                  <legend className="text-sm font-medium text-foreground">Monitoring level</legend>
                   <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm">
                     <input
                       type="radio"

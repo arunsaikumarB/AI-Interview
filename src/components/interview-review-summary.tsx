@@ -64,7 +64,7 @@ export function InterviewReviewSummary({
           value={STAGE_LABELS[currentStage] ?? currentStage}
         />
         <Item
-          label="Proctoring mode"
+          label="Monitoring level"
           value={proctoringMode === "OFF" ? "Off" : proctoringMode}
         />
         <Item

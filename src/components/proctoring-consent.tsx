@@ -53,7 +53,7 @@ export function ProctoringConsent({
       <p className="text-sm uppercase tracking-wide text-muted-foreground">
         Proctoring consent
       </p>
-      <h1 className={cn("text-3xl font-semibold tracking-tight text-foreground", GATE_TITLE_FIT)}>Proctoring notice</h1>
+      <h1 className={cn("text-3xl font-semibold tracking-tight text-foreground", GATE_TITLE_FIT)}>Monitoring notice</h1>
       <p className="text-sm leading-relaxed text-foreground/90">
         {enhanced ? CONSENT_COPY_ENHANCED : CONSENT_COPY_STANDARD}
       </p>
