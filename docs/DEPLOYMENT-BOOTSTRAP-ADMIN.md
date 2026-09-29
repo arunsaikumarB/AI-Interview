@@ -56,7 +56,7 @@ Exit code `0` means both records were created; any other outcome exits `1` and c
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | The production database. Read from the environment, or from the repository-root `.env` (an exported value takes precedence). |
+| `DATABASE_URL` | The production database. An exported value always works and takes precedence. The repository-root `.env` is read only if it already existed when `npm ci` (which runs `prisma generate`) was executed; otherwise the command fails with `Failed.` before printing the target. If `.env` was created after `npm ci`, export `DATABASE_URL` for this command (UAT rehearsal, 2026-09-30). |
 
 Nothing else. There is deliberately **no** bootstrap secret, **no** password variable and **no** `NEXT_PUBLIC_*` setting — the password is only ever typed at the hidden prompt. `NODE_ENV` is not used as the safety gate; the gates are the interactive terminal, the typed database-name confirmation and the fresh-database refusal.
 

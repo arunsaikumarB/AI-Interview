@@ -71,6 +71,8 @@ npm ci
 
 Do **not** run it with `NODE_ENV=production` or `--omit=dev`: the Prisma CLI is a devDependency.
 
+Create the repository-root `.env` **before** this step. `prisma generate` records whether a `.env` exists; if it does not, the generated client never reads `.env`, and `npm run bootstrap:admin` (P7) then needs `DATABASE_URL` exported in the shell. The Prisma CLI steps below and `next build`/`next start` read `.env` themselves and are not affected.
+
 **P2. Confirm the pinned Prisma CLI**
 
 ```bash
