@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { signRunnerRequest } from "../../src/lib/practical/runner-client";
+import { newRunnerNonce, signRunnerRequest } from "../../src/lib/practical/runner-client";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
@@ -39,14 +39,30 @@ export async function runnerAvailable(): Promise<boolean> {
 export async function signedPost(
   pathName: string,
   payload: unknown,
-  opts: { secret?: string; ts?: string; rawBody?: string; signature?: string } = {},
+  opts: {
+    secret?: string;
+    ts?: string;
+    nonce?: string;
+    /** Nonce placed in the header when it should differ from the signed one. */
+    sentNonce?: string;
+    omitNonce?: boolean;
+    rawBody?: string;
+    signature?: string;
+  } = {},
 ): Promise<{ status: number; body: any }> {
   const body = opts.rawBody ?? JSON.stringify(payload);
   const ts = opts.ts ?? String(Math.floor(Date.now() / 1000));
-  const signature = opts.signature ?? signRunnerRequest(opts.secret ?? RUNNER_SECRET, ts, "POST", pathName, body);
+  const nonce = opts.nonce ?? newRunnerNonce();
+  const signature = opts.signature ?? signRunnerRequest(opts.secret ?? RUNNER_SECRET, ts, nonce, "POST", pathName, body);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-HireOS-Timestamp": ts,
+    "X-HireOS-Signature": signature,
+  };
+  if (!opts.omitNonce) headers["X-HireOS-Nonce"] = opts.sentNonce ?? nonce;
   const res = await fetch(`${RUNNER_URL}${pathName}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-HireOS-Timestamp": ts, "X-HireOS-Signature": signature },
+    headers,
     body,
     signal: AbortSignal.timeout(90_000),
   });

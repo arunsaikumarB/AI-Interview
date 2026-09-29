@@ -25,7 +25,14 @@ import {
 import { allPracticalTasks, candidateTaskView, CODING_TASKS, pickTask, SQL_TASKS } from "../../src/lib/practical/tasks";
 import { compareSqlDatasets, evaluateCodingRun, evaluateSqlSubmission, normalizeOutput } from "../../src/lib/practical/evaluate";
 import { difficultyBand, selectPracticalTask } from "../../src/lib/practical/select";
-import { callRunner, callRunnerWithRetry, signRunnerRequest } from "../../src/lib/practical/runner-client";
+import {
+  callRunner,
+  callRunnerWithRetry,
+  newRunnerNonce,
+  RUNNER_NONCE_RE,
+  runnerCanonicalMessage,
+  signRunnerRequest,
+} from "../../src/lib/practical/runner-client";
 import { ACCESS_TOKEN_RE, hashAccessToken, newAccessToken } from "../../src/lib/practical/token";
 import { execStatusForResult, practicalAuditPayload } from "../../src/lib/practical/service";
 import { humanTimelineTitle } from "../../src/lib/candidate-detail-ui";
@@ -334,13 +341,57 @@ describe("task selection from the V1 blueprint", () => {
 describe("sandbox runner client", () => {
   const config = { url: "http://127.0.0.1:1", secret: "s".repeat(40) };
 
-  it("signs ts.method.path.sha256(body) with HMAC-SHA256", () => {
+  const NONCE = "0123456789abcdef".repeat(4);
+  const RUNNER_PY_VECTOR = "5abc8b7783b37d47dba8ef1afd852f848db826d45e00ff2123deb26ad1269456";
+
+  it("signs the versioned canonical message (version, ts, nonce, method, path, sha256(body)) with HMAC-SHA256", () => {
     const body = '{"a":1}';
-    const expected = crypto
-      .createHmac("sha256", config.secret)
-      .update(`123.POST./v1/code/execute.${crypto.createHash("sha256").update(body).digest("hex")}`)
-      .digest("hex");
-    assert.equal(signRunnerRequest(config.secret, "123", "POST", "/v1/code/execute", body), expected);
+    const bodyHash = crypto.createHash("sha256").update(body).digest("hex");
+    const canonical = `hireos-runner-v2\n123\n${NONCE}\nPOST\n/v1/code/execute\n${bodyHash}`;
+    assert.equal(runnerCanonicalMessage("123", NONCE, "POST", "/v1/code/execute", body), canonical);
+    const expected = crypto.createHmac("sha256", config.secret).update(canonical).digest("hex");
+    assert.equal(signRunnerRequest(config.secret, "123", NONCE, "POST", "/v1/code/execute", body), expected);
+    // Known-answer vector produced by sandbox-runner/runner.py `sign` — keeps signer and verifier in lockstep.
+    assert.equal(expected, RUNNER_PY_VECTOR);
+  });
+
+  it("authenticates the nonce: changing it, the timestamp or the body changes the signature", () => {
+    const body = '{"a":1}';
+    const base = signRunnerRequest(config.secret, "123", NONCE, "POST", "/v1/code/execute", body);
+    const otherNonce = NONCE.slice(0, -1) + "0";
+    assert.notEqual(signRunnerRequest(config.secret, "123", otherNonce, "POST", "/v1/code/execute", body), base);
+    assert.notEqual(signRunnerRequest(config.secret, "124", NONCE, "POST", "/v1/code/execute", body), base);
+    assert.notEqual(signRunnerRequest(config.secret, "123", NONCE, "POST", "/v1/code/execute", '{"a":2}'), base);
+    assert.notEqual(signRunnerRequest(config.secret, "123", NONCE, "POST", "/v1/sql/execute", body), base);
+  });
+
+  it("generates 256-bit lowercase-hex nonces that do not repeat", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 1000; i++) {
+      const n = newRunnerNonce();
+      assert.match(n, RUNNER_NONCE_RE);
+      seen.add(n);
+    }
+    assert.equal(seen.size, 1000);
+  });
+
+  it("sends a fresh nonce covered by the signature on every call and every retry", async () => {
+    const sent: Array<Record<string, string>> = [];
+    const capture = (status: number) => async (_url: string, init: RequestInit) => {
+      sent.push({ ...(init.headers as Record<string, string>), body: String(init.body) });
+      return new Response(JSON.stringify({ status: "OK" }), { status });
+    };
+    await callRunner("/v1/sql/execute", { q: 1 }, { timeoutMs: 1000, config, fetchImpl: capture(200) });
+    await callRunner("/v1/sql/execute", { q: 1 }, { timeoutMs: 1000, config, fetchImpl: capture(200) });
+    await callRunnerWithRetry("/v1/sql/execute", { q: 1 }, { timeoutMs: 1000, config, fetchImpl: capture(502), sleep: async () => {} });
+    assert.equal(sent.length, 5);
+    for (const h of sent) {
+      assert.match(h["X-HireOS-Nonce"], RUNNER_NONCE_RE);
+      const expected = signRunnerRequest(config.secret, h["X-HireOS-Timestamp"], h["X-HireOS-Nonce"], "POST", "/v1/sql/execute", h.body);
+      assert.equal(h["X-HireOS-Signature"], expected);
+      assert.ok(!Object.values(h).some((v) => v.includes(config.secret)), "secret must never be sent");
+    }
+    assert.equal(new Set(sent.map((h) => h["X-HireOS-Nonce"])).size, sent.length);
   });
 
   it("maps runner statuses and never throws", async () => {

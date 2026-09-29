@@ -3,8 +3,9 @@ HireOS sandbox runner — the only component allowed to launch sandbox container
 or talk to the SQL sandbox. Next.js never touches Docker.
 
   * binds to 127.0.0.1 only (not configurable)
-  * every execution request must carry an HMAC-SHA256 signature over
-    timestamp, method, path and body hash (30 s window, replay-protected)
+  * every execution request must carry an HMAC-SHA256 signature over a versioned
+    canonical message of timestamp, 256-bit random nonce, method, path and body hash
+    (30 s window; each authenticated nonce is accepted once)
   * bounded concurrency and a bounded wait queue — never a general compute service
   * refuses to start if HireOS production secrets are present in its environment
   * never logs request bodies (candidate code, queries, test data)
@@ -14,6 +15,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -29,6 +31,9 @@ RUNNER_VERSION = "sandbox-runner-v1"
 HOST = "127.0.0.1"
 MAX_BODY = 2 * 1024 * 1024
 SKEW_S = 30
+SIGNATURE_VERSION = "hireos-runner-v2"
+TS_RE = re.compile(r"[0-9]{1,12}")
+NONCE_RE = re.compile(r"[0-9a-f]{64}")
 MAX_CONCURRENT = 2
 MAX_WAITING = 4
 FORBIDDEN_ENV = (
@@ -49,23 +54,30 @@ class State:
         self.sql_ready = False
         self.provision_lock = threading.Lock()
 
-    def remember(self, sig):
+    def remember(self, nonce):
+        """Atomically consume an authenticated nonce. Entries outlive the whole
+        timestamp window (ts <= now + SKEW_S), so a nonce cannot be reused while
+        any timestamp signed with it would still be accepted."""
         now = time.time()
         with self.lock:
             for k in [k for k, exp in self.seen.items() if exp < now]:
                 del self.seen[k]
-            if sig in self.seen:
+            if nonce in self.seen:
                 return False
-            self.seen[sig] = now + 2 * SKEW_S
+            self.seen[nonce] = now + 2 * SKEW_S
             return True
 
 
 STATE = None
 
 
-def sign(secret, ts, method, path, body):
-    msg = "%s.%s.%s.%s" % (ts, method, path, hashlib.sha256(body).hexdigest())
-    return hmac.new(secret, msg.encode(), hashlib.sha256).hexdigest()
+def canonical_message(ts, nonce, method, path, body):
+    """Must match src/lib/practical/runner-client.ts `runnerCanonicalMessage` byte for byte."""
+    return "\n".join((SIGNATURE_VERSION, ts, nonce, method, path, hashlib.sha256(body).hexdigest()))
+
+
+def sign(secret, ts, nonce, method, path, body):
+    return hmac.new(secret, canonical_message(ts, nonce, method, path, body).encode(), hashlib.sha256).hexdigest()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -108,12 +120,13 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length)
 
         ts = self.headers.get("X-HireOS-Timestamp", "")
+        nonce = self.headers.get("X-HireOS-Nonce", "")
         sig = self.headers.get("X-HireOS-Signature", "")
-        if not ts.isdigit() or abs(time.time() - int(ts)) > SKEW_S:
+        if not TS_RE.fullmatch(ts) or abs(time.time() - int(ts)) > SKEW_S or not NONCE_RE.fullmatch(nonce):
             self._send(401, {"error": "unauthorized"})
             return 401
-        expected = sign(STATE.secret, ts, "POST", self.path, body)
-        if not hmac.compare_digest(expected, sig) or not STATE.remember(sig):
+        expected = sign(STATE.secret, ts, nonce, "POST", self.path, body)
+        if not hmac.compare_digest(expected.encode(), sig.encode("latin-1", "replace")) or not STATE.remember(nonce):
             self._send(401, {"error": "unauthorized"})
             return 401
 

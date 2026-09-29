@@ -18,9 +18,29 @@ export function runnerConfig(): RunnerConfig | null {
   return { url: url.replace(/\/+$/, ""), secret };
 }
 
-export function signRunnerRequest(secret: string, ts: string, method: string, path: string, body: string): string {
+/** Must match sandbox-runner/runner.py `canonical_message` byte for byte. */
+export const RUNNER_SIGNATURE_VERSION = "hireos-runner-v2";
+export const RUNNER_NONCE_RE = /^[0-9a-f]{64}$/;
+
+/** 256-bit CSPRNG nonce, lowercase hex. Fresh for every request, including retries. */
+export function newRunnerNonce(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+export function runnerCanonicalMessage(ts: string, nonce: string, method: string, path: string, body: string): string {
   const bodyHash = crypto.createHash("sha256").update(body, "utf8").digest("hex");
-  return crypto.createHmac("sha256", secret).update(`${ts}.${method}.${path}.${bodyHash}`).digest("hex");
+  return [RUNNER_SIGNATURE_VERSION, ts, nonce, method, path, bodyHash].join("\n");
+}
+
+export function signRunnerRequest(
+  secret: string,
+  ts: string,
+  nonce: string,
+  method: string,
+  path: string,
+  body: string,
+): string {
+  return crypto.createHmac("sha256", secret).update(runnerCanonicalMessage(ts, nonce, method, path, body)).digest("hex");
 }
 
 export type RunnerFetch = (url: string, init: RequestInit) => Promise<Response>;
@@ -34,7 +54,8 @@ export async function callRunner<T>(
   if (!config) return { ok: false, error: "UNAVAILABLE" };
   const body = JSON.stringify(payload);
   const ts = String(Math.floor(Date.now() / 1000));
-  const signature = signRunnerRequest(config.secret, ts, "POST", path, body);
+  const nonce = newRunnerNonce();
+  const signature = signRunnerRequest(config.secret, ts, nonce, "POST", path, body);
   const doFetch = opts.fetchImpl ?? fetch;
   try {
     const res = await doFetch(`${config.url}${path}`, {
@@ -42,6 +63,7 @@ export async function callRunner<T>(
       headers: {
         "Content-Type": "application/json",
         "X-HireOS-Timestamp": ts,
+        "X-HireOS-Nonce": nonce,
         "X-HireOS-Signature": signature,
       },
       body,
