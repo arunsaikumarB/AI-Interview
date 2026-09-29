@@ -21,6 +21,7 @@
     "db:push": "prisma db push",
     "db:reset": "prisma db push --force-reset && npm run db:seed",
     "db:seed": "tsx prisma/seed.ts",
+    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
     "db:studio": "prisma studio",
     "setup:mediapipe": "node scripts/setup-mediapipe.mjs",
     "embed:backfill": "tsx scripts/backfill-embeddings.ts",

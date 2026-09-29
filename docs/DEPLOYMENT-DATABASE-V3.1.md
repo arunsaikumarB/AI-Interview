@@ -103,6 +103,14 @@ Expected output: `Script executed successfully.`
 
 That is the complete schema procedure. Do not run any other file from `prisma/manual/` on a fresh database.
 
+**P7. Create the first organization and SUPER_ADMIN** (one-time, interactive) — see [DEPLOYMENT-BOOTSTRAP-ADMIN.md](DEPLOYMENT-BOOTSTRAP-ADMIN.md):
+
+```bash
+npm run bootstrap:admin
+```
+
+Never use `prisma/seed.ts` for this.
+
 ## 6. Exact SQL required after `db push`
 
 **File:** `prisma/manual/20260930_v3_production_trigger.sql`
