@@ -104,10 +104,13 @@ export async function PATCH(request: Request, { params }: Ctx) {
     const before = parsePlan(interview.plan);
     const changes = summarizePlanDiff(before, body);
 
+    // The validated assessment question set is server-owned; the browser can neither drop nor replace it.
+    const saved = before.assessment ? { ...body, assessment: before.assessment } : body;
+
     await prisma.interviewSession.update({
       where: { id: interview.id },
       data: {
-        plan: asJson(body),
+        plan: asJson(saved),
         adaptiveState: asJson(
           initialAdaptiveState(body.openingQuestion.difficulty),
         ),

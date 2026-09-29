@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   deriveInterviewThinkingOrbState,
   deriveInterviewUiPhase,
+  thinkingOrbGuidance,
   thinkingOrbStatusLabel,
 } from "../../src/components/interview/orb-state";
 
@@ -131,5 +132,13 @@ describe("thinkingOrbStatusLabel", () => {
     assert.match(thinkingOrbStatusLabel("listening"), /Listening/i);
     assert.match(thinkingOrbStatusLabel("composing"), /Processing/i);
     assert.match(thinkingOrbStatusLabel("connecting"), /Understanding/i);
+  });
+
+  it("never tells a typing candidate to click the mic", () => {
+    assert.match(thinkingOrbStatusLabel("breathing", "CANDIDATE_READY"), /mic/i);
+    const typed = thinkingOrbStatusLabel("breathing", "CANDIDATE_READY", false);
+    assert.doesNotMatch(typed, /mic/i);
+    assert.match(typed, /type/i);
+    assert.doesNotMatch(thinkingOrbGuidance("breathing", "CANDIDATE_READY", false), /speak/i);
   });
 });

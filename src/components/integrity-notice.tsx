@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand-logo";
+import {
+  GATE_CARD_FIT,
+  GATE_LOGO_FIT,
+  GATE_TITLE_FIT,
+} from "@/components/interview/gate-card-fit";
+import { cn } from "@/lib/utils";
 
 /**
  * Pre-interview Strict integrity notice.
@@ -30,12 +36,12 @@ export function IntegrityNotice({
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm">
-      <BrandLogo size="header" />
+    <div className={cn("mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm", GATE_CARD_FIT)}>
+      <BrandLogo size="header" className={GATE_LOGO_FIT} />
       <p className="text-sm uppercase tracking-wide text-muted-foreground">
         Interview integrity
       </p>
-      <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+      <h1 className={cn("text-3xl font-semibold tracking-tight text-foreground", GATE_TITLE_FIT)}>
         Interview Integrity Requirements
       </h1>
       <p className="text-sm leading-relaxed text-foreground/90">

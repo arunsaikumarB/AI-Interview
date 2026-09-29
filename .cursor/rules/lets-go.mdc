@@ -1,0 +1,16 @@
+---
+description: When the user says lets go, start database, Next.js, and Django.
+alwaysApply: true
+---
+
+# Lets go — local stack
+
+When the user says **lets go**, **let's go**, or **letsgo**:
+
+1. Check existing terminals. Do not start a second copy of a service that is already healthy.
+2. **Database:** `npm run db:ensure` from the repo root (Docker Postgres on `localhost:55432`).
+3. **Backend:** from `backend/`, `.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload` (background).
+4. **Frontend:** from repo root, `npm run dev` (background). Wait until Next reports Ready.
+5. Reply with the URLs: http://localhost:3000 , http://localhost:3000/login , Django http://127.0.0.1:8000 .
+
+`npm run dev` already runs `db:ensure` via `predev`; still run `db:ensure` first if Postgres is down so Django is not started against a dead DB.

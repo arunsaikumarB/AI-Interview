@@ -1,5 +1,5 @@
 import type { InterviewStatus, PipelineStage } from "@prisma/client";
-import { FinalResultSchema } from "@/lib/ai/interview";
+import { StoredFinalResultSchema } from "@/lib/ai/stored-final-result";
 import type { SessionUser } from "@/lib/auth/session";
 import { orgScopeWhere } from "@/lib/auth/rbac";
 import { prisma } from "@/lib/db";
@@ -93,7 +93,7 @@ function displayStatus(
 }
 
 function parseOverall(scores: unknown): number | null {
-  const parsed = FinalResultSchema.safeParse(scores);
+  const parsed = StoredFinalResultSchema.safeParse(scores);
   if (!parsed.success) return null;
   return Math.round(parsed.data.overall);
 }

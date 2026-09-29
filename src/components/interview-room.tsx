@@ -38,6 +38,12 @@ import { usePrimaryCamera } from "@/components/interview/use-primary-camera";
 import { readStoredPrimaryDeviceId } from "@/lib/primary-camera";
 import { postFormDataWithUploadLifecycle } from "@/lib/interview-answer-upload";
 import { Shield, HelpCircle, Mic, LogOut } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  GATE_CARD_FIT,
+  GATE_LOGO_FIT,
+  GATE_TITLE_FIT,
+} from "@/components/interview/gate-card-fit";
 
 const FOCUS_NUDGE_COPY =
   "Please stay focused on the interview — activity signals are shared with the recruiter.";
@@ -202,6 +208,7 @@ export function InterviewRoom({ token }: { token: string }) {
       voiceSubmitting,
       processing: Boolean(thinking || pendingProcessing) && !voiceSubmitting,
       concluded: concluded || info?.status === "COMPLETED",
+      answerByVoice: useVoiceUi,
     });
 
   const finishToThanks = useCallback(() => {
@@ -1032,9 +1039,9 @@ export function InterviewRoom({ token }: { token: string }) {
       );
     }
     return (
-      <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
-        <BrandLogo size="header" />
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Thank you</h1>
+      <div className={cn("mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-sm", GATE_CARD_FIT)}>
+        <BrandLogo size="header" className={GATE_LOGO_FIT} />
+        <h1 className={cn("mt-2 text-3xl font-semibold tracking-tight text-foreground", GATE_TITLE_FIT)}>Thank you</h1>
         <p className="mt-3 text-muted-foreground">
           Your interview for <strong>{info.jobTitle}</strong> is complete. The team will get
           back to you.
@@ -1153,12 +1160,12 @@ export function InterviewRoom({ token }: { token: string }) {
 
   if (info.status === "SCHEDULED" && !activeQuestion) {
     return (
-      <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 shadow-sm">
-        <BrandLogo size="header" />
+      <div className={cn("mx-auto max-w-lg rounded-2xl border border-border bg-card p-8 shadow-sm", GATE_CARD_FIT)}>
+        <BrandLogo size="header" className={GATE_LOGO_FIT} />
         <p className="mt-2 text-sm uppercase tracking-wide text-muted-foreground">
           {info.mode === "VOICE" ? "Voice interview" : "Text interview"}
         </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{info.jobTitle}</h1>
+        <h1 className={cn("mt-2 text-3xl font-semibold tracking-tight text-foreground", GATE_TITLE_FIT)}>{info.jobTitle}</h1>
         <p className="mt-4 text-muted-foreground">
           Hi {info.candidateFirstName}. You&apos;ll get about {info.maxQuestions} questions
           {info.durationMinutes ? ` within ${info.durationMinutes} minutes` : ""}.
@@ -1301,7 +1308,7 @@ export function InterviewRoom({ token }: { token: string }) {
 
       <div className="relative z-10 grid min-h-0 flex-1 gap-4 overflow-y-auto lg:overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(280px,32%)]">
         {/* LEFT */}
-        <div className="flex min-h-0 flex-col gap-3 lg:overflow-hidden">
+        <div className="flex flex-col gap-3 lg:min-h-0 lg:overflow-hidden">
           {/* Context bar */}
           <div className="grid shrink-0 gap-3 sm:grid-cols-[1.2fr_1fr]">
             <div className="rounded-2xl border border-white/10 bg-[#0d121c]/90 px-4 py-3">
@@ -1346,29 +1353,30 @@ export function InterviewRoom({ token }: { token: string }) {
           </div>
 
           {/* Orb + question */}
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d121c]/70">
-            <div className="shrink-0 px-4 pb-2 pt-4 md:px-6">
+          <div className="flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d121c]/70 lg:min-h-0">
+            <div className="min-h-0 flex-1 overflow-hidden px-4 pb-2 pt-4 md:px-6 [@media(max-height:820px)]:pt-3">
               <AIInterviewOrb
                 state={orbState}
                 heading={heading}
                 statusLabel={statusLabel}
                 guidance={guidance}
                 reducedMotion={reducedMotion}
+                fill
               />
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2 md:px-6">
+            <div className="shrink-0 px-4 pb-2 md:px-6">
               {activeQuestion ? (
-                <div className="mx-auto max-w-3xl rounded-2xl border border-sky-400/15 bg-[#111827]/80 px-5 py-5 md:px-6 md:py-6">
+                <div className="mx-auto max-w-3xl rounded-2xl border border-sky-400/15 bg-[#111827]/80 px-5 py-4 md:px-6 [@media(max-height:820px)]:py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-300/80">
                     Current question
                   </p>
-                  <p className="mt-2 max-w-[65ch] text-xl font-medium leading-[1.45] text-zinc-50 md:text-[1.375rem]">
+                  <p className="mt-1.5 max-w-[70ch] text-base font-normal leading-relaxed text-zinc-100">
                     {activeQuestion.question}
                   </p>
                 </div>
               ) : (
-                <div className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-5 text-sm text-zinc-400">
+                <div className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 text-sm text-zinc-400">
                   Preparing the next question…
                 </div>
               )}
@@ -1389,7 +1397,7 @@ export function InterviewRoom({ token }: { token: string }) {
                   <summary className="cursor-pointer text-xs text-zinc-500 outline-none hover:text-zinc-300">
                     View answered questions ({answeredTurns.length})
                   </summary>
-                  <div className="mt-2 space-y-2">
+                  <div className="mt-2 max-h-[20vh] space-y-2 overflow-y-auto">
                     {answeredTurns.map((t) => (
                       <div
                         key={t.sequence}
@@ -1409,7 +1417,7 @@ export function InterviewRoom({ token }: { token: string }) {
               ) : null}
             </div>
 
-            <div className="shrink-0 border-t border-white/10 px-4 py-4 md:px-6">
+            <div className="shrink-0 border-t border-white/10 px-4 py-4 md:px-6 [@media(max-height:820px)]:py-3">
               {error || pendingProcessing ? (
                 <div className="mb-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-50">
                   <p>
@@ -1474,8 +1482,14 @@ export function InterviewRoom({ token }: { token: string }) {
                 ) : null}
               </div>
 
-              {canAnswer || recording ? (
-                <div className="mt-4">
+              {activeQuestion || recording ? (
+                <div
+                  className={cn(
+                    "mt-4 [@media(max-height:820px)]:mt-2",
+                    !(canAnswer || recording) && "invisible",
+                  )}
+                  aria-hidden={canAnswer || recording ? undefined : true}
+                >
                   {useVoiceUi ? (
                     <InterviewMicControl
                       recording={recording}
@@ -1491,10 +1505,10 @@ export function InterviewRoom({ token }: { token: string }) {
                         ref={textareaRef}
                         value={answer}
                         onChange={(e) => setAnswer(e.target.value)}
-                        rows={4}
+                        rows={3}
                         placeholder="Type your answer…"
                         disabled={thinking}
-                        className="min-h-28 resize-y border-white/10 bg-black/30 text-zinc-100"
+                        className="min-h-24 resize-none border-white/10 bg-black/30 text-zinc-100 [@media(max-height:820px)]:min-h-20 [@media(max-height:820px)]:py-1.5"
                       />
                       <Button
                         className="h-11 w-full"
@@ -1521,7 +1535,7 @@ export function InterviewRoom({ token }: { token: string }) {
         </div>
 
         {/* RIGHT */}
-        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto lg:overflow-hidden">
+        <aside className="flex flex-col gap-3 lg:min-h-0 lg:overflow-hidden">
           <PrimaryCameraPanel
             stream={primaryCameraStream}
             cameraStatus={primaryCameraStatus}
@@ -1537,12 +1551,13 @@ export function InterviewRoom({ token }: { token: string }) {
                 : undefined
             }
             onDismiss={dismissPrimaryCamera}
-            className="shrink-0"
+            className="min-h-[240px] flex-1 lg:min-h-0"
+            fill
           />
 
-          <InterviewStatusRail phase={phase} className="shrink-0" />
+          <InterviewStatusRail phase={phase} answerByVoice={useVoiceUi} className="shrink-0" />
 
-          <div className="shrink-0 rounded-2xl border border-white/10 bg-[#0d121c]/90 p-3">
+          <div className="shrink-0 rounded-2xl border border-white/10 bg-[#0d121c]/90 p-3 [@media(max-height:900px)]:hidden">
             <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
               Interview tips
             </h2>

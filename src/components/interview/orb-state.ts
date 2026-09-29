@@ -33,6 +33,8 @@ export type InterviewOrbLifecycle = {
   voiceSubmitting: boolean;
   processing: boolean;
   concluded?: boolean;
+  /** False when the candidate answers by typing (text interview or switched to typing). Defaults to voice. */
+  answerByVoice?: boolean;
 };
 
 /**
@@ -66,8 +68,11 @@ export function deriveInterviewUiPhase(
 export function thinkingOrbStatusLabel(
   state: InterviewThinkingOrbState,
   phase?: InterviewUiPhase,
+  answerByVoice = true,
 ): string {
-  if (phase === "CANDIDATE_READY") return "Click the mic when you are ready";
+  if (phase === "CANDIDATE_READY") {
+    return answerByVoice ? "Click the mic when you are ready" : "Type your answer below when you are ready";
+  }
   switch (state) {
     case "listening":
       return "Listening…";
@@ -102,9 +107,10 @@ export function thinkingOrbHeading(
 export function thinkingOrbGuidance(
   state: InterviewThinkingOrbState,
   phase?: InterviewUiPhase,
+  answerByVoice = true,
 ): string {
   if (phase === "CANDIDATE_READY") {
-    return "Speak clearly and take your time to respond.";
+    return answerByVoice ? "Speak clearly and take your time to respond." : "Take your time to respond.";
   }
   switch (state) {
     case "listening":
@@ -140,11 +146,12 @@ export function useInterviewThinkingOrb(lifecycle: InterviewOrbLifecycle): {
 } {
   const orbState = deriveInterviewThinkingOrbState(lifecycle);
   const phase = deriveInterviewUiPhase(lifecycle);
+  const voice = lifecycle.answerByVoice ?? true;
   return {
     orbState,
-    statusLabel: thinkingOrbStatusLabel(orbState, phase),
+    statusLabel: thinkingOrbStatusLabel(orbState, phase, voice),
     heading: thinkingOrbHeading(orbState, phase),
-    guidance: thinkingOrbGuidance(orbState, phase),
+    guidance: thinkingOrbGuidance(orbState, phase, voice),
     phase,
   };
 }

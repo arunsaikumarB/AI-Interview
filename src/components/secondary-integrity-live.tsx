@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { formatDateTime } from "@/lib/format";
 import { integritySignalLabel } from "@/lib/integrity";
 import { collapseConsecutiveSecondaryLinkEvents } from "@/lib/secondary-camera-signals";
+import { secondaryCameraNotUsed } from "@/lib/secondary-camera-usage";
 
 type EventRow = {
   id: string;
@@ -108,6 +109,22 @@ export function SecondaryIntegrityLive({
   );
   const moved = last?.type === "SECONDARY_PERSON_MOVED";
   const connected = device === "CONNECTED";
+  const notUsed = secondaryCameraNotUsed({
+    deviceStatus: device,
+    interviewStatus: status,
+    secondaryEventCount: events.filter((e) => e.type.startsWith("SECONDARY_")).length,
+  });
+
+  if (notUsed) {
+    return (
+      <section className="space-y-3 rounded-xl border border-border bg-card p-5">
+        <h2 className="text-lg font-medium text-foreground">Secondary camera</h2>
+        <p className="text-sm text-muted-foreground">
+          Secondary camera not used for this interview.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-3 rounded-xl border border-border bg-card p-5">

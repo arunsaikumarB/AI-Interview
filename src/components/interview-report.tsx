@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AnswerEvaluation, FinalResult } from "@/lib/ai/interview";
+import type { StoredFinalResult } from "@/lib/ai/stored-final-result";
 import type { PipelineStage } from "@prisma/client";
 import { toast } from "sonner";
 import { formatDateTime } from "@/lib/format";
@@ -106,7 +107,7 @@ export function InterviewAiEvaluation({
     reasoning: string;
     model: string;
     createdAt: string;
-    result: FinalResult;
+    result: StoredFinalResult;
   } | null;
 }) {
   const router = useRouter();
@@ -247,38 +248,40 @@ export function InterviewAiEvaluation({
           <List title="Strengths" items={result.strengths} />
           <List title="Weaknesses" items={result.weaknesses} />
 
-          <div>
-            <p className="text-sm font-medium text-foreground">Resume validation</p>
-            <div className="mt-2 overflow-x-auto rounded-lg border border-border">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-muted/40 text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Claim</th>
-                    <th className="px-3 py-2 font-medium">Verdict</th>
-                    <th className="px-3 py-2 font-medium">Evidence</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.resumeValidation.map((row) => (
-                    <tr key={row.claim} className="border-t border-border">
-                      <td className="px-3 py-2 text-foreground">{row.claim}</td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={cn(
-                            "rounded px-2 py-0.5 text-xs font-medium",
-                            VERDICT_STYLE[row.verdict] ?? "bg-muted",
-                          )}
-                        >
-                          {row.verdict}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">{row.evidence}</td>
+          {result.resumeValidation.length > 0 ? (
+            <div>
+              <p className="text-sm font-medium text-foreground">Resume validation</p>
+              <div className="mt-2 overflow-x-auto rounded-lg border border-border">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-muted/40 text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Claim</th>
+                      <th className="px-3 py-2 font-medium">Verdict</th>
+                      <th className="px-3 py-2 font-medium">Evidence</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {result.resumeValidation.map((row) => (
+                      <tr key={row.claim} className="border-t border-border">
+                        <td className="px-3 py-2 text-foreground">{row.claim}</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={cn(
+                              "rounded px-2 py-0.5 text-xs font-medium",
+                              VERDICT_STYLE[row.verdict] ?? "bg-muted",
+                            )}
+                          >
+                            {row.verdict}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{row.evidence}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <div className="rounded-lg bg-muted/40 p-3">
             <button
@@ -457,6 +460,7 @@ function Bar({ label, value }: { label: string; value: number }) {
 }
 
 function List({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
   return (
     <div>
       <p className="text-sm font-medium text-foreground">{title}</p>

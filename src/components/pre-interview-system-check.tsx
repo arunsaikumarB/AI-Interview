@@ -6,6 +6,11 @@ import { Check, Circle, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand-logo";
 import {
+  GATE_CARD_FIT,
+  GATE_LOGO_FIT,
+  GATE_TITLE_FIT,
+} from "@/components/interview/gate-card-fit";
+import {
   pickVideoDeviceId,
   storePrimaryCameraSkipped,
   storePrimaryDeviceId,
@@ -370,10 +375,10 @@ export function PreInterviewSystemCheck({
   const canContinue = requiredOk && cameraOk;
 
   return (
-    <div className="mx-auto max-w-lg space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm">
+    <div className={cn("mx-auto max-w-lg space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm", GATE_CARD_FIT)}>
       <div>
-        <BrandLogo size="header" />
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Before you begin</h1>
+        <BrandLogo size="header" className={GATE_LOGO_FIT} />
+        <h1 className={cn("mt-2 text-3xl font-semibold tracking-tight text-foreground", GATE_TITLE_FIT)}>Before you begin</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Let&apos;s quickly check your device so your interview can run smoothly.
         </p>
@@ -388,7 +393,7 @@ export function PreInterviewSystemCheck({
         {rows.map((row) => (
           <li
             key={row.id}
-            className="flex items-start justify-between gap-3 px-4 py-3 text-sm"
+            className="flex items-start justify-between gap-3 px-4 py-3 text-sm [@media(max-height:820px)]:py-2"
           >
             <div className="min-w-0">
               <p className="font-medium text-foreground">
@@ -421,7 +426,7 @@ export function PreInterviewSystemCheck({
       </ul>
 
       {isVoice ? (
-        <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
+        <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4 [@media(max-height:820px)]:space-y-2 [@media(max-height:820px)]:p-3">
           <div>
             <p className="mb-1 text-xs text-muted-foreground">Microphone level</p>
             <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -492,7 +497,7 @@ export function PreInterviewSystemCheck({
           </div>
           {camera === "ready" ? (
             <div
-              className="relative w-full max-w-[280px] overflow-hidden rounded-[16px] border border-border bg-black shadow-md"
+              className="relative w-full max-w-[280px] overflow-hidden rounded-[16px] border border-border bg-black shadow-md [@media(max-height:820px)]:max-w-[180px]"
               style={{ aspectRatio: "16 / 9" }}
             >
               <video

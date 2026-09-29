@@ -14,9 +14,11 @@ import { CandidateComposeButton } from "@/components/candidate-compose-button";
 import { CommunicationHistory } from "@/components/communication-history";
 import { CandidateTags } from "@/components/candidate-tags";
 import { CreateInterviewDialog } from "@/components/create-interview-dialog";
+import { PracticalAssessmentsCard } from "@/components/practical/practical-assessments-card";
+import { CandidateAssessmentCard } from "@/components/candidate-assessment/candidate-assessment-card";
 import type { ScreeningResult } from "@/lib/ai/screening";
 import { ScreeningResultSchema } from "@/lib/ai/screening";
-import { FinalResultSchema } from "@/lib/ai/interview";
+import { StoredFinalResultSchema } from "@/lib/ai/stored-final-result";
 import { STAGE_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import {
@@ -116,7 +118,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
       (e) => e.kind === "INTERVIEW_OVERALL" && e.sessionId === latestInterview.id,
     );
   const overallParsed = overallEval
-    ? FinalResultSchema.safeParse(overallEval.scores)
+    ? StoredFinalResultSchema.safeParse(overallEval.scores)
     : null;
 
   const timeline = selectedApp
@@ -520,6 +522,18 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
               }
             />
           </section>
+
+          {canDecide ? (
+            <section id="assessment" className={section}>
+              <CandidateAssessmentCard applicationId={selectedApp.id} />
+            </section>
+          ) : null}
+
+          {canDecide ? (
+            <section id="practical" className={section}>
+              <PracticalAssessmentsCard applicationId={selectedApp.id} />
+            </section>
+          ) : null}
 
           <section id="communication" className={section} aria-labelledby="communication-heading">
             <div className="flex flex-wrap items-center justify-between gap-2">

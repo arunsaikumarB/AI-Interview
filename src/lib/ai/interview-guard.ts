@@ -163,6 +163,27 @@ export function questionConflicts(
   return priorQuestions.some((p) => questionsAreSimilar(question, p));
 }
 
+type AssessmentQueueItem = NonNullable<InterviewPlan["assessment"]>["questions"][number];
+
+/**
+ * V3.1: validated blueprint questions still askable, in blueprint order. Never
+ * re-asks one; similarity is checked only against engine-generated questions,
+ * because validated questions share V1 templates across distinct competencies.
+ */
+export function pendingAssessmentQuestions(
+  plan: InterviewPlan,
+  priorQuestions: string[],
+  job: JobInterviewScope,
+): AssessmentQueueItem[] {
+  const queue = plan.assessment?.questions ?? [];
+  const validated = new Set(queue.map((q) => normalizeQuestionText(q.text)));
+  const asked = new Set(priorQuestions.map(normalizeQuestionText));
+  const engineAsked = priorQuestions.filter((p) => !validated.has(normalizeQuestionText(p)));
+  return queue.filter(
+    (q) => !asked.has(normalizeQuestionText(q.text)) && !questionConflicts(q.text, engineAsked, job),
+  );
+}
+
 export function defaultTopicsForRole(job: JobInterviewScope): string[] {
   const type = inferInterviewType(job.title, job.interviewType as InterviewType);
   if (type === "FULLSTACK" || /full[\s-]?stack/i.test(job.title)) {
@@ -480,6 +501,16 @@ export function decideNextTurn(params: {
     action = params.state.followUpsOnCurrentTopic < 2 ? "FOLLOW_UP" : "NEW_TOPIC";
   }
 
+  const pendingAssessment = pendingAssessmentQuestions(plan, params.priorQuestions, params.job);
+  if (
+    (action === "FOLLOW_UP" || action === "GO_DEEPER") &&
+    pendingAssessment.length > 0 &&
+    pendingAssessment.length >= params.maxQuestions - questionsAskedAfter
+  ) {
+    action = "NEW_TOPIC";
+    actionReasoning = "Validated assessment questions remain for the question budget — moving to the next one.";
+  }
+
   if (questionsAskedAfter >= params.maxQuestions) {
     action = "CONCLUDE";
     actionReasoning = `maxQuestions (${params.maxQuestions}) reached.`;
@@ -506,6 +537,7 @@ export function decideNextTurn(params: {
   }
 
   let nextQuestion: TurnResult["nextQuestion"] = null;
+  let fromAssessmentQueue = false;
   let topicIndex = params.state.currentTopicIndex;
   let followUps = params.state.followUpsOnCurrentTopic;
   const topicsCovered = params.state.topicsCovered.map((t) => ({ ...t }));
@@ -540,21 +572,34 @@ export function decideNextTurn(params: {
 
     if (action === "NEW_TOPIC") {
       bumpTopicScore(currentTopicName);
-      topicIndex = Math.min(
-        params.state.currentTopicIndex + 1,
-        Math.max(0, plan.topics.length - 1),
-      );
-      const topic = nextOnRoleTopic(
-        plan,
-        topicIndex,
-        params.job,
-        params.priorQuestions,
-      );
-      topicIndex = Math.max(
-        0,
-        plan.topics.findIndex((t) => t.name === topic.name),
-      );
-      nextQuestion = buildQuestion("NEW_TOPIC", topic, params.job, params.priorQuestions);
+      const queued = pendingAssessment[0];
+      if (queued) {
+        const idx = plan.topics.findIndex((t) => t.name === queued.competency);
+        topicIndex = idx >= 0 ? idx : topicIndex;
+        nextQuestion = {
+          question: queued.text,
+          topic: queued.competency,
+          difficulty: queued.difficulty,
+          competency: queued.competency,
+        };
+        fromAssessmentQueue = true;
+      } else {
+        topicIndex = Math.min(
+          params.state.currentTopicIndex + 1,
+          Math.max(0, plan.topics.length - 1),
+        );
+        const topic = nextOnRoleTopic(
+          plan,
+          topicIndex,
+          params.job,
+          params.priorQuestions,
+        );
+        topicIndex = Math.max(
+          0,
+          plan.topics.findIndex((t) => t.name === topic.name),
+        );
+        nextQuestion = buildQuestion("NEW_TOPIC", topic, params.job, params.priorQuestions);
+      }
       followUps = 0;
     }
   } else {
@@ -562,7 +607,7 @@ export function decideNextTurn(params: {
     nextQuestion = null;
   }
 
-  if (action !== "CONCLUDE" && nextQuestion) {
+  if (action !== "CONCLUDE" && nextQuestion && !fromAssessmentQueue) {
     if (questionConflicts(nextQuestion.question, params.priorQuestions, params.job)) {
       const topic = nextOnRoleTopic(
         plan,

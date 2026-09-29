@@ -213,7 +213,7 @@ export function InterviewLinksPanel({
                       >
                         <MoreHorizontal className="size-4" />
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align="end" className="w-44">
                         {canCopy ? (
                           <DropdownMenuItem onClick={() => copyLink(r.accessToken)}>
                             Copy Link
@@ -266,6 +266,15 @@ export function InterviewLinksPanel({
                             Send Email
                           </DropdownMenuItem>
                         ) : null}
+                        <DropdownMenuItem
+                          onClick={() =>
+                            router.push(
+                              `/dashboard/candidates/${r.candidateId}?applicationId=${r.applicationId}`,
+                            )
+                          }
+                        >
+                          View Candidate
+                        </DropdownMenuItem>
                         {canExpire ? (
                           <DropdownMenuItem onClick={() => expireLink(r.id)}>
                             Expire

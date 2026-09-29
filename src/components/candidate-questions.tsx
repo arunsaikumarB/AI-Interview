@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { GATE_CARD_FIT, GATE_TITLE_FIT } from "@/components/interview/gate-card-fit";
+import { cn } from "@/lib/utils";
 
 type Exchange = { question: string; answer: string };
 
@@ -49,11 +51,11 @@ export function CandidateQuestions({
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm">
+    <div className={cn("mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm", GATE_CARD_FIT)}>
       <p className="text-sm uppercase tracking-wide text-muted-foreground">
         Almost done
       </p>
-      <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+      <h1 className={cn("text-3xl font-semibold tracking-tight text-foreground", GATE_TITLE_FIT)}>
         Do you have any questions about the role?
       </h1>
       <p className="text-sm text-muted-foreground">

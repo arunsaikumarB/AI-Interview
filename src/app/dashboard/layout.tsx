@@ -7,6 +7,7 @@ import { orgScopeWhere } from "@/lib/auth/rbac";
 import { STAFF_ROLES } from "@/lib/constants";
 import { getAIProvider } from "@/lib/ai/ollama";
 import { resolveOrgLabel } from "@/lib/org-display";
+import { readSidebarCollapsed } from "@/lib/ui-prefs-server";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -26,7 +27,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <>
       <DatabaseOfflineBanner />
       {cloudAi ? <CloudAiBanner /> : null}
-      <AppShell user={session} orgLabel={orgLabel}>
+      <AppShell user={session} orgLabel={orgLabel} initialCollapsed={readSidebarCollapsed()}>
         {children}
       </AppShell>
     </>

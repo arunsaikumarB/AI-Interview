@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { getSession } from "@/lib/auth/session";
 import { resolveOrgLabel } from "@/lib/org-display";
+import { readSidebarCollapsed } from "@/lib/ui-prefs-server";
 
 export const metadata: Metadata = {
   title: "Candidate Portal",
@@ -20,7 +21,7 @@ export default async function PortalLayout({
   const orgLabel = await resolveOrgLabel(session.organizationId);
 
   return (
-    <AppShell user={session} orgLabel={orgLabel}>
+    <AppShell user={session} orgLabel={orgLabel} initialCollapsed={readSidebarCollapsed()}>
       {children}
     </AppShell>
   );

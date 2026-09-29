@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand-logo";
+import {
+  GATE_CARD_FIT,
+  GATE_LOGO_FIT,
+  GATE_TITLE_FIT,
+} from "@/components/interview/gate-card-fit";
+import { cn } from "@/lib/utils";
 
 const CONSENT_COPY_STANDARD =
   "This interview monitors tab focus, window switching, copy/paste, and (if you allow the camera) whether a face is visible. These are informational signals reviewed by a human recruiter; they do not automatically affect your result.";
@@ -42,12 +48,12 @@ export function ProctoringConsent({
   const canContinue = acked && (!enhanced || recordingConsent);
 
   return (
-    <div className="mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm">
-      <BrandLogo size="header" />
+    <div className={cn("mx-auto max-w-lg space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm", GATE_CARD_FIT)}>
+      <BrandLogo size="header" className={GATE_LOGO_FIT} />
       <p className="text-sm uppercase tracking-wide text-muted-foreground">
         Proctoring consent
       </p>
-      <h1 className="text-3xl font-semibold tracking-tight text-foreground">Proctoring notice</h1>
+      <h1 className={cn("text-3xl font-semibold tracking-tight text-foreground", GATE_TITLE_FIT)}>Proctoring notice</h1>
       <p className="text-sm leading-relaxed text-foreground/90">
         {enhanced ? CONSENT_COPY_ENHANCED : CONSENT_COPY_STANDARD}
       </p>

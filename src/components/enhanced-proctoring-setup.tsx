@@ -5,6 +5,11 @@ import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand-logo";
+import {
+  GATE_CARD_FIT,
+  GATE_LOGO_FIT,
+  GATE_TITLE_FIT,
+} from "@/components/interview/gate-card-fit";
 
 type PairStatus =
   | "NONE"
@@ -276,13 +281,13 @@ export function EnhancedProctoringSetup({
     status === "CONNECTED" && frameFresh && Boolean(previewUrl) && !extraPersonBlocking;
 
   return (
-    <div className="mx-auto max-w-lg space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm">
+    <div className={cn("mx-auto max-w-lg space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm", GATE_CARD_FIT)}>
       <div>
-        <BrandLogo size="header" />
+        <BrandLogo size="header" className={GATE_LOGO_FIT} />
         <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
           Enhanced proctoring
         </p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">
+        <h1 className={cn("mt-1 text-3xl font-semibold tracking-tight text-foreground", GATE_TITLE_FIT)}>
           Pair secondary camera
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -331,12 +336,12 @@ export function EnhancedProctoringSetup({
       </div>
 
       {qrDataUrl && pairUrl ? (
-        <div className="space-y-2 rounded-xl border border-border p-4">
+        <div className="space-y-2 rounded-xl border border-border p-4 [@media(max-height:820px)]:p-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={qrDataUrl}
             alt="QR code to open secondary camera"
-            className="mx-auto h-48 w-48"
+            className="mx-auto h-48 w-48 [@media(max-height:820px)]:h-32 [@media(max-height:820px)]:w-32"
           />
           <p className="break-all text-center text-xs text-muted-foreground">
             {pairUrl}
@@ -380,7 +385,7 @@ export function EnhancedProctoringSetup({
               <img
                 src={previewUrl}
                 alt="Secondary camera live preview"
-                className="max-h-[50vh] w-full bg-background object-contain"
+                className="max-h-[50vh] w-full bg-background object-contain [@media(max-height:820px)]:max-h-[32vh]"
               />
             ) : (
               <p className="px-4 py-10 text-center text-sm text-muted-foreground">

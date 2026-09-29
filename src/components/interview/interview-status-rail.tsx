@@ -60,9 +60,11 @@ function isActive(phase: InterviewUiPhase, rowId: (typeof ROWS)[number]["id"]) {
 export function InterviewStatusRail({
   phase,
   className,
+  answerByVoice = true,
 }: {
   phase: InterviewUiPhase;
   className?: string;
+  answerByVoice?: boolean;
 }) {
   return (
     <section
@@ -72,17 +74,17 @@ export function InterviewStatusRail({
       )}
       aria-label="Interview status"
     >
-      <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
+      <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400 [@media(max-height:820px)]:mb-2">
         Interview status
       </h2>
-      <ul className="space-y-2">
+      <ul className="space-y-2 [@media(max-height:820px)]:space-y-1.5">
         {ROWS.map((row) => {
           const active = isActive(phase, row.id);
           return (
             <li
               key={row.id}
               className={cn(
-                "rounded-xl border px-3 py-2.5 transition-colors",
+                "rounded-xl border px-3 py-2.5 transition-colors [@media(max-height:820px)]:py-1.5",
                 active
                   ? "border-violet-400/35 bg-violet-500/10"
                   : "border-white/5 bg-white/[0.02]",
@@ -102,10 +104,16 @@ export function InterviewStatusRail({
                   <p
                     className={cn(
                       "mt-0.5 text-xs",
-                      active ? "text-zinc-300" : "text-zinc-600",
+                      active
+                        ? "text-zinc-300"
+                        : "text-zinc-600 [@media(max-height:820px)]:hidden",
                     )}
                   >
-                    {active ? row.activeDetail : row.idleDetail}
+                    {active
+                      ? row.id === "READY" && !answerByVoice
+                        ? "Type your answer below"
+                        : row.activeDetail
+                      : row.idleDetail}
                   </p>
                 </div>
                 <span

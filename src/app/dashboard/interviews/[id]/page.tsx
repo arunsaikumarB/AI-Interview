@@ -16,10 +16,8 @@ import { IntegritySignalsSummary } from "@/components/integrity-signals-summary"
 import { SecondaryCameraReview } from "@/components/secondary-camera-review";
 import { SecondaryIntegrityLive } from "@/components/secondary-integrity-live";
 import { CandidateAskedSection } from "@/components/candidate-asked-section";
-import {
-  AnswerEvaluationSchema,
-  FinalResultSchema,
-} from "@/lib/ai/interview";
+import { AnswerEvaluationSchema } from "@/lib/ai/interview";
+import { StoredFinalResultSchema } from "@/lib/ai/stored-final-result";
 import { finalizeSecondaryRecording } from "@/lib/secondary-recording-server";
 import { verifyStoredFile } from "@/lib/storage";
 import { useDjangoAsync } from "@/lib/staff-async/flag";
@@ -127,7 +125,7 @@ export default async function InterviewReportPage({ params }: Ctx) {
 
   const overall = interview.aiEvaluations[0];
   const finalResult = overall
-    ? FinalResultSchema.safeParse(overall.scores).data
+    ? StoredFinalResultSchema.safeParse(overall.scores).data
     : null;
 
   // R-3: pending vs failed. Without this the report claimed the evaluation was

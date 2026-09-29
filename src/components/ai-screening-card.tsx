@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +52,18 @@ export function AIScreeningCard({
     null,
   );
   const [reasoningOpen, setReasoningOpen] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!loading) return;
+    setElapsed(0);
+    const startedAt = Date.now();
+    const id = window.setInterval(
+      () => setElapsed(Math.floor((Date.now() - startedAt) / 1000)),
+      1000,
+    );
+    return () => window.clearInterval(id);
+  }, [loading]);
 
   const poll = useStaffAsyncPoll({
     url: pollUrl,
@@ -122,7 +134,7 @@ export function AIScreeningCard({
           {loading
             ? pollUrl
               ? staffAsyncLabel(poll.status ?? asyncStatus ?? "QUEUED")
-              : "Screening… (10–40s)"
+              : `Screening… ${elapsed}s`
             : evaluation
               ? "Re-run screening"
               : "Run AI screening"}
@@ -164,7 +176,8 @@ export function AIScreeningCard({
           <div className="h-3 rounded bg-muted" />
           <div className="h-3 w-2/3 rounded bg-muted" />
           <p className="text-sm text-muted-foreground">
-            Running advisory resume match…
+            Running advisory resume match on the local AI model… {elapsed}s. This can take
+            up to 2 minutes.
           </p>
         </div>
       ) : null}
@@ -272,14 +285,15 @@ function ListBlock({
       : tone === "warn"
         ? "border-warning/30"
         : "border-destructive/30";
+  const unique = Array.from(new Set(items));
   return (
     <div className={cn("rounded-lg border p-3", border)}>
       <p className="text-sm font-medium text-foreground">{title}</p>
-      {items.length === 0 ? (
+      {unique.length === 0 ? (
         <p className="mt-1 text-sm text-muted-foreground">None noted.</p>
       ) : (
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-          {items.map((item) => (
+          {unique.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>

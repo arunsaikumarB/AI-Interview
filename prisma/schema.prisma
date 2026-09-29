@@ -166,6 +166,32 @@ enum CommunicationStatus {
   FAILED
 }
 
+/// Practical assessment runtime (V3.0). Objective execution evidence only — never a hiring decision.
+enum PracticalType {
+  CODING
+  SQL
+}
+
+enum PracticalStatus {
+  NOT_STARTED
+  STARTED
+  IN_PROGRESS
+  SUBMITTED
+  EXECUTING
+  COMPLETED
+  EXECUTION_FAILED
+  TIMEOUT
+  CANCELLED
+}
+
+enum PracticalExecStatus {
+  PENDING
+  EXECUTING
+  COMPLETED
+  EXECUTION_FAILED
+  TIMEOUT
+}
+
 // -----------------------------------------------------------------------------
 // Organization structure
 // -----------------------------------------------------------------------------
@@ -229,6 +255,8 @@ model User {
   notesAuthored           Note[]             @relation("NoteAuthor")
   interviewsAsInterviewer InterviewSession[] @relation("InterviewInterviewer")
   communicationLogs       CommunicationLog[] @relation("CommunicationActor")
+  practicalAssessmentsCreated PracticalAssessment[] @relation("PracticalAssessmentCreator")
+  assessmentLinksCreated      CandidateAssessmentLink[] @relation("CandidateAssessmentLinkCreator")
 
   @@index([role])
   @@index([organizationId])
@@ -346,6 +374,8 @@ model Application {
   timelineEvents    TimelineEvent[]
   interviewSessions InterviewSession[]
   aiEvaluations     AIEvaluation[]
+  practicalAssessments PracticalAssessment[]
+  assessmentLink       CandidateAssessmentLink?
 
   @@unique([candidateId, jobId])
   @@index([stage])
@@ -633,4 +663,86 @@ model CommunicationLog {
   @@index([toAddress])
   @@index([createdAt])
   @@index([status])
+}
+
+// -----------------------------------------------------------------------------
+// Practical assessments (V3.0 coding + SQL runtime)
+// Execution happens only in the isolated sandbox runner — never in the web process.
+// Results are measured evidence (tests passed, runtime) — never scores or recommendations.
+// -----------------------------------------------------------------------------
+
+model PracticalAssessment {
+  id               String             @id @default(cuid())
+  applicationId    String
+  type             PracticalType
+  /// Server-side task library key + version (hidden tests / expected results never stored here)
+  taskKey          String
+  taskVersion      Int
+  competency       String
+  difficulty       QuestionDifficulty
+  /// Traceability to the blueprint recommendation that caused this assessment
+  provenance       Json
+  /// sha256 of the candidate magic-link token — the raw token is never stored
+  accessTokenHash  String             @unique
+  tokenExpiresAt   DateTime
+  timeLimitMinutes Int
+  status           PracticalStatus    @default(NOT_STARTED)
+  /// Autosave only — never executed, never counts as a submission
+  draftLanguage    String?
+  draftSource      String?
+  draftSavedAt     DateTime?
+  startedAt        DateTime?
+  submittedAt      DateTime?
+  completedAt      DateTime?
+  createdById      String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  application Application          @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  createdBy   User?                @relation("PracticalAssessmentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  submission  PracticalSubmission?
+
+  @@index([applicationId])
+  @@index([status])
+}
+
+/// Immutable final submission. Source is frozen at submit; result fields are written once by the executor.
+model PracticalSubmission {
+  id            String              @id @default(cuid())
+  assessmentId  String              @unique
+  language      String
+  source        String
+  sourceSha256  String
+  sizeBytes     Int
+  taskVersion   Int
+  runnerVersion String
+  execStatus    PracticalExecStatus @default(PENDING)
+  /// { status, passed, failed, total, runtimeMs, memoryMb, compileError, timedOut, resourceViolation }
+  result        Json?
+  submittedAt   DateTime            @default(now())
+  executedAt    DateTime?
+
+  assessment PracticalAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([execStatus])
+}
+
+// -----------------------------------------------------------------------------
+// Candidate assessment hub (V3.1). The assessment itself is derived from the
+// application's InterviewSession + PracticalAssessment rows; this table only
+// holds the candidate's hub credential. Only the sha256 of the token is stored.
+// -----------------------------------------------------------------------------
+
+model CandidateAssessmentLink {
+  id              String    @id @default(cuid())
+  applicationId   String    @unique
+  accessTokenHash String    @unique
+  tokenExpiresAt  DateTime
+  revokedAt       DateTime?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  createdBy   User?       @relation("CandidateAssessmentLinkCreator", fields: [createdById], references: [id], onDelete: SetNull)
 }

@@ -10,10 +10,13 @@ import {
   Link2,
   LogOut,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Settings,
   Shield,
 } from "lucide-react";
+import { SIDEBAR_COLLAPSED_COOKIE } from "@/lib/ui-prefs";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -130,19 +133,25 @@ function NavSection({
   items,
   pathname,
   onNavigate,
+  collapsed = false,
 }: {
   title?: string;
   items: NavItem[];
   pathname: string;
   onNavigate?: () => void;
+  collapsed?: boolean;
 }) {
   if (items.length === 0) return null;
   return (
     <div className="space-y-0.5">
       {title ? (
-        <p className="px-2.5 pb-1.5 pt-4 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-          {title}
-        </p>
+        collapsed ? (
+          <div className="mx-2.5 mb-2 mt-4 border-t border-border" aria-hidden />
+        ) : (
+          <p className="px-2.5 pb-1.5 pt-4 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            {title}
+          </p>
+        )
       ) : null}
       {items.map((item) => {
         const Icon = item.icon;
@@ -157,8 +166,11 @@ function NavSection({
             key={item.href}
             href={item.href}
             onClick={onNavigate}
+            title={collapsed ? item.label : undefined}
+            aria-current={active ? "page" : undefined}
             className={cn(
-              "group flex items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-[13px] font-medium transition-colors duration-ui",
+              "group flex items-center gap-2.5 rounded-[12px] py-2 text-[13px] font-medium transition-colors duration-ui",
+              collapsed ? "justify-center px-0" : "px-2.5",
               active
                 ? "nav-active"
                 : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
@@ -172,7 +184,7 @@ function NavSection({
                   : "text-muted-foreground group-hover:text-foreground/80",
               )}
             />
-            {item.label}
+            <span className={collapsed ? "sr-only" : undefined}>{item.label}</span>
           </Link>
         );
       })}
@@ -184,11 +196,15 @@ function SidebarBody({
   user,
   pathname,
   onNavigate,
+  collapsed = false,
+  onToggleCollapsed,
 }: {
   user: { name: string; email: string; role: Role };
   orgLabel: string;
   pathname: string;
   onNavigate?: () => void;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }) {
   const router = useRouter();
   const isCandidate = user.role === "CANDIDATE";
@@ -200,18 +216,40 @@ function SidebarBody({
     router.refresh();
   }
 
+  const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+
   return (
     <>
-      <div className="mb-5 px-2.5">
-        <BrandLogo size="nav" />
+      <div
+        className={cn(
+          "mb-5 flex items-center gap-2",
+          collapsed ? "justify-center" : "px-2.5",
+        )}
+      >
+        {collapsed ? null : <BrandLogo size="nav" className="min-w-0 flex-1" />}
+        {onToggleCollapsed ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onToggleCollapsed}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="shrink-0"
+          >
+            <ToggleIcon className="h-4 w-4" />
+          </Button>
+        ) : null}
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden">
         {isCandidate ? (
           <NavSection
             items={candidateNav}
             pathname={pathname}
             onNavigate={onNavigate}
+            collapsed={collapsed}
           />
         ) : (
           <>
@@ -220,44 +258,59 @@ function SidebarBody({
               items={general}
               pathname={pathname}
               onNavigate={onNavigate}
+              collapsed={collapsed}
             />
             <NavSection
               title="Recruitment"
               items={recruitment}
               pathname={pathname}
               onNavigate={onNavigate}
+              collapsed={collapsed}
             />
             <NavSection
               title="Tools"
               items={tools}
               pathname={pathname}
               onNavigate={onNavigate}
+              collapsed={collapsed}
             />
           </>
         )}
       </nav>
 
       <div className="mt-4 border-t border-border pt-4">
-        <div className="mb-3 flex items-start gap-2.5 px-2">
-          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface-hover text-[11px] font-semibold text-foreground">
+        <div
+          className={cn(
+            "mb-3 flex items-start gap-2.5",
+            collapsed ? "justify-center" : "px-2",
+          )}
+          title={collapsed ? `${user.name} · ${ROLE_LABELS[user.role]}` : undefined}
+        >
+          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-surface-hover text-[11px] font-semibold text-foreground">
             {user.name.slice(0, 1).toUpperCase()}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium text-foreground">
-              {user.name}
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              {ROLE_LABELS[user.role]}
-            </p>
-          </div>
+          {collapsed ? null : (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium text-foreground">
+                {user.name}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {ROLE_LABELS[user.role]}
+              </p>
+            </div>
+          )}
         </div>
         <Button
           variant="ghost"
-          className="w-full justify-start gap-2 text-muted-foreground"
+          className={cn(
+            "w-full gap-2 text-muted-foreground",
+            collapsed ? "justify-center px-0" : "justify-start",
+          )}
           onClick={logout}
+          title={collapsed ? "Sign out" : undefined}
         >
           <LogOut className="h-4 w-4" />
-          Sign out
+          <span className={collapsed ? "sr-only" : undefined}>Sign out</span>
         </Button>
       </div>
     </>
@@ -302,19 +355,42 @@ export function AppShell({
   children,
   user,
   orgLabel = DEFAULT_COMPANY_NAME,
+  initialCollapsed = false,
 }: {
   children: React.ReactNode;
   user: { name: string; email: string; role: Role };
   orgLabel?: string;
+  initialCollapsed?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const canSearchTalent = canPipelineNav(user.role);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      document.cookie = `${SIDEBAR_COLLAPSED_COOKIE}=${next ? "1" : "0"}; Path=/; Max-Age=31536000; SameSite=Lax`;
+      return next;
+    });
+  }
 
   return (
     <div className="app-canvas flex min-h-screen">
-      <aside className="glass-sidebar hidden w-[232px] shrink-0 flex-col border-r px-3 py-5 md:flex">
-        <SidebarBody user={user} orgLabel={orgLabel} pathname={pathname} />
+      <aside
+        className={cn(
+          "glass-sidebar sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden whitespace-nowrap border-r py-5 transition-[width] duration-200 ease-out md:flex",
+          collapsed ? "w-[68px] px-2" : "w-[232px] px-3",
+        )}
+        data-collapsed={collapsed ? "true" : "false"}
+      >
+        <SidebarBody
+          user={user}
+          orgLabel={orgLabel}
+          pathname={pathname}
+          collapsed={collapsed}
+          onToggleCollapsed={toggleCollapsed}
+        />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

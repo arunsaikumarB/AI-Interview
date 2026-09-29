@@ -22,36 +22,38 @@
 
     --text-primary: 0 0% 96%;
     --text-secondary: 220 6% 64%;
-    --text-muted: 216 8% 57%; /* #8B9099 */
+    --text-muted: 216 8% 62%;
 
     --icon-primary: 0 0% 96%;
     --icon-secondary: 216 8% 57%;
     --icon-muted: 216 8% 50%;
 
-    --primary: 221 100% 66%; /* #4F83FF */
-    --primary-hover: 221 90% 70%;
-    --primary-muted: 221 100% 66%;
-    --primary-foreground: 0 0% 100%;
+    /* Dark accents are used as 11–14px text on their own /10–/15 tints over glass cards,
+       and text on solid accents is navy; both need ≥4.5:1 (WCAG AA). */
+    --primary: 221 100% 72%;
+    --primary-hover: 221 90% 76%;
+    --primary-muted: 221 100% 72%;
+    --primary-foreground: 222 47% 8%;
 
-    --ai: 248 100% 74%; /* #8B7CFF */
-    --ai-muted: 248 100% 74%;
+    --ai: 248 100% 79%;
+    --ai-muted: 248 100% 79%;
     --ai-glow: rgba(139, 124, 255, 0.12);
 
     --secondary: 222 14% 12%;
     --secondary-foreground: 0 0% 96%;
     --muted: 222 14% 12%;
-    --muted-foreground: 216 8% 57%;
+    --muted-foreground: 216 8% 62%;
 
-    --accent: 221 100% 66%;
-    --accent-foreground: 0 0% 100%;
-    --accent-muted: 221 100% 66%;
+    --accent: 221 100% 72%;
+    --accent-foreground: 222 47% 8%;
+    --accent-muted: 221 100% 72%;
 
     --success: 152 69% 58%;
     --warning: 40 87% 69%;
     --danger: 0 91% 71%;
     --destructive: 0 91% 71%;
     --destructive-foreground: 0 0% 100%;
-    --info: 221 100% 66%;
+    --info: 221 100% 72%;
 
     --border: 220 10% 18%;
     --border-strong: 220 10% 22%;
@@ -98,8 +100,8 @@
       rgba(255, 255, 255, 0.015) 45%,
       rgba(255, 255, 255, 0.03)
     );
-    --btn-primary-from: #4f83ff;
-    --btn-primary-to: #5f70e8;
+    --btn-primary-from: #3565dd;
+    --btn-primary-to: #4353c9;
     --table-hover: rgba(255, 255, 255, 0.035);
     --table-selected: rgba(80, 130, 255, 0.1);
     --theme-ease: 200ms ease;
@@ -119,30 +121,30 @@
     --popover-foreground: 0 0% 96%;
     --text-primary: 0 0% 96%;
     --text-secondary: 220 6% 64%;
-    --text-muted: 216 8% 57%;
+    --text-muted: 216 8% 62%;
     --icon-primary: 0 0% 96%;
     --icon-secondary: 216 8% 57%;
     --icon-muted: 216 8% 50%;
-    --primary: 221 100% 66%;
-    --primary-hover: 221 90% 70%;
-    --primary-muted: 221 100% 66%;
-    --primary-foreground: 0 0% 100%;
-    --ai: 248 100% 74%;
-    --ai-muted: 248 100% 74%;
+    --primary: 221 100% 72%;
+    --primary-hover: 221 90% 76%;
+    --primary-muted: 221 100% 72%;
+    --primary-foreground: 222 47% 8%;
+    --ai: 248 100% 79%;
+    --ai-muted: 248 100% 79%;
     --ai-glow: rgba(139, 124, 255, 0.12);
     --secondary: 222 14% 12%;
     --secondary-foreground: 0 0% 96%;
     --muted: 222 14% 12%;
-    --muted-foreground: 216 8% 57%;
-    --accent: 221 100% 66%;
-    --accent-foreground: 0 0% 100%;
-    --accent-muted: 221 100% 66%;
+    --muted-foreground: 216 8% 62%;
+    --accent: 221 100% 72%;
+    --accent-foreground: 222 47% 8%;
+    --accent-muted: 221 100% 72%;
     --success: 152 69% 58%;
     --warning: 40 87% 69%;
     --danger: 0 91% 71%;
     --destructive: 0 91% 71%;
     --destructive-foreground: 0 0% 100%;
-    --info: 221 100% 66%;
+    --info: 221 100% 72%;
     --border: 220 10% 18%;
     --border-strong: 220 10% 22%;
     --border-alpha: 1;
@@ -184,8 +186,8 @@
       rgba(255, 255, 255, 0.015) 45%,
       rgba(255, 255, 255, 0.03)
     );
-    --btn-primary-from: #4f83ff;
-    --btn-primary-to: #5f70e8;
+    --btn-primary-from: #3565dd;
+    --btn-primary-to: #4353c9;
     --table-hover: rgba(255, 255, 255, 0.035);
     --table-selected: rgba(80, 130, 255, 0.1);
     color-scheme: dark;
@@ -207,26 +209,28 @@
     --icon-primary: 216 18% 14%;
     --icon-secondary: 218 10% 36%;
     --icon-muted: 218 8% 46%;
-    --primary: 217 77% 61%;
-    --primary-hover: 217 72% 54%;
-    --primary-muted: 217 77% 61%;
+    /* Light accents are darker than dark-mode ones: they are used as 11–14px text on white
+       and on their own /10 tints, which needs ≥4.5:1 (WCAG AA). */
+    --primary: 217 75% 46%;
+    --primary-hover: 217 75% 40%;
+    --primary-muted: 217 75% 46%;
     --primary-foreground: 0 0% 100%;
-    --ai: 247 68% 62%;
-    --ai-muted: 247 68% 62%;
+    --ai: 247 60% 52%;
+    --ai-muted: 247 60% 52%;
     --ai-glow: rgba(112, 93, 232, 0.1);
     --secondary: 216 24% 95%;
     --secondary-foreground: 216 18% 14%;
     --muted: 216 24% 95%;
     --muted-foreground: 218 10% 36%;
-    --accent: 217 77% 61%;
+    --accent: 217 75% 46%;
     --accent-foreground: 0 0% 100%;
-    --accent-muted: 217 77% 61%;
-    --success: 158 76% 35%;
-    --warning: 36 71% 42%;
-    --danger: 0 61% 54%;
-    --destructive: 0 61% 54%;
+    --accent-muted: 217 75% 46%;
+    --success: 158 80% 26%;
+    --warning: 32 85% 29%;
+    --danger: 0 70% 40%;
+    --destructive: 0 70% 40%;
     --destructive-foreground: 0 0% 100%;
-    --info: 217 77% 61%;
+    --info: 217 75% 46%;
     --border: 216 20% 86%;
     --border-strong: 216 16% 80%;
     --border-alpha: 1;
@@ -268,8 +272,8 @@
       rgba(255, 255, 255, 0.2) 45%,
       rgba(255, 255, 255, 0.35)
     );
-    --btn-primary-from: #4d86e8;
-    --btn-primary-to: #4a6fd4;
+    --btn-primary-from: #2f6fdc;
+    --btn-primary-to: #2757c0;
     --table-hover: rgba(20, 30, 50, 0.04);
     --table-selected: rgba(77, 134, 232, 0.1);
     color-scheme: light;
@@ -326,8 +330,8 @@
 
   select:not([multiple]) option,
   select:not([multiple]) optgroup {
-    background-color: #ffffff;
-    color: #0f172a;
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
   }
 }
 

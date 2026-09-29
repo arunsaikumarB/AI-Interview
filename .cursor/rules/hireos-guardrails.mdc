@@ -1,0 +1,69 @@
+---
+description: HireOS global engineering guardrails — do not regress security, data, interview, AI, recording, or proctoring guarantees
+alwaysApply: true
+---
+
+# HireOS global guardrails
+
+Apply to every change unless the user explicitly overrides a specific rule. Smallest safe change. Do not rewrite working systems. Do not silently change business behavior during UI work. Out of scope: report, do not modify.
+
+## Before any change
+
+Inspect what the code guarantees, then dependencies. List expected files. If unexpected files change, stop and investigate. Add/update tests. Do not treat a green typecheck/build as proof of safety.
+
+## Database / Prisma
+
+- Do not change `prisma/schema.prisma` unless the task explicitly requires a schema change.
+- Never run: `prisma migrate reset`, `prisma db push --accept-data-loss`, `DROP DATABASE`/`DROP TABLE`/`TRUNCATE`, or destructive migrations, unless explicitly authorized.
+- R-4 migration baseline is open. Do not solve it automatically. Do not `migrate deploy` blindly. Do not create a migration only because `_prisma_migrations` is missing. Do not alter the migration ledger unless asked.
+
+## Demo data
+
+CEO demo data is intentional. Do not wipe, reseed, or delete candidates/jobs/applications/interviews to “clean” the DB. New demo data must be marked, reversible, and relationally valid. Show exact deletions and wait for approval.
+
+## ATS / AI / proctoring isolation
+
+Proctoring, camera, voice, recording, UI, browser errors, and AI failures must not silently change application stage, reject/select a candidate, or create a hiring decision.
+
+AI is advisory. Failures are bounded, use the established retry count, persist an honest failure state, and must not fabricate score, reasoning, recommendation, or an `AIEvaluation` row. Do not map missing evaluation to NO/REJECT/FAIL. Do not pass proctoring, integrity, camera, person movement, device detection, or secondary-camera events into AI prompts. Keep `signalOnly`, `noAutoVerdict`, `noAtsStageChange`, `noAiInput`.
+
+**R-3:** bounded retry, durable failure audit, no score/recommendation/reasoning, no failure `AIEvaluation` row, interview can still complete, stage unchanged.
+
+**R-10:** production auth cookies stay `Secure`, `HttpOnly`, `SameSite=lax`. Real TLS issues Secure cookies. Do not weaken cookies for localhost.
+
+**CSP / headers:** do not add `'unsafe-eval'` or `'unsafe-inline'`. Use the existing nonce. Keep X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy, and HSTS where already applied.
+
+## Interview / camera / recording / orb
+
+- Usable camera + permission → real preview. No fake camera UI. Do not recreate the stream on UI state changes. Skip/fallback only when the camera is genuinely unusable. Never show “Recording” unless a recorder is actually recording.
+- Preserve MediaRecorder lifecycle, chunk order, assembly, and cleanup. Do not delete recording chunks in unrelated work.
+- Voice: do not break mic, recording, STT, submission, playback, replay, or switch-to-typing. Do not destroy question/progress/session when switching modes.
+- One exclusive UI phase: AI speaking → candidate ready → recording → submitting → analyzing → next question. No contradictory states. No fake transitions.
+- ThinkingOrb: speaking=`breathing`, candidate recording=`listening`, submit=`composing`, analyzing=`connecting`. Must match real state.
+
+## Proctoring — do not touch unless asked
+
+Leave R1 placement/baseline, R2 episodes, R5 STANDARD non-termination, R6 `efficientdet_lite2`, R7 bounded presence, R8 bounded box memory unchanged during unrelated work.
+
+**#15 SECONDARY_DEVICE_INTERACTION is DEFERRED.** Do not fix, threshold, pause, or refactor it unless the user says “Reopen #15.”
+
+STANDARD must not gain “terminate after N warnings.” Candidate warnings stay. Proctoring signals stay advisory.
+
+## Auth / health / local AI / Docker
+
+- No auth bypass, public secrets, or admin diagnostics on candidate surfaces. Respect RBAC.
+- Public health stays minimal — no credentials, env, stack traces, or infra internals.
+- Docker Ollama is the local AI service. Do not change `AI_PROVIDER`, `OLLAMA_LOCAL_URL`, `qwen2.5:7b`, or `nomic-embed-text` without approval. Do not delete models, add cloud fallback, or re-enable native Windows Ollama autostart.
+- Do not `docker compose down -v` or delete Postgres/Ollama volumes. Do not spawn extra Celery workers or change retry policy to hide an unavailable worker.
+
+## Data / errors / verification
+
+No orphaned candidates, applications, interviews, answers, evaluations, timeline events, recordings, or proctoring events. Do not delete or overwrite audit evidence. Do not put non-proctoring metadata on `ProctoringEvent`. Never render untrusted content with `dangerouslySetInnerHTML` unless required and sanitized.
+
+Errors must be honest. Status words are only: PASS, FAIL, PARTIAL, NOT TESTED, DEFERRED, BLOCKED. Never claim camera/proctoring/hardware PASS without evidence.
+
+If Docker, Ollama, ports, or build infra fail, diagnose first. Do not patch product code to hide an environment defect. Do not run `next build` against a live `next dev` writing the same `.next`.
+
+## Done means
+
+Requested behavior works; protected invariants above still hold; no unrelated edits; tests/lint/typecheck/build as applicable; browser check for UI; no fake PASS. Report: what changed, files, intentionally untouched, tests, build, browser, database, security, risks, deferred. State any check that was not performed.

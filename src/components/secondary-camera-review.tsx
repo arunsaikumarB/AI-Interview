@@ -159,7 +159,9 @@ export function SecondaryCameraReview({
             <p className="mt-2 text-sm text-muted-foreground">
               {state === "INCOMPLETE" || hasGap
                 ? "Recording incomplete."
-                : "Recording could not be finalized."}
+                : state === "NOT_ENABLED"
+                  ? "No secondary camera recording was made for this interview."
+                  : "Recording could not be finalized."}
             </p>
           </div>
         </div>

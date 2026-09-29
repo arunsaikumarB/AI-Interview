@@ -22,6 +22,7 @@ export function PrimaryCameraPanel({
   onRetry,
   onDismiss,
   className,
+  fill = false,
 }: {
   stream: MediaStream | null;
   cameraStatus: PrimaryCameraUiStatus;
@@ -30,6 +31,8 @@ export function PrimaryCameraPanel({
   onRetry?: () => void;
   onDismiss?: () => void;
   className?: string;
+  /** Video box takes the height left in the panel (capped at 16:10) instead of a fixed ratio. */
+  fill?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -90,6 +93,7 @@ export function PrimaryCameraPanel({
     <section
       className={cn(
         "flex min-h-0 flex-col rounded-2xl border border-white/10 bg-[#0d121c]/90 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.35)]",
+        fill && "[container-type:inline-size]",
         className,
       )}
       data-primary-camera-panel
@@ -110,8 +114,11 @@ export function PrimaryCameraPanel({
       </div>
 
       <div
-        className="relative w-full overflow-hidden rounded-xl border border-white/10 bg-black"
-        style={{ aspectRatio: "16 / 10" }}
+        className={cn(
+          "relative w-full overflow-hidden rounded-xl border border-white/10 bg-black",
+          fill && "min-h-[56px] flex-1 max-h-[62.5cqw]",
+        )}
+        style={fill ? undefined : { aspectRatio: "16 / 10" }}
       >
         {stream ? (
           <video
@@ -126,7 +133,12 @@ export function PrimaryCameraPanel({
           />
         ) : null}
         {live ? null : (
-          <div className="flex h-full min-h-[140px] w-full items-center justify-center px-4 text-center text-sm text-zinc-400">
+          <div
+            className={cn(
+              "flex h-full w-full items-center justify-center px-4 text-center text-sm text-zinc-400",
+              !fill && "min-h-[140px]",
+            )}
+          >
             {cameraStatus === "requesting" || (cameraAllowed && cameraStatus === "idle")
               ? "Starting camera…"
               : cameraStatus === "denied"
@@ -158,7 +170,7 @@ export function PrimaryCameraPanel({
         ) : null}
       </div>
 
-      <div className="mt-3 space-y-1">
+      <div className="mt-3 space-y-1 [@media(max-height:820px)]:mt-2">
         <p className="text-sm font-medium text-zinc-100">{title}</p>
         <p className="text-xs leading-relaxed text-zinc-500">{detail}</p>
       </div>

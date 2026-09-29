@@ -51,7 +51,9 @@ export async function POST(request: Request, { params }: Ctx) {
     }
 
     const body = bodySchema.parse(await request.json());
-    const current = body.plan
+    // The assessment question set (rubrics, evidence) never goes to the model and is
+    // restored from the database on save.
+    const { assessment: _omit, ...current } = body.plan
       ? parsePlan(body.plan)
       : parsePlan(interview.plan);
 
@@ -60,8 +62,9 @@ export async function POST(request: Request, { params }: Ctx) {
         current,
         instruction: body.instruction,
       });
+      const { assessment: _ignored, ...preview } = result.plan;
       return jsonOk({
-        plan: result.plan,
+        plan: preview,
         changeSummary: result.changeSummary,
         model: result.model,
         saved: false,

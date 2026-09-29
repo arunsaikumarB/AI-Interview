@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import { cn } from "@/lib/utils";
 import {
@@ -18,7 +18,12 @@ interface AIInterviewOrbProps {
   className?: string;
   /** Visual diameter — smaller in the two-column layout so the question stays primary. */
   size?: number;
+  /** Size the orb to the space left in its parent (parent must give it a bounded height). */
+  fill?: boolean;
 }
+
+const FILL_MIN = 40;
+const FILL_COMPACT_BELOW = 260;
 
 export function AIInterviewOrb({
   state,
@@ -28,28 +33,66 @@ export function AIInterviewOrb({
   reducedMotion = false,
   className,
   size: sizeProp,
+  fill = false,
 }: AIInterviewOrbProps) {
-  const [displaySize, setDisplaySize] = useState(sizeProp ?? 200);
+  const [displaySize, setDisplaySize] = useState(sizeProp ?? (fill ? FILL_MIN : 200));
+  const [compact, setCompact] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const slotRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!fill || sizeProp != null) return;
+    const root = rootRef.current;
+    const slot = slotRef.current;
+    if (!root || !slot) return;
+    const apply = () => {
+      const vw = window.innerWidth;
+      const byWidth = vw >= 1280 ? 220 : vw >= 1024 ? 180 : 148;
+      // Compact is decided from the root (bounded by the parent), not the slot, so hiding
+      // text cannot feed back into the measurement and make the orb flicker between sizes.
+      setCompact(root.clientHeight < FILL_COMPACT_BELOW);
+      const fit = Math.floor(Math.min(slot.clientHeight, slot.clientWidth, byWidth));
+      setDisplaySize(Math.max(FILL_MIN, fit));
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(root);
+    ro.observe(slot);
+    window.addEventListener("resize", apply);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", apply);
+    };
+  }, [fill, sizeProp]);
+
+  useEffect(() => {
+    if (fill && sizeProp == null) return;
     if (sizeProp != null) {
       setDisplaySize(sizeProp);
       return;
     }
     const apply = () => {
       const vw = window.innerWidth;
-      if (vw >= 1280) setDisplaySize(220);
-      else if (vw >= 1024) setDisplaySize(180);
-      else setDisplaySize(148);
+      const vh = window.innerHeight;
+      const byWidth = vw >= 1280 ? 220 : vw >= 1024 ? 180 : 148;
+      // Short laptop windows: the question must stay visible, so the orb gives way first.
+      const byHeight = vh >= 960 ? 220 : vh >= 820 ? 160 : vh >= 720 ? 96 : 72;
+      setDisplaySize(Math.min(byWidth, byHeight));
+      setCompact(vh < 820);
     };
     apply();
     window.addEventListener("resize", apply);
     return () => window.removeEventListener("resize", apply);
-  }, [sizeProp]);
+  }, [fill, sizeProp]);
 
   return (
     <div
-      className={cn("relative flex flex-col items-center text-center", className)}
+      ref={rootRef}
+      className={cn(
+        "relative flex flex-col items-center text-center",
+        fill && "h-full min-h-0",
+        className,
+      )}
       data-orb-state={state}
       data-thinking-orb={state}
       role="status"
@@ -60,17 +103,21 @@ export function AIInterviewOrb({
         {heading}
       </p>
       {statusLabel ? (
-        <p className="mb-3 max-w-md text-sm text-zinc-300">{statusLabel}</p>
+        <p className={cn("max-w-md text-sm text-zinc-300", compact ? "mb-2" : "mb-3")}>{statusLabel}</p>
       ) : null}
-      {guidance ? (
+      {guidance && !compact ? (
         <p className="mb-4 max-w-lg text-xs leading-relaxed text-zinc-500">
           {guidance}
         </p>
       ) : null}
 
       <div
-        className="relative flex items-center justify-center"
-        style={{ width: displaySize, height: displaySize }}
+        ref={slotRef}
+        className={cn(
+          "relative flex items-center justify-center",
+          fill && "min-h-0 w-full flex-1 overflow-hidden",
+        )}
+        style={fill ? undefined : { width: displaySize, height: displaySize }}
       >
         <ThinkingOrb
           state={state}
@@ -90,6 +137,7 @@ export function AIInterviewOrb({
       <span
         className={cn(
           "mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium tracking-wide",
+          compact && "hidden",
           state === "breathing" &&
             "border-violet-400/30 bg-violet-500/10 text-violet-200",
           state === "listening" &&

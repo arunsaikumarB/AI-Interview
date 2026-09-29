@@ -164,6 +164,19 @@ export function formatActivityWhen(at: Date | string): string {
   }).format(d);
 }
 
+const PRACTICAL_TIMELINE_TITLES: Record<string, string> = {
+  practical_assessment_assigned: "Practical assessment assigned",
+  practical_assessment_started: "Practical assessment started",
+  practical_assessment_submitted: "Practical assessment submitted",
+  practical_assessment_completed: "Practical assessment executed",
+  practical_assessment_failed: "Practical assessment did not complete",
+  practical_assessment_cancelled: "Practical assessment cancelled",
+  assessment_link_issued: "Assessment link issued",
+  assessment_link_revoked: "Assessment link revoked",
+  assessment_completed: "Assessment completed (all required components)",
+  assessment_question_generation_failed: "AI question wording partly unavailable (deterministic fallback used)",
+};
+
 export function humanTimelineTitle(type: string, payload: unknown): string {
   if (type === "STAGE_CHANGED" && payload && typeof payload === "object") {
     const p = payload as { to?: string; from?: string };
@@ -173,6 +186,10 @@ export function humanTimelineTitle(type: string, payload: unknown): string {
     return "Stage updated";
   }
   if (type === "DECISION") return "Recruiter decision recorded";
+  if (type === "OTHER" && payload && typeof payload === "object") {
+    const practical = PRACTICAL_TIMELINE_TITLES[String((payload as { kind?: unknown }).kind)];
+    if (practical) return practical;
+  }
   switch (type) {
     case "APPLICATION_CREATED":
       return "Application received";

@@ -28,6 +28,12 @@ import {
   type AsyncEnqueueResult,
 } from "@/lib/staff-async/flag";
 import { djangoReadToResponse } from "@/lib/staff-reads/errors";
+import {
+  AssessmentError,
+  prepareBlueprintInterview,
+  upgradeAssessmentInterview,
+  type PreparedBlueprintInterview,
+} from "@/lib/candidate-assessment/service";
 
 type Ctx = { params: { id: string } };
 
@@ -49,6 +55,8 @@ const bodySchema = z.object({
   durationMinutes: z
     .union([z.literal(15), z.literal(30), z.literal(45), z.literal(60)])
     .default(30),
+  /** BLUEPRINT = questions come from the server-built V1 blueprint (V2 wording when available). */
+  source: z.enum(["STANDARD", "BLUEPRINT"]).default("STANDARD"),
 });
 
 export async function GET(_request: Request, { params }: Ctx) {
@@ -156,20 +164,41 @@ export async function POST(request: Request, { params }: Ctx) {
     // Always create the magic link first. Waiting on Ollama here blocked the
     // copy-link dialog for 1–3 minutes (or forever on CPU), so recruiters
     // closed the dialog and created duplicate interviews.
+    let blueprintPrep: PreparedBlueprintInterview | null = null;
+    if (body.source === "BLUEPRINT") {
+      const open = await prisma.interviewSession.count({
+        where: { applicationId: application.id, status: { in: ["SCHEDULED", "IN_PROGRESS"] } },
+      });
+      if (open > 0) {
+        return Response.json(
+          { error: "An interview is already open for this application", code: "ALREADY_ACTIVE" },
+          { status: 409 },
+        );
+      }
+      blueprintPrep = await prepareBlueprintInterview(
+        user,
+        { id: application.id, jobId: application.jobId },
+        body.maxQuestions,
+      );
+    }
+
     const focusAreas = screeningFocus
       ? [
           ...(screeningFocus.missingRequirements ?? []),
           ...(screeningFocus.concerns ?? []),
         ]
       : [];
-    const plan = buildFallbackInterviewPlan({
-      jobTitle: application.job.title,
-      skills: application.job.skills,
-      jobDescription: application.job.description,
-      interviewType,
-      focusAreas,
-    });
-    const model = "fallback-template";
+    const plan = blueprintPrep
+      ? blueprintPrep.plan
+      : buildFallbackInterviewPlan({
+          jobTitle: application.job.title,
+          skills: application.job.skills,
+          jobDescription: application.job.description,
+          interviewType,
+          focusAreas,
+        });
+    const maxQuestions = blueprintPrep?.maxQuestions ?? body.maxQuestions;
+    const model = blueprintPrep ? "assessment-blueprint" : "fallback-template";
     const raw: unknown = { fallback: true, queued: true };
 
     const accessToken = createAccessToken();
@@ -194,7 +223,7 @@ export async function POST(request: Request, { params }: Ctx) {
         integrityMode,
         status: "SCHEDULED",
         interviewType,
-        maxQuestions: body.maxQuestions,
+        maxQuestions,
         durationMinutes: body.durationMinutes,
         accessToken,
         tokenExpiresAt: tokenExpiresInDays(body.linkExpiresInDays),
@@ -216,12 +245,19 @@ export async function POST(request: Request, { params }: Ctx) {
           proctoringEnabled,
           proctoringMode,
           integrityMode,
-          maxQuestions: body.maxQuestions,
+          maxQuestions,
           durationMinutes: body.durationMinutes,
           linkExpiresInDays: body.linkExpiresInDays,
           model,
           planTopics: plan.topics.map((t) => t.name),
           advisoryOnly: true,
+          ...(blueprintPrep
+            ? {
+                assessmentBlueprint: true,
+                assessmentQuestionCount: blueprintPrep.block.questions.length,
+                blueprintEngineVersion: blueprintPrep.block.engineVersion,
+              }
+            : {}),
         },
       },
     });
@@ -231,7 +267,17 @@ export async function POST(request: Request, { params }: Ctx) {
 
     let asyncPlan: AsyncEnqueueResult | null = null;
     let planEnqueueError: string | null = null;
-    if (useDjangoAsync()) {
+    if (blueprintPrep) {
+      // The blueprint plan is final; only the V2 wording may be upgraded before the candidate starts.
+      void upgradeAssessmentInterview({
+        sessionId: interview.id,
+        blueprint: blueprintPrep.blueprint,
+        candidate: blueprintPrep.candidate,
+        actorId: user.id,
+      }).catch((err) => {
+        console.warn("[interviews] assessment wording upgrade failed:", err instanceof Error ? err.name : "unknown");
+      });
+    } else if (useDjangoAsync()) {
       try {
         asyncPlan = await enqueueDjangoJob(
           "/api/v1/interviews/plan/",
@@ -307,6 +353,9 @@ export async function POST(request: Request, { params }: Ctx) {
       planEnqueueError,
     });
   } catch (err) {
+    if (err instanceof AssessmentError) {
+      return Response.json({ error: err.message, code: err.code }, { status: err.status });
+    }
     if (err instanceof AIError) {
       return Response.json(
         {

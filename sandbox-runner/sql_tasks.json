@@ -1,0 +1,7 @@
+{
+  "tasks": [
+    { "taskKey": "sql-customers-per-city", "taskVersion": 1, "dataset": "retail_v1" },
+    { "taskKey": "sql-revenue-by-category", "taskVersion": 1, "dataset": "retail_v1" },
+    { "taskKey": "sql-top-customer-per-city", "taskVersion": 1, "dataset": "retail_v1" }
+  ]
+}

@@ -7,6 +7,7 @@ import {
   ensureMinText,
 } from "@/lib/ai/llm-coerce";
 import type { ScreeningResult } from "@/lib/ai/screening";
+import { AssessmentInterviewBlockSchema } from "@/lib/candidate-assessment/interview-block";
 import {
   decideNextTurn,
   inferInterviewType,
@@ -63,6 +64,8 @@ const InterviewPlanShape = z.object({
   topics: z.array(PlanTopicSchema).min(4).max(8),
   openingQuestion: OpeningQuestionSchema,
   focusAreas: z.array(z.string()),
+  /** V3.1 validated blueprint questions (staff-only; absent on legacy plans). */
+  assessment: AssessmentInterviewBlockSchema.optional(),
 });
 
 function coercePlanTopic(raw: unknown): {
@@ -167,6 +170,9 @@ export const InterviewPlanSchema = z.preprocess((raw) => {
   }
 
   o.focusAreas = coerceStringArray(o.focusAreas, { max: 12 });
+  if (o.assessment !== undefined && !AssessmentInterviewBlockSchema.safeParse(o.assessment).success) {
+    delete o.assessment;
+  }
   return o;
 }, InterviewPlanShape);
 

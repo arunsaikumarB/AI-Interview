@@ -109,6 +109,7 @@ function EvidenceList({
   items: string[];
   tone: "good" | "warn";
 }) {
+  const unique = Array.from(new Set(items));
   return (
     <div>
       <p
@@ -119,11 +120,11 @@ function EvidenceList({
       >
         {title}
       </p>
-      {items.length === 0 ? (
+      {unique.length === 0 ? (
         <p className="mt-1 text-[13px] text-muted-foreground">None noted.</p>
       ) : (
         <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[13px] text-muted-foreground">
-          {items.map((item) => (
+          {unique.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>

@@ -1,0 +1,56 @@
+---
+description: HireOS security master guardrails — never weaken auth, RBAC, tenant isolation, CSP, cookies, or candidate privacy
+alwaysApply: true
+---
+
+# HireOS security master guardrails
+
+Security is non-negotiable. Never weaken it for UI, CEO demo, speed, debugging, tests, localhost, or interview UX. Preserve or improve the current posture. Server-side enforcement only — the UI is not a security boundary.
+
+If a fix would require disabling auth, RBAC, CSP, CSRF, cookie flags, or making an API public: STOP and report it. Do not leave a “temporary” bypass in place.
+
+## Auth, RBAC, tenants
+
+- Every protected page and API requires authentication. No login bypass, demo auth, hardcoded credentials, hidden admin, or backdoors. Do not trust client auth state alone.
+- Authentication is not authorization. Verify the user may access that resource. Block IDOR, horizontal/vertical privilege escalation, and cross-organization access.
+- Never trust browser-supplied `candidateId`, `applicationId`, `interviewId`, `organizationId`, `staffId`, `role`, `stage`, `decision`, `score`, `permissions`, or interview/evaluation status. Server derives authoritative values.
+- Organization-owned resources must be scoped to the authenticated organization. Do not `findUnique({ where: { id } })` on sensitive org data if that skips tenant checks. Prefer ownership-aware queries or an explicit ownership check before use.
+
+## Privacy, secrets, sessions
+
+- Return only fields the UI needs. Never send whole DB objects. Do not expose email, phone, resume, answers, recordings, transcripts, evaluations, or proctoring to unauthorized callers.
+- Never return or log `password`, `passwordHash`, reset tokens, session cookies, `Authorization` headers, JWT secrets, `DATABASE_URL`, or API keys. Never put secrets in client components or `NEXT_PUBLIC_*`.
+- Auth cookies stay `HttpOnly`, `SameSite=Lax`, and `Secure` when HTTPS/production requires it (R-10). Never move auth tokens to `localStorage` or expose session secrets to JavaScript.
+- Do not weaken existing CSRF. Do not disable it to make a request succeed.
+
+## Headers, CSP, input, files
+
+- Keep nonce-based CSP. Do not add `unsafe-inline`, `unsafe-eval`, or `*` as a shortcut. No unnecessary third-party origins. New inline scripts use the existing nonce.
+- Keep CSP, `X-Frame-Options: DENY`, `nosniff`, Referrer-Policy, Permissions-Policy, and HSTS where HTTPS already applies.
+- Validate strings, numbers, enums, IDs, dates, files, JSON, query, and body. Reject malformed input. No string-built SQL. Parameterize every `$queryRaw`.
+- No `dangerouslySetInnerHTML` for candidate/interview/AI content unless explicitly sanitized. Names, answers, resumes, and transcripts are untrusted.
+- Uploads (resumes, recordings) are untrusted: check type, size, extension, content type, and storage path. No path traversal. No user-controlled filenames as filesystem paths. Do not execute uploads. Do not store private files under public/static.
+- Recordings are private. No guessable public URLs. Authorize before read. Do not leak recording URLs on public APIs.
+
+## Camera, proctoring, AI
+
+- Never secretly start camera or microphone, or bypass browser permission. Record only in the approved interview state. UI must match real recording state.
+- Proctoring stays `signalOnly`, `noAutoVerdict`, `noAtsStageChange`, `noAiInput`. Do not send proctoring into AI. Do not show raw proctoring diagnostics to candidates unless required.
+- Treat resumes, answers, and transcripts as untrusted model input (prompt injection). AI output must not execute SQL, shell, filesystem, admin, or ATS actions without server validation and authorization.
+- AI “YES” / “NO” / “REJECT” / “SELECT” is not an authoritative decision. AI must not change stage, hiring status, or staff permissions except through an explicitly authorized server workflow.
+- Do not let the browser trigger unbounded AI eval, retries, audio, embeddings, or file processing. Keep R-3 bounded retries.
+
+## Errors, logs, demo, dependencies
+
+- User-facing errors must not include stack traces, SQL, paths, env, credentials, or internal topology. Log diagnostics server-side without secrets, full resumes, or unnecessary answers/recordings.
+- Demo data uses normal authz. No universal demo passwords, public demo APIs, hidden admins, or unrestricted candidate access.
+- Reuse existing code before adding a package. New deps: maintenance, permissions, supply chain, bundle size. Third-party UI (e.g. thinking-orbs) must not receive candidate data, recordings, or credentials unless required.
+- Public health stays minimal.
+
+## Before calling security-sensitive work done
+
+Prove, where applicable: unauthenticated denied, authorized allowed, unauthorized denied, wrong org, wrong role, invalid ID, malformed input. A single successful request is not enough.
+
+If you find a vulnerability while doing other work: stop the unrelated change and report vulnerability, component, attack scenario, severity, exposure, proposed fix, and regression tests. Wait for approval if the fix changes protected business behavior.
+
+When uncertain: STOP → inspect → threat-model → test → then change.

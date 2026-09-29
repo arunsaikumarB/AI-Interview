@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Logisoft HireOS — Demo Brief</title>
+<style>
+  @page { size: A4; margin: 14mm 14mm 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1c2533; font-size: 10.5pt; line-height: 1.45; margin: 0; }
+  h1, h2, h3 { margin: 0; color: #0f2a4a; }
+  h2 { font-size: 15pt; margin: 0 0 8px; padding-bottom: 5px; border-bottom: 2px solid #2563eb; }
+  h3 { font-size: 11pt; margin: 12px 0 5px; }
+  p { margin: 4px 0; }
+  ul, ol { margin: 4px 0 4px 18px; padding: 0; }
+  li { margin: 2px 0; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  .muted { color: #5b6878; }
+  .small { font-size: 9pt; }
+  .tag { display: inline-block; font-size: 8pt; font-weight: 600; padding: 1px 7px; border-radius: 9px; white-space: nowrap; }
+  .done { background: #dcfce7; color: #166534; }
+  .pend { background: #fef3c7; color: #92400e; }
+  .off { background: #e5e7eb; color: #374151; }
+
+  /* Cover */
+  .cover { background: linear-gradient(135deg, #0f2a4a, #1e4f8f); color: #fff; border-radius: 12px; padding: 34px 32px; margin-bottom: 18px; }
+  .cover h1 { color: #fff; font-size: 26pt; letter-spacing: .3px; }
+  .cover .sub { font-size: 12.5pt; opacity: .9; margin-top: 4px; }
+  .cover .line { margin-top: 18px; font-size: 13pt; background: rgba(255,255,255,.12); padding: 12px 14px; border-radius: 8px; }
+  .cover .meta { margin-top: 14px; font-size: 9pt; opacity: .8; }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 10px 0; }
+  .card { border: 1px solid #d7dee8; border-radius: 9px; padding: 10px 12px; background: #f8fafc; }
+  .card b { color: #0f2a4a; display: block; margin-bottom: 3px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 9.8pt; }
+  th { background: #0f2a4a; color: #fff; text-align: left; padding: 6px 8px; font-weight: 600; }
+  td { border-bottom: 1px solid #e3e8ef; padding: 5px 8px; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f9fc; }
+
+  /* Flow */
+  .flow { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 4px; margin: 8px 0 8px; }
+  .step { flex: 1 1 0; display: flex; flex-direction: column; justify-content: center; background: #eaf1fd; border: 1px solid #b9cff5; color: #0f2a4a; border-radius: 8px; padding: 7px 6px; font-size: 8.8pt; font-weight: 600; text-align: center; }
+  .step .small { font-weight: 400; }
+  .arrow { align-self: center; }
+  .step.human { background: #fff4e0; border-color: #f2c77c; }
+  .arrow { color: #2563eb; font-weight: 700; }
+
+  .arch { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 8px 0; }
+  .box { border-radius: 9px; padding: 9px 11px; border: 1px solid #cfd9e6; }
+  .box h4 { margin: 0 0 3px; font-size: 10pt; color: #0f2a4a; }
+  .b1 { background: #eef5ff; } .b2 { background: #f0fbf4; } .b3 { background: #fff7ed; } .b4 { background: #f5f3ff; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .col { border: 1px solid #d7dee8; border-radius: 9px; padding: 10px 12px; }
+  .col.auto { background: #f0fbf4; border-color: #bfe5cc; }
+  .col.man { background: #fff8ec; border-color: #f2d49b; }
+  .col h3 { margin-top: 0; }
+
+  .demo td:first-child { width: 26px; font-weight: 700; color: #2563eb; }
+  .say { color: #0f5132; font-style: italic; }
+  .note { background: #f1f5f9; border-left: 4px solid #2563eb; padding: 8px 11px; border-radius: 4px; margin: 8px 0; font-size: 9.6pt; }
+  .warn { background: #fff7ed; border-left: 4px solid #f59e0b; padding: 8px 11px; border-radius: 4px; margin: 8px 0; font-size: 9.6pt; }
+  .qa b { color: #0f2a4a; }
+  .qa p { margin: 0 0 7px; }
+  .footer { margin-top: 10px; font-size: 8.5pt; color: #7a8696; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1 -->
+<section class="page">
+  <div class="cover">
+    <h1>Logisoft HireOS</h1>
+    <div class="sub">AI Recruitment Platform — Demo Brief for CEO &amp; Director</div>
+    <div class="line"><b>One line:</b> HireOS reads the job, screens resumes, interviews candidates with AI, tests their skills, and gives the recruiter clear evidence — <b>AI assists, humans decide.</b></div>
+    <div class="meta">Tagline: “Intelligent hiring. Human decisions.” · 100% self-hosted · Prepared 29 Sep 2026</div>
+  </div>
+
+  <h2>What HireOS does</h2>
+  <div class="cards">
+    <div class="card"><b>1. Manage hiring</b>Jobs, candidates, resumes, pipeline board, full activity history.</div>
+    <div class="card"><b>2. AI screening</b>Matches resume to job. Gives score, strengths, missing skills, concerns.</div>
+    <div class="card"><b>3. AI interview</b>AI asks questions by text or voice, adapts follow-ups, records answers.</div>
+    <div class="card"><b>4. Skill tests</b>Coding (Python / JavaScript) and SQL tests run in a locked sandbox.</div>
+    <div class="card"><b>5. Integrity checks</b>Tab switch, paste, camera, optional phone as 2nd camera — flagged, not judged.</div>
+    <div class="card"><b>6. Evidence report</b>Per-answer reasoning, overall summary, skill-by-skill evidence.</div>
+  </div>
+
+  <h2 style="margin-top:14px">Three messages to land</h2>
+  <ol>
+    <li><b>Saves recruiter time</b> — screening, interviewing and first-round testing run by the system.</li>
+    <li><b>Fair and explainable</b> — every AI score shows its reasoning; nothing is a black box.</li>
+    <li><b>Our data stays with us</b> — no cloud AI, no per-candidate fees, runs on our own server.</li>
+  </ol>
+
+  <div class="note"><b>Golden rule of the product:</b> AI never selects or rejects anyone and never moves a candidate’s stage. Only a recruiter can — and Select / Reject needs a written note.</div>
+</section>
+
+<!-- PAGE 2 -->
+<section class="page">
+  <h2>How it is built</h2>
+  <div class="arch">
+    <div class="box b1"><h4>Frontend (what users see)</h4>Next.js 14 + React, TypeScript, Tailwind. Recruiter dashboard, careers page, candidate portal, interview room.</div>
+    <div class="box b1"><h4>Backend (logic &amp; APIs)</h4>Next.js API (live today). A Django + Celery backend is also built and tested, kept switched off for now.</div>
+    <div class="box b2"><h4>Database</h4>PostgreSQL with pgvector (for smart “search by meaning”). Files (resumes, recordings) on our own disk.</div>
+    <div class="box b3"><h4>AI brain</h4>Qwen 2.5 (7B) open-source model, running locally through Ollama. Nomic model for smart search.</div>
+    <div class="box b3"><h4>Voice</h4>Whisper (speech → text) and Piper (text → voice). Both run locally.</div>
+    <div class="box b4"><h4>Camera &amp; code safety</h4>Google MediaPipe in the browser for camera checks. Docker sandbox (no internet) to run candidate code.</div>
+  </div>
+  <div class="note">Everything runs on <b>our machine / server</b>. No OpenAI, no cloud database, no cloud storage. Candidate data never leaves the company.</div>
+
+  <h3>Third-party tools used (all free / open-source, run locally)</h3>
+  <table>
+    <tr><th style="width:24%">Tool</th><th>What it does for us</th></tr>
+    <tr><td>Ollama + Qwen 2.5 7B</td><td>The AI that screens, generates questions, evaluates answers</td></tr>
+    <tr><td>Nomic embed</td><td>Talent-pool search by meaning (e.g. “React dev with fintech”)</td></tr>
+    <tr><td>Whisper / Piper</td><td>Voice interview: listens to candidate, speaks questions</td></tr>
+    <tr><td>MediaPipe (Google)</td><td>Face / object detection for integrity signals, inside the browser</td></tr>
+    <tr><td>PostgreSQL + pgvector</td><td>Main database</td></tr>
+    <tr><td>Docker</td><td>Runs the database, AI, voice service and the code sandbox</td></tr>
+    <tr><td>Redis + Celery</td><td>Background job queue for the Django backend (ready, not switched on)</td></tr>
+    <tr><td>Caddy</td><td>Local HTTPS so a phone can join as the 2nd camera (QR code)</td></tr>
+    <tr><td>PDF / Word readers</td><td>Read uploaded resumes (pdf-parse, mammoth)</td></tr>
+    <tr><td>Email (SMTP)</td><td>Email templates are built; needs our company mail server connected</td></tr>
+  </table>
+
+  <h3>User roles (each sees only what they should)</h3>
+  <p>Super Admin · HR Admin · Recruiter · Hiring Manager · Interviewer · Candidate</p>
+</section>
+
+<!-- PAGE 3 -->
+<section class="page">
+  <h2>How it works — end to end</h2>
+  <div class="flow">
+    <div class="step human">Recruiter posts job</div><span class="arrow">→</span>
+    <div class="step">Candidate applies<br><span class="small">careers page</span></div><span class="arrow">→</span>
+    <div class="step">Resume read automatically</div><span class="arrow">→</span>
+    <div class="step">AI screening<br><span class="small">score + why</span></div><span class="arrow">→</span>
+    <div class="step human">Recruiter shortlists</div>
+  </div>
+  <p class="small muted" style="margin:0 0 0 6px">↓ then</p>
+  <div class="flow">
+    <div class="step">Assessment plan from job<br><span class="small">skills + questions</span></div><span class="arrow">→</span>
+    <div class="step">AI interview<br><span class="small">text / voice</span></div><span class="arrow">→</span>
+    <div class="step">Coding / SQL test<br><span class="small">auto-checked</span></div><span class="arrow">→</span>
+    <div class="step">Evidence report</div><span class="arrow">→</span>
+    <div class="step human">Recruiter decides</div>
+  </div>
+  <p class="small muted">Blue = system does it · Orange = person does it</p>
+
+  <h3>Hiring stages</h3>
+  <p>Applied → Screening → Shortlisted → Assessment → AI Interview → Tech Interview → HR Interview → <b style="white-space:nowrap">Selected / Rejected</b></p>
+
+  <h3>Step-by-step process</h3>
+  <table>
+    <tr><th style="width:5%">#</th><th style="width:27%">Step</th><th>What happens</th></tr>
+    <tr><td>1</td><td>Create job</td><td>Recruiter adds title, description, skills, experience.</td></tr>
+    <tr><td>2</td><td>Candidates apply</td><td>Public careers page or recruiter uploads resume. Resume text read automatically.</td></tr>
+    <tr><td>3</td><td>AI screening</td><td>One click (or “Screen all”). Score, strengths, gaps, concerns, suggestion.</td></tr>
+    <tr><td>4</td><td>Shortlist</td><td>Recruiter moves good candidates forward on the pipeline board.</td></tr>
+    <tr><td>5</td><td>Assessment plan</td><td>System reads the job and builds a plan: skills to test, questions, difficulty, which practical test.</td></tr>
+    <tr><td>6</td><td>Send assessment</td><td>Recruiter clicks “Create from blueprint” / “Assign”, then shares <b>one link</b> with the candidate.</td></tr>
+    <tr><td>7</td><td>Candidate takes it</td><td>AI interview (about 30 min) + coding / SQL test. Integrity signals recorded if enabled.</td></tr>
+    <tr><td>8</td><td>Auto evaluation</td><td>AI scores each answer with reasoning; code/SQL checked against hidden tests.</td></tr>
+    <tr><td>9</td><td>Review</td><td>Recruiter sees report, transcript, skill evidence, integrity signals.</td></tr>
+    <tr><td>10</td><td>Decision</td><td>Recruiter moves stage / selects / rejects with a note. Logged in history.</td></tr>
+  </table>
+</section>
+
+<!-- PAGE 4 -->
+<section class="page">
+  <h2>How automatic is it?</h2>
+  <div class="two">
+    <div class="col auto">
+      <h3>System does automatically</h3>
+      <ul>
+        <li>Reads resumes (PDF / Word)</li>
+        <li>Screening score with reasons (after one click)</li>
+        <li>Assessment plan from the job description</li>
+        <li>Interview questions (AI-worded, safety-checked)</li>
+        <li>Conducts the interview, asks follow-ups</li>
+        <li>Voice: speaks questions, transcribes answers</li>
+        <li>Scores each answer + overall report with reasoning</li>
+        <li>Runs and checks coding / SQL answers</li>
+        <li>Records integrity signals with timestamps</li>
+        <li>Keeps a full audit history of every action</li>
+      </ul>
+    </div>
+    <div class="col man">
+      <h3>Recruiter does manually</h3>
+      <ul>
+        <li>Create the job</li>
+        <li>Click “Run screening” / “Screen all”</li>
+        <li>Shortlist and move stages</li>
+        <li>Create interview / assign tests</li>
+        <li>Copy and send the candidate link<br><span class="small muted">(auto-email once mail server is connected)</span></li>
+        <li>Review report and evidence</li>
+        <li>Final Select / Reject with a note</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note"><b>In short:</b> the heavy work (reading, screening, interviewing, testing, scoring) is automatic. The <b>decisions</b> stay human — by design.</div>
+
+  <h3>Timing on the current machine (AI runs on CPU)</h3>
+  <table>
+    <tr><th>Task</th><th>Approx. time</th></tr>
+    <tr><td>Resume screening</td><td>1–2 minutes per candidate</td></tr>
+    <tr><td>Interview from assessment plan</td><td>Instant (AI wording improves in background)</td></tr>
+    <tr><td>Interview for candidate</td><td>About 30 minutes (set by recruiter)</td></tr>
+    <tr><td>Final interview report</td><td>A few minutes after interview ends</td></tr>
+    <tr><td>Coding / SQL check</td><td>A few seconds</td></tr>
+  </table>
+  <p class="small muted">A GPU server will make AI steps much faster. No per-candidate AI cost either way.</p>
+</section>
+
+<!-- PAGE 5 -->
+<section class="page">
+  <h2>Demo walkthrough (about 15–20 min)</h2>
+  <p class="small muted">Log in as <b>recruiter@local.dev</b> at http://localhost:3000/login (password shared separately). Use existing demo candidates.</p>
+  <table class="demo">
+    <tr><th></th><th style="width:40%">Show</th><th>Say</th></tr>
+    <tr><td>1</td><td><b>Dashboard</b> — numbers, pipeline summary</td><td class="say">“One place for all hiring: jobs, candidates, interviews.”</td></tr>
+    <tr><td>2</td><td><b>Jobs</b> → Senior Full Stack Engineer</td><td class="say">“Every job holds its description, skills and candidates.”</td></tr>
+    <tr><td>3</td><td><b>Careers page</b> (/careers) — open a job</td><td class="say">“Candidates apply here; the resume is read automatically.”</td></tr>
+    <tr><td>4</td><td><b>Pipeline</b> board</td><td class="say">“Stages from Applied to Selected. Only people move candidates.”</td></tr>
+    <tr><td>5</td><td><b>Arjun Mehta</b> → AI Screening card</td><td class="say">“AI gives a match score, strengths, gaps, concerns — and why.”</td></tr>
+    <tr><td>6</td><td><b>Job → Assessment</b> page (blueprint)</td><td class="say">“From the job, the system plans what to test and how hard.”</td></tr>
+    <tr><td>7</td><td><b>Arjun’s interview report</b> (or Kavya Menon’s)</td><td class="say">“Full transcript, every answer scored with reasoning, overall summary.”</td></tr>
+    <tr><td>8</td><td><b>Interview Links</b> page</td><td class="say">“Each candidate gets a private link. We can see who started or finished.”</td></tr>
+    <tr><td>9</td><td><b>Candidate page → Assessment section</b></td><td class="say">“One link gives the candidate interview + coding/SQL test. We see progress and evidence per skill.”</td></tr>
+    <tr><td>10</td><td><b>Recruiter Decision</b> panel (don’t click)</td><td class="say">“AI never decides. Select or Reject needs a human note.”</td></tr>
+    <tr><td>11</td><td><b>Talent Pool</b> search</td><td class="say">“Search past candidates by meaning, not just keywords.”</td></tr>
+    <tr><td>12</td><td><b>Analytics</b> + Settings (templates, users)</td><td class="say">“Hiring metrics, email templates, role-based access.”</td></tr>
+  </table>
+
+  <h3>Optional live moments (only if time allows)</h3>
+  <ul>
+    <li><b>Live AI interview:</b> open Aisha Rahman’s scheduled link from Interview Links; answer 2–3 questions.</li>
+    <li><b>Live assessment:</b> Meera Iyer (Senior Full Stack) → Assessment section → “Create from blueprint” + Assign Coding → Issue link → open the link → candidate sees one page with Interview + Coding.</li>
+    <li><b>Live SQL test:</b> Rohan Desai (People Analytics) → Assign SQL → open link → run a query → results appear for recruiter.</li>
+    <li><b>Phone 2nd camera:</b> interview in Enhanced mode shows a QR code; the phone joins as a side camera.</li>
+  </ul>
+  <div class="warn">Live actions create real records on that candidate and AI steps take 1–2 min on this machine. If short on time, stick to steps 1–12 — the demo candidates already show finished results.</div>
+</section>
+
+<!-- PAGE 6 -->
+<section class="page">
+  <h2>What we have implemented</h2>
+  <table>
+    <tr><th style="width:28%">Module</th><th>What is ready</th><th style="width:14%">Status</th></tr>
+    <tr><td>Foundation</td><td>Login, 6 roles, organisation &amp; departments, secure sessions</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>ATS core</td><td>Jobs, candidates, resume upload &amp; reading, pipeline board, activity history</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>Careers &amp; portal</td><td>Public job page, apply form, candidate login &amp; profile</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>AI screening</td><td>Score, strengths, gaps, concerns, suggestion — with reasoning</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>AI interview</td><td>Text &amp; voice, adaptive follow-ups, timer, recording</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>Integrity (proctoring)</td><td>Tab / paste / fullscreen, camera checks, phone 2nd camera — signals only</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>Evaluation report</td><td>Per-answer and overall AI evaluation with reasoning</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>Talent pool, templates, analytics</td><td>Smart search, email templates, dashboards</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>Assessment Engine</td><td>Job → skill plan, question plan, difficulty, rubric</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>AI question writer</td><td>AI rewrites questions, checked by guardrails, safe fallback</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>Practical tests</td><td>Coding (Python, JavaScript) + SQL in locked sandbox, auto-checked</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>Unified assessment</td><td>One candidate link, progress, skill-by-skill evidence for recruiter</td><td><span class="tag done">Done</span></td></tr>
+    <tr><td>Django backend</td><td>Built and tested; ready to switch on stage by stage</td><td><span class="tag off">Ready, off</span></td></tr>
+  </table>
+  <p class="small muted">Quality check: 298 unit tests, 159 security/isolation tests, 43 sandbox security tests, 168 backend tests — all passing.</p>
+
+  <h2 style="margin-top:12px">What is pending</h2>
+  <table>
+    <tr><th style="width:28%">Item</th><th>Why / what’s needed</th><th style="width:14%">Type</th></tr>
+    <tr><td>Email sending</td><td>Connect company mail server (SMTP) for auto-emails</td><td><span class="tag pend">Setup</span></td></tr>
+    <tr><td>Production server</td><td>Install on company server (GPU recommended), HTTPS, backups</td><td><span class="tag pend">Setup</span></td></tr>
+    <tr><td>Sandbox small fix</td><td>Two identical test submissions in the same second — fix ready for approval</td><td><span class="tag pend">Small fix</span></td></tr>
+    <tr><td>Switch on Django backend</td><td>Move work to the new backend step by step</td><td><span class="tag pend">Planned</span></td></tr>
+    <tr><td>Database history cleanup</td><td>Technical housekeeping of database version history</td><td><span class="tag pend">Planned</span></td></tr>
+    <tr><td>Phone-camera “device use” detection</td><td>Accuracy tuning, deliberately paused</td><td><span class="tag pend">Deferred</span></td></tr>
+    <tr><td>Next phase (V4)</td><td>AI skill scoring from all evidence, smarter adaptive interview</td><td><span class="tag pend">Next phase</span></td></tr>
+    <tr><td>More tests &amp; languages</td><td>More coding / SQL tasks, more languages, stronger sandbox</td><td><span class="tag pend">Next phase</span></td></tr>
+    <tr><td>Code review</td><td>Latest assessment modules to be reviewed and saved to repository</td><td><span class="tag pend">Housekeeping</span></td></tr>
+  </table>
+</section>
+
+<!-- PAGE 7 -->
+<section class="page">
+  <h2>Likely questions — short answers</h2>
+  <div class="qa">
+    <p><b>Does the AI hire or reject people?</b><br>No. It only suggests. A recruiter makes every decision and must write a note.</p>
+    <p><b>Which AI do we use?</b><br>Qwen 2.5 — an open-source model running on our own machine via Ollama. Not ChatGPT, not cloud.</p>
+    <p><b>Where is candidate data stored?</b><br>On our own server — database and files. Nothing is sent outside.</p>
+    <p><b>What does it cost to run?</b><br>No per-candidate or per-API fees. Main cost is the server (GPU recommended).</p>
+    <p><b>Can candidates cheat?</b><br>We track tab switches, paste, camera and an optional phone side-camera. These are flags with time stamps for a human to review — they never change the AI score.</p>
+    <p><b>Is the AI fair / explainable?</b><br>Every score stores its reasoning. Recruiter sees why, not just a number.</p>
+    <p><b>Is it secure?</b><br>Role-based access, company data isolation, secure login, full audit trail. Candidate code runs in a locked sandbox with no internet.</p>
+    <p><b>How much is automatic?</b><br>Reading, screening, interviewing, testing and scoring. People create jobs, send links and decide.</p>
+    <p><b>Is it ready to use?</b><br>Ready for a pilot on our local server. Pending: mail server, production server setup, a few small items listed on the previous page.</p>
+  </div>
+
+  <h2 style="margin-top:12px">Before the demo — checklist</h2>
+  <ul>
+    <li>Say <b>“lets go”</b> to start everything (database, AI, backend, website).</li>
+    <li>Start the code sandbox if showing a live test: <code>npm run sandbox:runner</code>.</li>
+    <li>Open http://localhost:3000/login — log in as recruiter once to warm up.</li>
+    <li>Open Arjun Mehta and Kavya Menon pages beforehand (finished results ready).</li>
+    <li>Keep this PDF open on a second screen.</li>
+  </ul>
+  <div class="footer">Logisoft HireOS — Intelligent hiring. Human decisions.</div>
+</section>
+
+</body>
+</html>
