@@ -71,7 +71,7 @@ docker compose up -d postgres
 
 - Speech container defaults to **CPU Whisper `small`** (portable). Host GPU speech via `speech-service\run.ps1` remains the fast path for VOICE QA.
 - Ollama model pulls can take a long time on first run; volumes persist models.
-- App schema: `prisma migrate deploy` on every container start (`docker/app/entrypoint.sh`).
+- App schema: `docker/app/entrypoint.sh` runs `prisma db push` only when the database is empty (otherwise skipped unless `HIREOS_DB_PUSH=true`); it never runs `prisma migrate deploy`. It does not create the V3 immutability trigger — see [DEPLOYMENT-DATABASE-V3.1.md](DEPLOYMENT-DATABASE-V3.1.md).
 - Storage (resumes / interview audio): Docker volume `app_storage` → `/storage`.
 
 ## Not in this compose (Tier 2 follow-ups)
