@@ -7,6 +7,7 @@
     "predev": "node scripts/ensure-local-db.mjs",
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
+    "postbuild": "cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/",
     "start": "next start -H 0.0.0.0",
     "lint": "next lint",
     "db:ensure": "node scripts/ensure-local-db.mjs",
