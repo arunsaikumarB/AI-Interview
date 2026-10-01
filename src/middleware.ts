@@ -31,8 +31,13 @@ function isPublic(pathname: string) {
   // Candidate magic-link assessment hub (token auth, no session cookie)
   if (pathname.startsWith("/assessment/")) return true;
   if (pathname.startsWith("/api/assessment/")) return true;
-  // Local UI-only preview (orb + camera layout — no interview flow)
-  if (pathname.startsWith("/dev/interview-preview")) return true;
+  // Local UI-only preview (orb + camera layout — no interview flow); never public in production
+  if (
+    process.env.NODE_ENV !== "production" &&
+    pathname.startsWith("/dev/interview-preview")
+  ) {
+    return true;
+  }
   return false;
 }
 

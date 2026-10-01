@@ -29,6 +29,9 @@ jobs:
       DATABASE_URL: postgresql://ats:ats_local_dev@localhost:55432/ai_recruitment_os?schema=public
       AUTH_SECRET: ci-isolation-test-secret-not-for-production
       AUTH_COOKIE_NAME: aros_session
+      # The suite signs in as candidates to prove portal isolation, so it needs
+      # candidate accounts on. Staff-only mode is covered by tests/unit/candidate-accounts.test.ts.
+      CANDIDATE_ACCOUNTS_ENABLED: "true"
       AI_PROVIDER: local
       OLLAMA_LOCAL_URL: http://127.0.0.1:9
       SPEECH_SERVICE_URL: http://127.0.0.1:9
