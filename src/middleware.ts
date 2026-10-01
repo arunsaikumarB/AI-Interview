@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 import {
+  devInterviewPreviewBlocked,
+  isDevInterviewPreviewPath,
+} from "@/lib/dev-interview-preview";
+import {
   buildSecurityHeaders,
   createNonce,
   requestIsHttps,
@@ -13,6 +17,7 @@ const PUBLIC_PATHS = [
   "/api/auth/login",
   "/api/auth/register",
   "/api/health",
+  "/api/version",
 ];
 
 function isPublic(pathname: string) {
@@ -31,8 +36,10 @@ function isPublic(pathname: string) {
   // Candidate magic-link assessment hub (token auth, no session cookie)
   if (pathname.startsWith("/assessment/")) return true;
   if (pathname.startsWith("/api/assessment/")) return true;
-  // Local UI-only preview (orb + camera layout — no interview flow)
-  if (pathname.startsWith("/dev/interview-preview")) return true;
+  // Local UI preview — development only. Production is rejected before this.
+  if (isDevInterviewPreviewPath(pathname) && process.env.NODE_ENV !== "production") {
+    return true;
+  }
   return false;
 }
 
@@ -80,6 +87,10 @@ export async function middleware(request: NextRequest) {
     headers.set("x-nonce", nonce);
     headers.set("Content-Security-Policy", security["Content-Security-Policy"]);
     return headers;
+  }
+
+  if (devInterviewPreviewBlocked(process.env.NODE_ENV, pathname)) {
+    return harden(NextResponse.json({ error: "Not found" }, { status: 404 }));
   }
 
   if (isPublic(pathname)) {

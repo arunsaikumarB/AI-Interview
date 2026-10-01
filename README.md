@@ -2,17 +2,29 @@
 
 AI Recruitment Operating System — Intelligent hiring. Human decisions.
 
-Self-hosted ATS + AI Screening + Adaptive AI Interview + Proctoring signals + Evaluation.
+Self-hosted ATS + advisory AI screening + adaptive AI interview + V3.1 assessment engine + proctoring signals + evaluation.
 
-## Build order (do not skip ahead)
+## What is included
 
-1. **Foundation** — scaffold, Prisma, local auth, RBAC, org/departments ✅
-2. **ATS core** — jobs CRUD, candidate DB, resume upload+parse, DnD pipeline, timeline ✅
-3. **AI Screening** — JD vs resume match with why / missing / concerns (next)
-4. **AI Interview engine** — text-only adaptive Q&A first
-5. **Voice/video session** — Whisper STT, TTS, recording
-6. **Proctoring + evaluation reports**
-7. **Talent pool, templates, analytics**
+1. **Foundation** — Prisma, local auth, RBAC, organization and departments
+2. **ATS core** — jobs, candidates, resume upload and parse, pipeline board, timeline
+3. **AI screening** — advisory JD vs resume match; every score stores its reasoning
+4. **AI interview** — adaptive Q&A, including voice and video
+5. **V3.1 assessment engine** — job assessments, practical tasks, and the tokenized assessment hub
+6. **Proctoring signals and evaluation reports** — timestamped signals only, never an automatic verdict
+7. **Talent pool, templates, and analytics**
+
+## Staff-only mode
+
+Candidate self-service is off unless `CANDIDATE_ACCOUNTS_ENABLED=true` (see `.env.example`).
+
+With the default (unset or not `true`):
+
+- `/register` redirects to `/login`, and the login page has no "Create an account" link
+- candidate sign-in and `/portal` are blocked
+- candidates use the interview and assessment links staff send them
+
+Staff roles are unchanged. Leave the flag off on a company server unless the candidate portal is an explicit decision.
 
 ## Hard rules
 
@@ -61,19 +73,32 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). For VOICE interviews also run `speech-service\run.ps1`.
 
-### Seed accounts
+### Local demo data and first administrator
 
-| Email | Password | Role |
+`npm run db:seed` loads demo data for local development only. Do not run it on a company server.
+
+On a fresh server, create the first organization and `SUPER_ADMIN` with `npm run bootstrap:admin`. See [docs/DEPLOYMENT-BOOTSTRAP-ADMIN.md](docs/DEPLOYMENT-BOOTSTRAP-ADMIN.md).
+
+## Deployment
+
+| Document | Use |
+|---|---|
+| [docs/DEPLOYMENT-DATABASE-V3.1.md](docs/DEPLOYMENT-DATABASE-V3.1.md) | V3.1 schema on an empty database (`prisma db push` plus the manual immutability trigger). Do not run `prisma migrate deploy` (R-4). |
+| [docs/DEPLOYMENT-BOOTSTRAP-ADMIN.md](docs/DEPLOYMENT-BOOTSTRAP-ADMIN.md) | First organization and administrator |
+| [docs/DEPLOYMENT-CENTOS9.md](docs/DEPLOYMENT-CENTOS9.md) | Ollama, speech, code runner, HTTPS, firewall, backups |
+| [docs/FRONTEND-ARCHITECTURE.md](docs/FRONTEND-ARCHITECTURE.md) | The React / Next.js process DevOps runs |
+| [docs/PACKAGING.md](docs/PACKAGING.md) | Local Docker pilot (Postgres, Ollama, speech, app) |
+
+Production: `npm ci`, `npm run build` (`output: "standalone"`), then `npm run start`. Do not use `npm run dev` on a server.
+
+## Health and version
+
+| Endpoint | Who | Returns |
 |---|---|---|
-| `admin@local.dev` | `password123` | SUPER_ADMIN |
-| `recruiter@local.dev` | `password123` | RECRUITER |
-| `candidate@local.dev` | `password123` | CANDIDATE |
+| `GET /api/health` | Public | Readiness booleans for Postgres, Ollama, and speech. No URLs, model names, paths, or errors. |
+| `GET /api/version` | Public | `{ "service", "commit" }`. `commit` is the git SHA recorded at build time, or `"unknown"`. No environment variables or secrets. |
 
-(Also seeded: `hr@`, `hm@`, `interviewer@` — same password.)
-
-### Health check
-
-`GET /api/health` — reports Postgres + Ollama connectivity.
+`postbuild` writes that commit into the standalone output. A git checkout supplies it automatically. Docker images exclude `.git`, so pass `--build-arg HIREOS_BUILD_COMMIT=$(git rev-parse HEAD)`. `GITHUB_SHA` and `CI_COMMIT_SHA` are also accepted at build time.
 
 ## Key APIs
 
@@ -87,7 +112,8 @@ Open [http://localhost:3000](http://localhost:3000). For VOICE interviews also r
 | GET | `/api/applications/board` | Kanban columns by stage |
 | GET | `/api/applications/:id` | Detail + timeline |
 | POST | `/api/applications/:id/stage` | Human-only stage move / final decision |
-| POST | `/api/applications/:id/screen` | Stub screening (Phase 3 expands match breakdown) |
+| POST | `/api/applications/:id/screen` | Advisory screening. Does not change stage or status |
+| GET | `/api/version` | Build commit (`service` and `commit` only) |
 | POST | `/api/interviews/:id/proctoring` | Timestamped proctoring **signal** |
 
 ## Project layout

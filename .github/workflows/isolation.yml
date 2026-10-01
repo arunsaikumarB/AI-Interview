@@ -52,19 +52,15 @@ jobs:
           npx prisma generate
           npm run db:seed
 
-      - name: Start Next.js
-        run: |
-          npm run build
-          npm run start -- --hostname 127.0.0.1 --port 3000 &
-          for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:3000/api/health >/dev/null; then
-              echo "server up"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "server failed to become healthy"
-          exit 1
+      - name: Build
+        run: npm run build
 
-      - name: Run isolation suite
-        run: npm run test:isolation
+      # Staff-only is the product default (CANDIDATE_ACCOUNTS_ENABLED unset).
+      # The flag is read at runtime, so the same build serves both phases.
+      - name: Staff-only default (portal blocked)
+        run: bash scripts/with-next-server.sh defaults -- npm run test:isolation:defaults
+
+      - name: Portal isolation (candidate accounts enabled)
+        env:
+          CANDIDATE_ACCOUNTS_ENABLED: "true"
+        run: bash scripts/with-next-server.sh portal -- npm run test:isolation
