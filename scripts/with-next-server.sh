@@ -13,15 +13,23 @@ shift 2
 log="/tmp/next-${name}.log"
 pid=""
 
+# Kill a process and its descendants. `set -e` plus a tracked background job
+# makes bash exit 143 ("Terminated") when that job is signalled, so this
+# function turns off -e and disowns the pid before signalling it.
+kill_tree() {
+  local p="$1"
+  local child
+  for child in $(pgrep -P "${p}" 2>/dev/null || true); do
+    kill_tree "${child}"
+  done
+  kill "${p}" 2>/dev/null || true
+}
+
 stop_server() {
+  set +e
   if [ -n "${pid}" ]; then
-    pkill -P "${pid}" 2>/dev/null || true
-    kill "${pid}" 2>/dev/null || true
-  fi
-  # The next-server child can outlive `npm run start`.
-  pkill -f "[n]ext-server" 2>/dev/null || true
-  pkill -f "[n]ext start" 2>/dev/null || true
-  if [ -n "${pid}" ]; then
+    disown "${pid}" 2>/dev/null || true
+    kill_tree "${pid}"
     wait "${pid}" 2>/dev/null || true
   fi
   local i
@@ -58,7 +66,6 @@ fi
 set +e
 "$@"
 cmd_status=$?
-set -e
 
 if ! stop_server; then
   if [ "${cmd_status}" -eq 0 ]; then
