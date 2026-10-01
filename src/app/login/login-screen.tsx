@@ -52,7 +52,7 @@ function LoginForm() {
           name="email"
           type="email"
           required
-          placeholder="recruiter@local.dev"
+          placeholder="name@company.com"
           className="h-11 text-[15px] md:text-[15px]"
         />
       </div>

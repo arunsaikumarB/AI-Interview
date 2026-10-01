@@ -6,7 +6,9 @@
  * 2) Portal JSON contains zero score / evaluation fields
  * 3) Candidate A cannot read Candidate B application / resume / scores
  *
- * Requires: Postgres seeded, Next.js on BASE_URL (default :3000), AUTH_SECRET set.
+ * Requires: Postgres seeded, Next.js on BASE_URL (default :3000), AUTH_SECRET set,
+ * and CANDIDATE_ACCOUNTS_ENABLED=true on that server. The staff-only default
+ * (portal blocked) is tests/isolation/production-defaults.test.mjs.
  *   npm run test:isolation
  */
 import { describe, it, before, after } from "node:test";
@@ -61,6 +63,15 @@ describe("Phase 9 candidate isolation", () => {
       role: "CANDIDATE",
       organizationId: pair.userB.organizationId,
     });
+
+    const probe = await api(cookieA, "GET", "/api/portal/applications");
+    assert.notEqual(
+      probe.res.status,
+      403,
+      "GET /api/portal/applications returned 403. Staff-only mode is blocking the portal. " +
+        "Start this suite with CANDIDATE_ACCOUNTS_ENABLED=true. " +
+        "The blocked default is covered by production-defaults.test.mjs.",
+    );
   });
 
   after(async () => {

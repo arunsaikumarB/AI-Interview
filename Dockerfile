@@ -13,6 +13,10 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx prisma generate
 RUN npm run setup:mediapipe
+# .git is excluded (.dockerignore). Host checkouts record the SHA via git in
+# postbuild. For an image, pass --build-arg HIREOS_BUILD_COMMIT=$(git rev-parse HEAD).
+ARG HIREOS_BUILD_COMMIT=
+ENV HIREOS_BUILD_COMMIT=$HIREOS_BUILD_COMMIT
 RUN npm run build
 # Bundle pilot scripts for the slim runner (no tsx / @esbuild platform binary).
 RUN mkdir -p dist/docker \
