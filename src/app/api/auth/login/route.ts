@@ -3,6 +3,10 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { createSessionToken, setSessionCookie } from "@/lib/auth/session";
 import { handleApiError, jsonOk } from "@/lib/api";
+import {
+  CANDIDATE_ACCOUNTS_DISABLED_MESSAGE,
+  candidateAccountsEnabled,
+} from "@/lib/auth/candidate-accounts";
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -21,6 +25,10 @@ export async function POST(request: Request) {
     const valid = await bcrypt.compare(body.password, user.passwordHash);
     if (!valid) {
       return Response.json({ error: "Invalid email or password" }, { status: 401 });
+    }
+
+    if (user.role === "CANDIDATE" && !candidateAccountsEnabled()) {
+      return Response.json({ error: CANDIDATE_ACCOUNTS_DISABLED_MESSAGE }, { status: 403 });
     }
 
     const sessionUser = {

@@ -12,9 +12,11 @@ const APPLY_TIMEOUT_MS = 120_000;
 export function CareersApplyForm({
   jobId,
   jobTitle,
+  allowAccount,
 }: {
   jobId: string;
   jobTitle: string;
+  allowAccount: boolean;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -28,7 +30,7 @@ export function CareersApplyForm({
     const form = e.currentTarget;
     const data = new FormData(form);
     data.set("jobId", jobId);
-    if (!createAccount) {
+    if (!allowAccount || !createAccount) {
       data.delete("password");
     }
 
@@ -130,20 +132,22 @@ export function CareersApplyForm({
         <Textarea id="coverNote" name="coverNote" rows={4} />
       </div>
 
-      <label className="flex items-start gap-2 text-sm text-foreground/90">
-        <input
-          type="checkbox"
-          className="mt-1"
-          checked={createAccount}
-          onChange={(e) => setCreateAccount(e.target.checked)}
-        />
-        <span>
-          Create a candidate portal account so I can track this application for{" "}
-          <strong className="font-medium">{jobTitle}</strong>
-        </span>
-      </label>
+      {allowAccount ? (
+        <label className="flex items-start gap-2 text-sm text-foreground/90">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={createAccount}
+            onChange={(e) => setCreateAccount(e.target.checked)}
+          />
+          <span>
+            Create a candidate portal account so I can track this application for{" "}
+            <strong className="font-medium">{jobTitle}</strong>
+          </span>
+        </label>
+      ) : null}
 
-      {createAccount ? (
+      {allowAccount && createAccount ? (
         <div className="space-y-2">
           <Label htmlFor="password">Password (min 10 characters)</Label>
           <Input

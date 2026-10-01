@@ -1,6 +1,10 @@
 import type { Role } from "@prisma/client";
 import { STAFF_ROLES } from "@/lib/constants";
 import type { SessionUser } from "@/lib/auth/session";
+import {
+  CANDIDATE_ACCOUNTS_DISABLED_MESSAGE,
+  candidateAccountsEnabled,
+} from "@/lib/auth/candidate-accounts";
 
 export class AuthError extends Error {
   status: number;
@@ -54,7 +58,11 @@ export function requireAdmin(user: SessionUser | null): SessionUser {
 }
 
 export function requireCandidate(user: SessionUser | null): SessionUser {
-  return requireRoles(user, ["CANDIDATE"]);
+  const u = requireRoles(user, ["CANDIDATE"]);
+  if (!candidateAccountsEnabled()) {
+    throw new AuthError(CANDIDATE_ACCOUNTS_DISABLED_MESSAGE, 403);
+  }
+  return u;
 }
 
 export function canManageJobs(role: Role): boolean {

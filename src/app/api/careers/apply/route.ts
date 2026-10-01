@@ -6,6 +6,7 @@ import { handleApiError, jsonCreated, jsonOk } from "@/lib/api";
 import { saveUpload } from "@/lib/storage";
 import { embedCandidate } from "@/lib/ai/embeddings";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { candidateAccountsEnabled } from "@/lib/auth/candidate-accounts";
 import {
   isAllowedResumeFile,
   resumeMimeError,
@@ -14,7 +15,8 @@ import {
 
 /**
  * Public careers apply — no auth required.
- * Honeypot + IP rate limit; optional CANDIDATE account via password.
+ * Honeypot + IP rate limit; optional CANDIDATE account via password
+ * (ignored unless CANDIDATE_ACCOUNTS_ENABLED=true).
  */
 export async function POST(request: Request) {
   try {
@@ -146,7 +148,7 @@ export async function POST(request: Request) {
     }
 
     let accountCreated = false;
-    if (body.password) {
+    if (body.password && candidateAccountsEnabled()) {
       const existingUser = await prisma.user.findUnique({
         where: { email: body.email },
       });

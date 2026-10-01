@@ -3,6 +3,10 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { createSessionToken, setSessionCookie } from "@/lib/auth/session";
 import { handleApiError, jsonCreated, jsonError } from "@/lib/api";
+import {
+  CANDIDATE_ACCOUNTS_DISABLED_MESSAGE,
+  candidateAccountsEnabled,
+} from "@/lib/auth/candidate-accounts";
 
 /** Public registration is candidate-only. Attaches to default org when present. */
 const bodySchema = z.object({
@@ -12,6 +16,9 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (!candidateAccountsEnabled()) {
+    return jsonError(CANDIDATE_ACCOUNTS_DISABLED_MESSAGE, 403);
+  }
   try {
     const body = bodySchema.parse(await request.json());
     const email = body.email.toLowerCase();

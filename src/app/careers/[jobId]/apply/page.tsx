@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { candidateAccountsEnabled } from "@/lib/auth/candidate-accounts";
 import { CareersApplyForm } from "@/components/careers-apply-form";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export default async function CareersApplyPage({ params, searchParams }: Props) 
     },
   });
   if (!job) notFound();
+  const accountsEnabled = candidateAccountsEnabled();
 
   if (searchParams.already === "1") {
     return (
@@ -45,7 +47,7 @@ export default async function CareersApplyPage({ params, searchParams }: Props) 
           Thanks for applying to <strong>{job.title}</strong> at{" "}
           {job.organization.name}. We&apos;ll review your resume shortly.
         </p>
-        {searchParams.account === "1" ? (
+        {!accountsEnabled ? null : searchParams.account === "1" ? (
           <p className="text-sm text-foreground/90">
             Your portal account is ready —{" "}
             <Link href="/login" className="underline">
@@ -78,10 +80,12 @@ export default async function CareersApplyPage({ params, searchParams }: Props) 
           Apply — {job.title}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          No account required. Optional portal login if you set a password below.
+          {accountsEnabled
+            ? "No account required. Optional portal login if you set a password below."
+            : "No account required."}
         </p>
       </div>
-      <CareersApplyForm jobId={job.id} jobTitle={job.title} />
+      <CareersApplyForm jobId={job.id} jobTitle={job.title} allowAccount={accountsEnabled} />
     </div>
   );
 }

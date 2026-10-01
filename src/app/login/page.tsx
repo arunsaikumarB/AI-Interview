@@ -1,3 +1,4 @@
+import { candidateAccountsEnabled } from "@/lib/auth/candidate-accounts";
 import LoginScreen from "./login-screen";
 
 /**
@@ -13,5 +14,5 @@ import LoginScreen from "./login-screen";
 export const dynamic = "force-dynamic";
 
 export default function LoginPage() {
-  return <LoginScreen />;
+  return <LoginScreen candidateSignup={candidateAccountsEnabled()} />;
 }

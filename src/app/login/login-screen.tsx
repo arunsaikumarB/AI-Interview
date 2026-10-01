@@ -82,7 +82,7 @@ function LoginForm() {
   );
 }
 
-export default function LoginScreen() {
+export default function LoginScreen({ candidateSignup }: { candidateSignup: boolean }) {
   return (
     <div className="app-canvas relative grid min-h-svh place-items-center overflow-x-hidden px-6 py-6">
       <div className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6">
@@ -97,12 +97,14 @@ export default function LoginScreen() {
             <LoginForm />
           </Suspense>
         </div>
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Candidate?{" "}
-          <Link href="/register" className="font-medium text-primary underline-offset-4 hover:underline">
-            Create an account
-          </Link>
-        </p>
+        {candidateSignup ? (
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            Candidate?{" "}
+            <Link href="/register" className="font-medium text-primary underline-offset-4 hover:underline">
+              Create an account
+            </Link>
+          </p>
+        ) : null}
       </div>
     </div>
   );
