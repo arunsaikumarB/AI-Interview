@@ -2,7 +2,7 @@
 
 For DevOps. The app (Next.js) is already running on the app server and the database is built.
 This covers what is still missing: **Ollama (AI)**, **speech (voice)**, **code runner**, **HTTPS**,
-**firewall**, **auto-start**, **database hardening** and **backups**.
+**firewall**, **auto-start**, **database hardening**, **backups** and **importing existing resumes**.
 
 | Server | Role |
 |---|---|
@@ -310,7 +310,58 @@ tar -czf /backup/hireos_storage_$(date +%F).tar.gz -C /data/hireos storage
 
 The database references files in `/data/hireos/storage` (resumes, recordings), so always back up both together. Test a restore into a scratch database before relying on it.
 
-## 10. Final check
+## 10. Importing existing resumes
+
+**Do not copy resume files into the storage folder by hand.** The app only shows a resume that has a
+candidate record in the database (file location, extracted text, search embedding). Use the import command.
+
+**Storage folder (one-time).** In `APP_DIR/.env` set `STORAGE_ROOT=/data/hireos/storage`, then:
+
+```bash
+sudo mkdir -p /data/hireos/storage
+sudo chown -R APP_USER:APP_USER /data/hireos/storage
+sudo chmod 750 /data/hireos/storage
+sudo systemctl restart hireos-app
+```
+
+Keep it outside any folder nginx serves. If the app already stored files in `APP_DIR/storage`, move them
+to the new folder before restarting.
+
+**What HR provides:**
+
+1. One folder with the resume files (PDF, DOCX or TXT, max 10 MB each).
+2. A CSV (Excel: *Save As → CSV UTF-8*) with this header row, one row per resume
+   (template: `docs/resume-import-template.csv`):
+
+| Column | Required | Notes |
+|---|---|---|
+| `file` | yes | Exact file name in the folder, e.g. `Ravi Kumar CV.pdf` (no folders) |
+| `firstName`, `lastName` | yes | |
+| `email` | yes | One candidate per email |
+| `phone`, `location` | no | |
+| `job` | no | Exact job title (or job id) of a job in HireOS. Empty = talent pool only |
+
+**Run it** on the app server as `APP_USER`, from `APP_DIR` (so it uses the app's `.env`):
+
+```bash
+cd APP_DIR
+# 1. Dry run: checks every row and file, writes nothing
+npm run import:resumes -- --dir /data/import/resumes --csv /data/import/list.csv
+# 2. When the dry run looks right: import (asks you to type the database name)
+npm run import:resumes -- --dir /data/import/resumes --csv /data/import/list.csv --apply
+```
+
+What it does per row: checks the file is a real PDF/DOCX/TXT, extracts the text locally, creates the
+candidate, adds an application at **APPLIED** for the given job (source `bulk_import`), and builds the
+Talent Pool search embedding with local Ollama. It never changes an existing candidate (same email): it only
+adds the job application. Re-running the same CSV is safe; already-imported rows are skipped. Bad rows are
+listed as `SKIP` with the reason and the rest still import. No AI screening runs automatically.
+
+If it reports candidates as "not search-ready" (Ollama was down), run `npm run embed:backfill` later.
+Scanned (image-only) PDFs import without text; HR can open them in the app. Delete the import folder and CSV
+from the server once the import is done.
+
+## 11. Final check
 
 On the app server:
 

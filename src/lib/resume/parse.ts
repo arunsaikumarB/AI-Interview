@@ -1,6 +1,7 @@
 import mammoth from "mammoth";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 /**
  * Local resume text extraction — PDF + DOCX + plain text.
@@ -103,7 +104,8 @@ export async function extractResumeText(params: {
     const { PDFParse } = await import("pdf-parse");
     const workerSrc = resolvePdfWorkerSrc();
     if (workerSrc) {
-      PDFParse.setWorker(workerSrc);
+      // Node's ESM loader rejects bare Windows paths (c:\...); a file:// URL works everywhere.
+      PDFParse.setWorker(pathToFileURL(workerSrc).href);
     }
     const parser = new PDFParse({ data: params.buffer });
     try {
