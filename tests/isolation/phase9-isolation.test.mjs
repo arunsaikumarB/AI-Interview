@@ -23,6 +23,7 @@ import {
 const STAFF_ENDPOINTS = [
   { method: "POST", path: "/api/talent/search", body: { query: "engineer", limit: 5 } },
   { method: "GET", path: "/api/candidates" },
+  { method: "GET", path: "/api/candidates/nonexistent-but-well-formed-id/resume" },
   { method: "GET", path: "/api/interviews/nonexistent-but-well-formed-id" },
   { method: "GET", path: "/api/interviews/nonexistent-but-well-formed-id/secondary-recording/file" },
   { method: "GET", path: "/api/applications" },

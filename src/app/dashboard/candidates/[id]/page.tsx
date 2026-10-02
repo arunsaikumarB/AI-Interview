@@ -179,6 +179,10 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
   const signals = latestInterview
     ? countProctoringSignals(latestInterview.proctoring)
     : { tabSwitches: 0, copyPaste: 0, cameraInterruptions: 0 };
+  const resumeStored = candidate.resumeUrl
+    ? (await verifyStoredFile(candidate.resumeUrl)).ok
+    : false;
+  const resumeHref = `/api/candidates/${candidate.id}/resume`;
   const recordingPathVerified =
     latestInterview?.secondaryRecordingPath &&
     (await verifyStoredFile(latestInterview.secondaryRecordingPath)).ok
@@ -326,7 +330,9 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
             </div>
           ) : null}
         </section>
-      ) : null}
+      ) : (
+        <p className="px-1 text-sm text-muted-foreground">No applications yet.</p>
+      )}
 
       {selectedApp ? (
         <section className={section} aria-labelledby="hiring-snapshot">
@@ -378,103 +384,108 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
         <p className="px-1 text-[13px] text-muted-foreground">No action required</p>
       ) : null}
 
+      <section className={section} aria-labelledby="profile">
+        <h2 id="profile" className="text-[17px] font-semibold text-foreground">
+          Profile
+        </h2>
+        <p className="text-sm font-medium text-foreground">{fullName}</p>
+        {selectedApp ? (
+          <p className="text-sm text-muted-foreground">{selectedApp.job.title}</p>
+        ) : null}
+        <dl className="space-y-3 text-sm">
+          <div>
+            <dt className="text-[12px] text-muted-foreground">Email</dt>
+            <dd>
+              <a href={`mailto:${candidate.email}`} className="hover:underline">
+                {candidate.email}
+              </a>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[12px] text-muted-foreground">Location</dt>
+            <dd>{candidate.location || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-[12px] text-muted-foreground">Experience</dt>
+            <dd>{expProfile}</dd>
+          </div>
+          <div>
+            <dt className="text-[12px] text-muted-foreground">Skills</dt>
+            <dd>
+              {candidate.skills.length > 0
+                ? candidate.skills.join(" · ")
+                : "No skills available"}
+            </dd>
+          </div>
+        </dl>
+        <CandidateTags candidateId={candidate.id} />
+      </section>
+
+      <section id="resume" className={section} aria-labelledby="resume-heading">
+        <h2 id="resume-heading" className="text-[17px] font-semibold text-foreground">
+          Resume
+        </h2>
+        {candidate.resumeUrl ? (
+          <>
+            <p className="text-sm font-medium text-foreground">
+              {uploadedName ?? resumeFileName(candidate.resumeUrl)}
+            </p>
+            {resumeAt ? (
+              <p className="text-[13px] text-muted-foreground">
+                Uploaded {formatDate(resumeAt)}
+              </p>
+            ) : null}
+            <p className="inline-flex items-center gap-1.5 text-sm text-foreground">
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  candidate.resumeText ? "bg-success" : "bg-warning",
+                )}
+                aria-hidden
+              />
+              {candidate.resumeText
+                ? "Parsed successfully"
+                : "Resume could not be fully parsed."}
+            </p>
+            <div>
+              <p className="text-[12px] text-muted-foreground">Experience</p>
+              <p className="text-sm">{expProfile}</p>
+            </div>
+            {education.length > 0 ? (
+              <div>
+                <p className="text-[12px] text-muted-foreground">Education</p>
+                <p className="text-sm">{education.join(" · ")}</p>
+              </div>
+            ) : null}
+            {resumeStored ? (
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={resumeHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm hover:bg-muted/40"
+                >
+                  View Resume
+                </a>
+                <a
+                  href={`${resumeHref}?download=1`}
+                  className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm hover:bg-muted/40"
+                >
+                  Download
+                </a>
+              </div>
+            ) : (
+              <p className="text-sm text-warning">Resume file is missing from storage.</p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">No resume uploaded yet.</p>
+        )}
+        {selectedApp ? <ResumeUpload applicationId={selectedApp.id} /> : null}
+      </section>
+
       {selectedApp ? (
         <>
-          <section className={section} aria-labelledby="profile">
-            <h2 id="profile" className="text-[17px] font-semibold text-foreground">
-              Profile
-            </h2>
-            <p className="text-sm font-medium text-foreground">{fullName}</p>
-            <p className="text-sm text-muted-foreground">{selectedApp.job.title}</p>
-            <dl className="space-y-3 text-sm">
-              <div>
-                <dt className="text-[12px] text-muted-foreground">Email</dt>
-                <dd>
-                  <a href={`mailto:${candidate.email}`} className="hover:underline">
-                    {candidate.email}
-                  </a>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[12px] text-muted-foreground">Location</dt>
-                <dd>{candidate.location || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-[12px] text-muted-foreground">Experience</dt>
-                <dd>{expProfile}</dd>
-              </div>
-              <div>
-                <dt className="text-[12px] text-muted-foreground">Skills</dt>
-                <dd>
-                  {candidate.skills.length > 0
-                    ? candidate.skills.join(" · ")
-                    : "No skills available"}
-                </dd>
-              </div>
-            </dl>
-            <CandidateTags candidateId={candidate.id} />
-          </section>
-
-          <section id="resume" className={section} aria-labelledby="resume-heading">
-            <h2 id="resume-heading" className="text-[17px] font-semibold text-foreground">
-              Resume
-            </h2>
-            {candidate.resumeUrl ? (
-              <>
-                <p className="text-sm font-medium text-foreground">
-                  {uploadedName ?? resumeFileName(candidate.resumeUrl)}
-                </p>
-                {resumeAt ? (
-                  <p className="text-[13px] text-muted-foreground">
-                    Uploaded {formatDate(resumeAt)}
-                  </p>
-                ) : null}
-                <p className="inline-flex items-center gap-1.5 text-sm text-foreground">
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      candidate.resumeText ? "bg-success" : "bg-warning",
-                    )}
-                    aria-hidden
-                  />
-                  {candidate.resumeText
-                    ? "Parsed successfully"
-                    : "Resume could not be fully parsed."}
-                </p>
-                <div>
-                  <p className="text-[12px] text-muted-foreground">Experience</p>
-                  <p className="text-sm">{expProfile}</p>
-                </div>
-                {education.length > 0 ? (
-                  <div>
-                    <p className="text-[12px] text-muted-foreground">Education</p>
-                    <p className="text-sm">{education.join(" · ")}</p>
-                  </div>
-                ) : null}
-                <div className="flex flex-wrap gap-2">
-                  <a
-                    href={candidate.resumeUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm hover:bg-muted/40"
-                  >
-                    View Resume
-                  </a>
-                  <a
-                    href={candidate.resumeUrl}
-                    download
-                    className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm hover:bg-muted/40"
-                  >
-                    Download
-                  </a>
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">No resume uploaded yet.</p>
-            )}
-            <ResumeUpload applicationId={selectedApp.id} />
-          </section>
-
           <section className={section}>
             <AIScreeningSummary
               applicationId={selectedApp.id}
@@ -572,9 +583,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
             </section>
           ) : null}
         </>
-      ) : (
-        <p className="text-sm text-muted-foreground">No applications yet.</p>
-      )}
+      ) : null}
     </div>
   );
 }
