@@ -1,2 +1,4 @@
 docker/app/entrypoint.sh text eol=lf
 scripts/setup-pilot.sh text eol=lf
+scripts/deploy-release.sh text eol=lf
+deploy/** text eol=lf

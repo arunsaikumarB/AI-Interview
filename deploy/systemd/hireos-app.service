@@ -1,0 +1,26 @@
+# HireOS web app (Next.js) on port 5000, behind nginx.
+# Runs from /opt/hireos/current, which scripts/deploy-release.sh switches between
+# fully built releases, so a deploy never runs a half-built app.
+#
+# Install (as root), replacing APP_USER:
+#   sed 's/APP_USER/<user>/' deploy/systemd/hireos-app.service > /etc/systemd/system/hireos-app.service
+#   systemctl daemon-reload && systemctl enable --now hireos-app
+[Unit]
+Description=Logisoft HireOS web app
+After=network-online.target
+Wants=network-online.target
+# Never stop retrying: a database or network blip must not leave the site down.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=APP_USER
+WorkingDirectory=/opt/hireos/current
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start -- -p 5000
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

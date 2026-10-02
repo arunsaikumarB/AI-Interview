@@ -2,7 +2,8 @@
 
 For DevOps. The app (Next.js) is already running on the app server and the database is built.
 This covers what is still missing: **Ollama (AI)**, **speech (voice)**, **code runner**, **HTTPS**,
-**firewall**, **auto-start**, **database hardening**, **backups** and **importing existing resumes**.
+**firewall**, **auto-start**, **database hardening**, **backups**, **importing existing resumes** and
+**deploying updates without downtime** (section 11 — the only supported way to update the app).
 
 | Server | Role |
 |---|---|
@@ -182,15 +183,29 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
+
+    # While the app restarts, show a self-refreshing notice instead of a bare "502 Bad Gateway"
+    error_page 502 503 504 /hireos-maintenance.html;
+    location = /hireos-maintenance.html {
+        root /usr/share/nginx/html;
+        internal;
+        add_header Cache-Control "no-store" always;
+        add_header Content-Security-Policy "default-src 'none'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+    }
 }
 ```
 
-The app already sends its own security headers (CSP, X-Frame-Options, etc.). Do not add or override them in nginx.
+The app already sends its own security headers (CSP, X-Frame-Options, etc.). Do not add or override them in nginx
+(the headers above apply only to nginx's own maintenance page).
 
 ### 5.3 SELinux and reload
 
 ```bash
 sudo setsebool -P httpd_can_network_connect 1    # lets nginx connect to 127.0.0.1:5000
+sudo install -m 644 APP_DIR/deploy/nginx/hireos-maintenance.html /usr/share/nginx/html/
+sudo restorecon -v /usr/share/nginx/html/hireos-maintenance.html
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
@@ -206,7 +221,8 @@ In `APP_DIR/.env`:
 NEXT_PUBLIC_APP_URL="https://10.0.12.218"
 ```
 
-This is a `NEXT_PUBLIC_*` value, baked in at build time, so rebuild: `cd APP_DIR && npm run build`, then restart the app (section 7).
+This is a `NEXT_PUBLIC_*` value, baked in at build time, so deploy again after changing it (section 11).
+Never run `npm ci` or `npm run build` in the folder the live app runs from.
 
 ## 6. Firewall (app server)
 
@@ -223,26 +239,15 @@ Next.js listens on all interfaces (`npm run start` uses `-H 0.0.0.0`), so the fi
 
 ## 7. Auto-start with systemd
 
-If the app already runs under pm2, keep pm2 for the app and add only the runner. Otherwise:
+systemd must be the **only** thing that runs the app on port 5000. If it currently runs under pm2,
+`nohup` or a terminal, stop that first (`pm2 delete all && pm2 save`, or kill the process).
 
-`/etc/systemd/system/hireos-app.service`
+`/etc/systemd/system/hireos-app.service` — use the file from the repo, `APP_DIR/deploy/systemd/hireos-app.service`.
+It runs the app from `/opt/hireos/current` (a fully built release, see section 11), restarts it 3 seconds
+after any crash, and never gives up retrying:
 
-```ini
-[Unit]
-Description=HireOS Next.js app
-After=network-online.target docker.service
-Wants=network-online.target
-
-[Service]
-User=APP_USER
-WorkingDirectory=APP_DIR
-Environment=NODE_ENV=production
-ExecStart=/usr/bin/npm run start -- -p 5000
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
+```bash
+sed 's/APP_USER/<the real user>/' APP_DIR/deploy/systemd/hireos-app.service | sudo tee /etc/systemd/system/hireos-app.service
 ```
 
 `/etc/systemd/system/hireos-runner.service`
@@ -265,6 +270,8 @@ WantedBy=multi-user.target
 ```
 
 If Node.js was not installed from the system packages, replace `/usr/bin/npm` and `/usr/bin/node` with the output of `which npm` and `which node` (run as `APP_USER`).
+
+Do the first deploy (section 11, step 2) **before** enabling `hireos-app`, so `/opt/hireos/current` exists. Then:
 
 ```bash
 sudo systemctl daemon-reload
@@ -341,10 +348,10 @@ to the new folder before restarting.
 | `phone`, `location` | no | |
 | `job` | no | Exact job title (or job id) of a job in HireOS. Empty = talent pool only |
 
-**Run it** on the app server as `APP_USER`, from `APP_DIR` (so it uses the app's `.env`):
+**Run it** on the app server as `APP_USER`, from the live release (it uses the app's `.env` and installed packages):
 
 ```bash
-cd APP_DIR
+cd /opt/hireos/current
 # 1. Dry run: checks every row and file, writes nothing
 npm run import:resumes -- --dir /data/import/resumes --csv /data/import/list.csv
 # 2. When the dry run looks right: import (asks you to type the database name)
@@ -357,11 +364,56 @@ Talent Pool search embedding with local Ollama. It never changes an existing can
 adds the job application. Re-running the same CSV is safe; already-imported rows are skipped. Bad rows are
 listed as `SKIP` with the reason and the rest still import. No AI screening runs automatically.
 
-If it reports candidates as "not search-ready" (Ollama was down), run `npm run embed:backfill` later.
+If it reports candidates as "not search-ready" (Ollama was down), run `npm run embed:backfill` later (also from `/opt/hireos/current`).
 Scanned (image-only) PDFs import without text; HR can open them in the app. Delete the import folder and CSV
 from the server once the import is done.
 
-## 11. Final check
+## 11. Deploying updates (no downtime, automatic rollback)
+
+**Never update the live folder in place** (`git pull && npm ci && npm run build` while the app runs). That
+deletes the running app's files mid-build, the app crashes, and nginx shows **502 Bad Gateway**.
+
+`scripts/deploy-release.sh` does it safely:
+
+1. Checks out the new commit into its own folder `/opt/hireos/releases/<time>-<commit>` (the live app keeps running).
+2. Runs `npm ci` and `npm run build` there. If that fails, it stops; the live app is untouched.
+3. Starts the new build on `127.0.0.1:5099` and waits until `/api/health` reports the database reachable. If not, it stops; the live app is untouched.
+4. Points `/opt/hireos/current` at the new release and restarts `hireos-app` (a few seconds; nginx shows the maintenance page meanwhile).
+5. If the restarted app is not healthy within 2 minutes, it points `current` back at the previous release and restarts again.
+6. Keeps the last 3 releases. Logs: `/opt/hireos/releases/<release>.build.log` and `.smoke.log`.
+
+All releases share `APP_DIR/.env` (symlinked), so `STORAGE_ROOT` **must** be an absolute path
+(`/data/hireos/storage`, section 10) — the script refuses to deploy otherwise.
+
+**One-time setup** (as root unless noted):
+
+```bash
+# 1. Folders and a sudo rule that lets APP_USER restart only the app
+sudo mkdir -p /opt/hireos && sudo chown APP_USER:APP_USER /opt/hireos
+echo 'APP_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart hireos-app' | sudo tee /etc/sudoers.d/hireos-deploy
+sudo chmod 440 /etc/sudoers.d/hireos-deploy && sudo visudo -cf /etc/sudoers.d/hireos-deploy
+
+# 2. As APP_USER: get the script and build the first release (does not restart anything)
+cd APP_DIR && git pull --ff-only && bash scripts/deploy-release.sh --no-restart
+
+# 3. Switch the service to /opt/hireos/current (section 7) and the nginx maintenance page (sections 5.2, 5.3)
+sudo systemctl daemon-reload && sudo systemctl enable hireos-app && sudo systemctl restart hireos-app
+curl -s http://127.0.0.1:5000/api/health      # "database":{"ok":true}
+```
+
+**Every update after that** (as `APP_USER`):
+
+```bash
+cd APP_DIR && bash scripts/deploy-release.sh              # latest GitLab fe
+cd APP_DIR && bash scripts/deploy-release.sh --rollback   # undo: back to the previous release
+```
+
+After changing `APP_DIR/.env`: non-`NEXT_PUBLIC_*` values only need `sudo systemctl restart hireos-app`;
+`NEXT_PUBLIC_*` values need a deploy (they are baked in at build time).
+
+If the app is down: `sudo systemctl status hireos-app --no-pager` and `sudo journalctl -u hireos-app -n 100 --no-pager`.
+
+## 12. Final check
 
 On the app server:
 
