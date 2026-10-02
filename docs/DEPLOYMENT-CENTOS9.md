@@ -368,6 +368,16 @@ If it reports candidates as "not search-ready" (Ollama was down), run `npm run e
 Scanned (image-only) PDFs import without text; HR can open them in the app. Delete the import folder and CSV
 from the server once the import is done.
 
+**Jobs from the careers website.** HireOS is the place where jobs are managed. The 7 listings from the
+website (`docs/careers-website-jobs.json`) were imported as **Draft**; HR opens each one (Jobs → job →
+Edit Job → Status: Open). To import a new export of website listings (existing titles are skipped, never changed):
+
+```bash
+cd /opt/hireos/current
+npm run import:jobs -- --file <jobs.json> --created-by <HR admin email>            # dry run
+npm run import:jobs -- --file <jobs.json> --created-by <HR admin email> --apply    # asks for the database name
+```
+
 ## 11. Deploying updates (no downtime, automatic rollback)
 
 **Never update the live folder in place** (`git pull && npm ci && npm run build` while the app runs). That
