@@ -155,6 +155,7 @@ export function SpeakingOrbView({
           display: "block",
           width: "100%",
           height: "100%",
+          filter: "brightness(1.28) saturate(1.12)",
           ["--cap" as string]: "transparent",
           ["--cap-dim" as string]: "transparent",
         }}

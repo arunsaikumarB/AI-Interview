@@ -30,6 +30,8 @@
  *   already shows the question text, so the orb captions would duplicate it.
  * - say(text, { audio, external: true }) follows an <audio> element the page
  *   already plays (local Piper TTS) and does not rewind it or call play().
+ * - Slightly larger, brighter points (r*12 and a higher light/halo) so the
+ *   sphere reads clearly at interview size. Still one local WebGL draw.
  */
 
 // Speaking Orb / Ship Notes. Signal Orb plus a voice: the sphere talks and live captions follow the words.
@@ -311,12 +313,12 @@
       const ctx=this.ctx,size=this.canvas.width;if(!size)return;
       const unit=size/720;ctx.setTransform(unit,0,0,unit,0,0);ctx.clearRect(0,0,720,720);
       const rgb=[0,1,2].map(c=>Math.round(colors.reduce((s,col,i)=>s+col[c]*w[i],0))),color=rgb.join(',');
-      const ws=w[SPK],glow=.075+.05*env*ws;
+      const ws=w[SPK],glow=.14+.08*env*ws;
       const halo=ctx.createRadialGradient(360,360,10,360,360,305+25*env*ws);
       halo.addColorStop(0,`rgba(${color},${glow})`);halo.addColorStop(.57,`rgba(${color},${glow*.47})`);halo.addColorStop(1,`rgba(${color},0)`);
       ctx.fillStyle=halo;ctx.fillRect(0,0,720,720);
       const count=this.particles,seeds=seedsFor(count),ring=Math.round(count*.65);
-      const fine=Math.max(.5,Math.pow(1000/count,.55)),light=Math.min(1,Math.pow(1000/(count*fine*fine),.35));
+      const fine=Math.max(.5,Math.pow(1000/count,.55)),light=Math.min(1,Math.pow(1000/(count*fine*fine),.35)*1.35);
       if(!this.buf||this.buf.length<count*5)this.buf=new Float32Array(count*5);
       const buf=this.buf,[w0,w1,w2,w3,w4]=w,spin=t*.23,cs=Math.cos(spin),sn=Math.sin(spin),wave=8+this.level*22;
       const rings=onsets.map(o=>{const a=t-o;return {h:-1.15+a*2.1,g:Math.pow(1-a/1.2,2)};});
@@ -353,7 +355,7 @@
         }
         const depth=(vz+240)/480,persp=850/(850-vz),alpha=.22+.72*depth+.35*env*ws;
         const r=(.8+depth*1.35)*(.75+.25*Math.sin(p.a+t*1.6))*fine*(1+.5*Math.min(1,lit)),o=i*5;
-        buf[o]=(360+vx*persp)*unit;buf[o+1]=(360+vy*persp)*unit;buf[o+2]=r*9*unit;
+        buf[o]=(360+vx*persp)*unit;buf[o+1]=(360+vy*persp)*unit;buf[o+2]=r*12*unit;
         buf[o+3]=Math.min(1,(alpha+1.2*lit)*light);buf[o+4]=vz>75||lit>.25?(Math.max(alpha-.5,0)+lit*.8)*.75*light:0;
       }
       if(this.gl)this.drawGL(buf,count,rgb,size);else this.draw2D(buf,count,color,size);

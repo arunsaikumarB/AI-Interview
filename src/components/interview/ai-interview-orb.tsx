@@ -8,6 +8,7 @@ import {
   THINKING_ORB_SPEED,
   type InterviewThinkingOrbState,
 } from "./orb-state";
+import { scaleSpeakingOrbSize } from "./speaking-orb-state";
 
 interface AIInterviewOrbProps {
   state: InterviewThinkingOrbState;
@@ -29,6 +30,11 @@ interface AIInterviewOrbProps {
   badgeLabel?: string;
   /** `data-orb-variant` for the active interviewer face. */
   variantLabel?: "speaking" | "classic";
+  /**
+   * Speaking Orb only. Grows the measured classic diameter into the open
+   * panel space. Omit to keep the classic size exactly.
+   */
+  enlarge?: boolean;
 }
 
 function speakingBadgeClass(label: string): string {
@@ -63,6 +69,7 @@ export function AIInterviewOrb({
   visual,
   badgeLabel,
   variantLabel,
+  enlarge = false,
 }: AIInterviewOrbProps) {
   const [displaySize, setDisplaySize] = useState(sizeProp ?? (fill ? FILL_MIN : 200));
   const [compact, setCompact] = useState(false);
@@ -77,10 +84,11 @@ export function AIInterviewOrb({
     const apply = () => {
       const vw = window.innerWidth;
       const byWidth = vw >= 1280 ? 220 : vw >= 1024 ? 180 : 148;
+      const cap = enlarge ? scaleSpeakingOrbSize(byWidth) : byWidth;
       // Compact is decided from the root (bounded by the parent), not the slot, so hiding
       // text cannot feed back into the measurement and make the orb flicker between sizes.
       setCompact(root.clientHeight < FILL_COMPACT_BELOW);
-      const fit = Math.floor(Math.min(slot.clientHeight, slot.clientWidth, byWidth));
+      const fit = Math.floor(Math.min(slot.clientHeight, slot.clientWidth, cap));
       setDisplaySize(Math.max(FILL_MIN, fit));
     };
     apply();
@@ -92,7 +100,7 @@ export function AIInterviewOrb({
       ro.disconnect();
       window.removeEventListener("resize", apply);
     };
-  }, [fill, sizeProp]);
+  }, [fill, sizeProp, enlarge]);
 
   useEffect(() => {
     if (fill && sizeProp == null) return;
@@ -106,13 +114,14 @@ export function AIInterviewOrb({
       const byWidth = vw >= 1280 ? 220 : vw >= 1024 ? 180 : 148;
       // Short laptop windows: the question must stay visible, so the orb gives way first.
       const byHeight = vh >= 960 ? 220 : vh >= 820 ? 160 : vh >= 720 ? 96 : 72;
-      setDisplaySize(Math.min(byWidth, byHeight));
+      const base = Math.min(byWidth, byHeight);
+      setDisplaySize(enlarge ? scaleSpeakingOrbSize(base) : base);
       setCompact(vh < 820);
     };
     apply();
     window.addEventListener("resize", apply);
     return () => window.removeEventListener("resize", apply);
-  }, [fill, sizeProp]);
+  }, [fill, sizeProp, enlarge]);
 
   return (
     <div

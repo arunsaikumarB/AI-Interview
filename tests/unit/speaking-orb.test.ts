@@ -6,9 +6,11 @@ import {
   readInterviewOrbFlag,
 } from "../../src/lib/interview-orb-flag";
 import {
+  SPEAKING_ORB_MAX_PX,
   SPEAKING_ORB_PARTICLES_COMPACT,
   SPEAKING_ORB_PARTICLES_DESKTOP,
   mapLifecycleToSpeakingOrb,
+  scaleSpeakingOrbSize,
   speakingOrbParticleCount,
   speakingOrbRestState,
 } from "../../src/components/interview/speaking-orb-state";
@@ -105,6 +107,17 @@ describe("mapLifecycleToSpeakingOrb", () => {
   });
 });
 
+describe("scaleSpeakingOrbSize", () => {
+  it("grows the 160px desktop orb into the 240–280 band and scales mobile with it", () => {
+    assert.equal(scaleSpeakingOrbSize(160), 264);
+    assert.ok(scaleSpeakingOrbSize(160) >= 240);
+    assert.ok(scaleSpeakingOrbSize(160) <= 280);
+    assert.equal(scaleSpeakingOrbSize(148), 244);
+    assert.ok(scaleSpeakingOrbSize(148) > 148 * 1.5);
+    assert.equal(scaleSpeakingOrbSize(220), SPEAKING_ORB_MAX_PX);
+  });
+});
+
 describe("speakingOrbParticleCount", () => {
   it("uses fewer particles on phones and coarse pointers", () => {
     assert.equal(
@@ -138,6 +151,7 @@ describe("vendored speaking orb", () => {
     assert.match(source, /Copyright \(c\) 2026 Ship Notes/);
     assert.match(source, /captions=off/);
     assert.match(source, /if \(!external\)/);
+    assert.match(source, /r\*12\*unit/);
     assert.doesNotMatch(source, /https?:\/\/(?!aqualang89)/);
   });
 });

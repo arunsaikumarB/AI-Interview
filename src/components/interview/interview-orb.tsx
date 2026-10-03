@@ -54,6 +54,7 @@ export function InterviewOrb({
     <AIInterviewOrb
       {...classic}
       variantLabel="speaking"
+      enlarge
       badgeLabel={speakingState}
       visual={(size) => (
         <SpeakingOrbView

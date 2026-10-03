@@ -18,12 +18,26 @@ export type SpeakingOrbWord = {
 };
 
 /**
- * Desktop particle budget. Upstream auto-picks 12000, which is heavy on a
- * modest office PC. 6400 still reads as a dense sphere in WebGL.
+ * Desktop particle budget. Upstream auto-picks 12000. 8800 is denser than the
+ * first pass (6400) and still under that ceiling for a modest office PC.
+ * Point size is also raised slightly in the vendored painter.
  */
-export const SPEAKING_ORB_PARTICLES_DESKTOP = 6400;
-/** Phones and coarse pointers. Upstream auto-picks 6000; stay under that. */
-export const SPEAKING_ORB_PARTICLES_COMPACT = 2800;
+export const SPEAKING_ORB_PARTICLES_DESKTOP = 8800;
+/** Phones and coarse pointers. Above the first pass (2800), under upstream's 6000. */
+export const SPEAKING_ORB_PARTICLES_COMPACT = 4200;
+/**
+ * Preview at 1440×900 used to measure 160px. 1.65× is 264px, inside the
+ * 240–280 band, and uses the open space above the question card.
+ * Taller slots are capped so the sphere does not crowd the badge.
+ */
+export const SPEAKING_ORB_SCALE = 1.65;
+export const SPEAKING_ORB_MAX_PX = 280;
+
+/** Classic measured diameter → speaking-orb diameter. */
+export function scaleSpeakingOrbSize(base: number): number {
+  if (!Number.isFinite(base)) return base;
+  return Math.min(SPEAKING_ORB_MAX_PX, Math.max(1, Math.round(base * SPEAKING_ORB_SCALE)));
+}
 /** Quiet listening while the candidate has not started talking. */
 export const SPEAKING_ORB_IDLE_LEVEL = 0.16;
 
