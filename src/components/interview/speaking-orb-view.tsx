@@ -141,14 +141,23 @@ export function SpeakingOrbView({
     >
       <speaking-orb
         ref={ref}
-        className="absolute inset-0 block h-full w-full"
         state={state}
         rest={rest}
         level={safeLevel}
         particles={String(particles)}
         captions="off"
         aria-hidden="true"
-        style={{ ["--cap" as string]: "transparent", ["--cap-dim" as string]: "transparent" }}
+        // React 18 passes className through on custom elements as the attribute
+        // "className", so the square is pinned with style instead of Tailwind.
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "block",
+          width: "100%",
+          height: "100%",
+          ["--cap" as string]: "transparent",
+          ["--cap-dim" as string]: "transparent",
+        }}
       />
     </div>
   );
