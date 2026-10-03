@@ -61,6 +61,17 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). For VOICE interviews also run `speech-service\run.ps1`.
 
+### Interviewer orb
+
+The candidate interview room (and the dev layout at `/dev/interview-preview`) can show either face:
+
+| `NEXT_PUBLIC_INTERVIEW_ORB` | Face |
+|---|---|
+| `speaking` (default) | Vendored [Speaking Orb](https://aqualang89.github.io/shipnotes-components/components/speaking-orb/) (`public/vendor/speaking-orb/`, MIT). AI speech follows the local Piper `<audio>` element. Candidate speech uses the existing mic level. The orb's own captions stay off — the question card already shows the text. |
+| `classic` | Previous thinking-orbs interviewer, same layout and behaviour as before. |
+
+Restart Next after changing the flag. To drop the experiment entirely: `git checkout main`.
+
 ### Seed accounts
 
 | Email | Password | Role |

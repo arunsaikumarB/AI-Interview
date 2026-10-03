@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import { cn } from "@/lib/utils";
 import {
@@ -8,6 +8,7 @@ import {
   THINKING_ORB_SPEED,
   type InterviewThinkingOrbState,
 } from "./orb-state";
+import { scaleSpeakingOrbSize } from "./speaking-orb-state";
 
 interface AIInterviewOrbProps {
   state: InterviewThinkingOrbState;
@@ -20,6 +21,37 @@ interface AIInterviewOrbProps {
   size?: number;
   /** Size the orb to the space left in its parent (parent must give it a bounded height). */
   fill?: boolean;
+  /**
+   * Replaces the ThinkingOrb canvas inside the same sized slot.
+   * Omit to keep the classic orb.
+   */
+  visual?: (size: number) => ReactNode;
+  /** Badge text. Omit to keep the classic state name (`breathing`, …). */
+  badgeLabel?: string;
+  /** `data-orb-variant` for the active interviewer face. */
+  variantLabel?: "speaking" | "classic";
+  /**
+   * Speaking Orb only. Grows the measured classic diameter into the open
+   * panel space. Omit to keep the classic size exactly.
+   */
+  enlarge?: boolean;
+}
+
+function speakingBadgeClass(label: string): string {
+  switch (label) {
+    case "listening":
+      return "border-amber-400/30 bg-amber-500/10 text-amber-100";
+    case "thinking":
+      return "border-violet-400/30 bg-violet-500/10 text-violet-100";
+    case "speaking":
+      return "border-pink-400/30 bg-pink-500/10 text-pink-100";
+    case "done":
+      return "border-emerald-400/30 bg-emerald-500/10 text-emerald-100";
+    case "searching":
+      return "border-cyan-400/30 bg-cyan-500/10 text-cyan-100";
+    default:
+      return "border-white/15 bg-white/5 text-zinc-200";
+  }
 }
 
 const FILL_MIN = 40;
@@ -34,6 +66,10 @@ export function AIInterviewOrb({
   className,
   size: sizeProp,
   fill = false,
+  visual,
+  badgeLabel,
+  variantLabel,
+  enlarge = false,
 }: AIInterviewOrbProps) {
   const [displaySize, setDisplaySize] = useState(sizeProp ?? (fill ? FILL_MIN : 200));
   const [compact, setCompact] = useState(false);
@@ -48,10 +84,11 @@ export function AIInterviewOrb({
     const apply = () => {
       const vw = window.innerWidth;
       const byWidth = vw >= 1280 ? 220 : vw >= 1024 ? 180 : 148;
+      const cap = enlarge ? scaleSpeakingOrbSize(byWidth) : byWidth;
       // Compact is decided from the root (bounded by the parent), not the slot, so hiding
       // text cannot feed back into the measurement and make the orb flicker between sizes.
       setCompact(root.clientHeight < FILL_COMPACT_BELOW);
-      const fit = Math.floor(Math.min(slot.clientHeight, slot.clientWidth, byWidth));
+      const fit = Math.floor(Math.min(slot.clientHeight, slot.clientWidth, cap));
       setDisplaySize(Math.max(FILL_MIN, fit));
     };
     apply();
@@ -63,7 +100,7 @@ export function AIInterviewOrb({
       ro.disconnect();
       window.removeEventListener("resize", apply);
     };
-  }, [fill, sizeProp]);
+  }, [fill, sizeProp, enlarge]);
 
   useEffect(() => {
     if (fill && sizeProp == null) return;
@@ -77,13 +114,14 @@ export function AIInterviewOrb({
       const byWidth = vw >= 1280 ? 220 : vw >= 1024 ? 180 : 148;
       // Short laptop windows: the question must stay visible, so the orb gives way first.
       const byHeight = vh >= 960 ? 220 : vh >= 820 ? 160 : vh >= 720 ? 96 : 72;
-      setDisplaySize(Math.min(byWidth, byHeight));
+      const base = Math.min(byWidth, byHeight);
+      setDisplaySize(enlarge ? scaleSpeakingOrbSize(base) : base);
       setCompact(vh < 820);
     };
     apply();
     window.addEventListener("resize", apply);
     return () => window.removeEventListener("resize", apply);
-  }, [fill, sizeProp]);
+  }, [fill, sizeProp, enlarge]);
 
   return (
     <div
@@ -95,6 +133,7 @@ export function AIInterviewOrb({
       )}
       data-orb-state={state}
       data-thinking-orb={state}
+      data-orb-variant={variantLabel}
       role="status"
       aria-live="polite"
       aria-label={`${heading}. ${statusLabel ?? ""}. ${guidance ?? ""}`}
@@ -119,39 +158,48 @@ export function AIInterviewOrb({
         )}
         style={fill ? undefined : { width: displaySize, height: displaySize }}
       >
-        <ThinkingOrb
-          state={state}
-          size={THINKING_ORB_CANVAS_SIZE}
-          speed={THINKING_ORB_SPEED}
-          paused={reducedMotion}
-          theme="dark"
-          style={{
-            width: displaySize,
-            height: displaySize,
-            display: "block",
-          }}
-          aria-hidden
-        />
+        {visual ? (
+          visual(displaySize)
+        ) : (
+          <ThinkingOrb
+            state={state}
+            size={THINKING_ORB_CANVAS_SIZE}
+            speed={THINKING_ORB_SPEED}
+            paused={reducedMotion}
+            theme="dark"
+            style={{
+              width: displaySize,
+              height: displaySize,
+              display: "block",
+            }}
+            aria-hidden
+          />
+        )}
       </div>
 
       <span
         className={cn(
           "mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium tracking-wide",
           compact && "hidden",
-          state === "breathing" &&
+          !badgeLabel &&
+            state === "breathing" &&
             "border-violet-400/30 bg-violet-500/10 text-violet-200",
-          state === "listening" &&
+          !badgeLabel &&
+            state === "listening" &&
             "border-sky-400/30 bg-sky-500/10 text-sky-200",
-          state === "composing" &&
+          !badgeLabel &&
+            state === "composing" &&
             "border-amber-400/30 bg-amber-500/10 text-amber-100",
-          state === "connecting" &&
+          !badgeLabel &&
+            state === "connecting" &&
             "border-indigo-400/30 bg-indigo-500/10 text-indigo-200",
+          badgeLabel ? speakingBadgeClass(badgeLabel) : null,
         )}
       >
         <span className="opacity-70" aria-hidden>
           ✦
         </span>
-        {state}
+        {badgeLabel ?? state}
       </span>
     </div>
   );

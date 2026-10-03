@@ -29,7 +29,7 @@ import {
   strictCandidateWarning,
 } from "@/lib/integrity";
 import { BrandLogo } from "@/components/brand-logo";
-import { AIInterviewOrb } from "@/components/interview/ai-interview-orb";
+import { InterviewOrb } from "@/components/interview/interview-orb";
 import { InterviewMicControl } from "@/components/interview/interview-mic-control";
 import { useInterviewThinkingOrb, usePrefersReducedMotion } from "@/components/interview/orb-state";
 import { PrimaryCameraPanel } from "@/components/interview/primary-camera-preview";
@@ -38,6 +38,7 @@ import { usePrimaryCamera } from "@/components/interview/use-primary-camera";
 import { readStoredPrimaryDeviceId } from "@/lib/primary-camera";
 import { postFormDataWithUploadLifecycle } from "@/lib/interview-answer-upload";
 import { Shield, HelpCircle, Mic, LogOut } from "lucide-react";
+import type { InterviewOrbVariant } from "@/lib/interview-orb-flag";
 import { cn } from "@/lib/utils";
 import {
   GATE_CARD_FIT,
@@ -86,7 +87,13 @@ function formatRemaining(ms: number): string {
 
 type AnswerMode = "voice" | "text";
 
-export function InterviewRoom({ token }: { token: string }) {
+export function InterviewRoom({
+  token,
+  orbVariant = "speaking",
+}: {
+  token: string;
+  orbVariant?: InterviewOrbVariant;
+}) {
   const [info, setInfo] = useState<Info | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -103,7 +110,9 @@ export function InterviewRoom({ token }: { token: string }) {
   const [preferText, setPreferText] = useState(false);
   const [answerMode, setAnswerMode] = useState<AnswerMode>("voice");
   const [recording, setRecording] = useState(false);
-  const [, setRecordLevel] = useState(0);
+  const [recordLevel, setRecordLevel] = useState(0);
+  /** Piper element currently owned by the room. The speaking orb only taps it. */
+  const [piperAudio, setPiperAudio] = useState<HTMLAudioElement | null>(null);
   const [transcriptFailed, setTranscriptFailed] = useState(false);
   const [heardLabel, setHeardLabel] = useState<string | null>(null);
   /** True while question TTS / replay audio is playing (drives orb breathing). */
@@ -201,15 +210,16 @@ export function InterviewRoom({ token }: { token: string }) {
   ]);
 
   const reducedMotion = usePrefersReducedMotion();
+  const orbLifecycle = {
+    aiSpeaking,
+    candidateRecording: recording,
+    voiceSubmitting,
+    processing: Boolean(thinking || pendingProcessing) && !voiceSubmitting,
+    concluded: concluded || info?.status === "COMPLETED",
+    answerByVoice: useVoiceUi,
+  };
   const { orbState, statusLabel, heading, guidance, phase } =
-    useInterviewThinkingOrb({
-      aiSpeaking,
-      candidateRecording: recording,
-      voiceSubmitting,
-      processing: Boolean(thinking || pendingProcessing) && !voiceSubmitting,
-      concluded: concluded || info?.status === "COMPLETED",
-      answerByVoice: useVoiceUi,
-    });
+    useInterviewThinkingOrb(orbLifecycle);
 
   const finishToThanks = useCallback(() => {
     try {
@@ -652,6 +662,7 @@ export function InterviewRoom({ token }: { token: string }) {
     });
     audio.addEventListener("error", markSilent);
 
+    if (orbVariant !== "classic") setPiperAudio(audio);
     void audio.play().then(markSpeaking).catch(markSilent);
 
     return () => {
@@ -661,9 +672,10 @@ export function InterviewRoom({ token }: { token: string }) {
       audio.removeEventListener("error", markSilent);
       audio.pause();
       questionAudioRef.current = null;
+      setPiperAudio((current) => (current === audio ? null : current));
       setAiSpeaking(false);
     };
-  }, [useVoiceUi, activeSequence, activeQuestionText, token, thinking, voiceSubmitting]);
+  }, [useVoiceUi, activeSequence, activeQuestionText, token, thinking, voiceSubmitting, orbVariant]);
 
   async function recordIntegrityConsent() {
     const res = await fetch(`/api/interview/${token}/integrity/consent`, {
@@ -1001,6 +1013,7 @@ export function InterviewRoom({ token }: { token: string }) {
     audio.addEventListener("playing", markSpeaking);
     audio.addEventListener("ended", markSilent);
     audio.addEventListener("error", markSilent);
+    if (orbVariant !== "classic") setPiperAudio(audio);
     void audio.play().then(markSpeaking).catch(() => {
       markSilent();
       setError("Could not play question audio");
@@ -1355,13 +1368,17 @@ export function InterviewRoom({ token }: { token: string }) {
           {/* Orb + question */}
           <div className="flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d121c]/70 lg:min-h-0">
             <div className="min-h-0 flex-1 overflow-hidden px-4 pb-2 pt-4 md:px-6 [@media(max-height:820px)]:pt-3">
-              <AIInterviewOrb
+              <InterviewOrb
+                variant={orbVariant}
                 state={orbState}
+                lifecycle={orbLifecycle}
                 heading={heading}
                 statusLabel={statusLabel}
                 guidance={guidance}
                 reducedMotion={reducedMotion}
                 fill
+                audio={orbVariant === "classic" ? null : piperAudio}
+                micLevel={recording ? recordLevel : null}
               />
             </div>
 
