@@ -1,0 +1,88 @@
+---
+description: System design standards every feature and change must follow (architecture, load balancing, caching, database design, queues, CDN, scalability, reliability and security, monitoring)
+alwaysApply: true
+---
+
+# System Design Standards
+
+Writing code is one thing; designing a system that holds up in production is another.
+Apply these nine concerns to every new feature, refactor, and project. Scale the depth
+to the project: a static marketing site mostly needs CDN, caching, security and monitoring,
+while a backend service needs all nine. If a concern doesn't apply, say so briefly rather
+than skipping it silently.
+
+## Before writing code
+For any non-trivial change, state in a few lines which of the nine areas below it touches
+and how it handles them. Flag anything that would break these standards and propose the fix.
+
+## 1. System architecture
+- Keep clear layers: routes/controllers, services (business logic), data access. No DB queries in UI or controllers.
+- Keep services stateless so they can run as multiple instances; store state in the DB, cache, or object storage, never in process memory or local disk.
+- Put all config and secrets in environment variables with a checked-in `.env.example`; never hardcode them.
+- Version public APIs (e.g. `/api/v1`) and validate every request at the boundary (zod, class-validator, pydantic).
+
+## 2. Load balancing
+- Expose a cheap `/health` (liveness) and `/ready` (dependencies reachable) endpoint on every service.
+- Support graceful shutdown: on SIGTERM stop accepting requests, finish in-flight work, close DB and queue connections.
+- Don't rely on sticky sessions; use tokens or a shared session store.
+- Trust proxy headers correctly (`X-Forwarded-For`, `X-Forwarded-Proto`) when behind a load balancer.
+
+## 3. Caching
+- Cache expensive or frequently read data (Redis or in-memory LRU for single instance) with an explicit TTL and a clear invalidation path on writes.
+- Set correct HTTP cache headers: long-lived `Cache-Control: public, max-age=31536000, immutable` for hashed static assets, short or `no-store` for user-specific or sensitive responses.
+- Use ETags or `Last-Modified` for conditional requests where it helps.
+- Never cache per-user or authenticated data in a shared cache without keying it by user.
+
+## 4. Database design
+- Model data in normalized form first; denormalize only for a measured read need.
+- Every schema change goes through a migration (Prisma, TypeORM, Alembic, Knex); never edit production schema by hand.
+- Add indexes for columns used in WHERE, JOIN, and ORDER BY; avoid N+1 queries (use joins, `include`, or batching).
+- Paginate every list endpoint (cursor-based for large or growing tables). No unbounded `SELECT *`.
+- Use transactions for multi-step writes, foreign keys and constraints for integrity, and connection pooling.
+- Keep timestamps (`created_at`, `updated_at`) and prefer soft deletes where history matters.
+
+## 5. Message queues
+- Move slow, retryable, or third-party work (emails, webhooks, AI calls, file processing, reports) out of the request path into a queue or background job (BullMQ, SQS, RabbitMQ, Celery).
+- Make job handlers idempotent (safe to run twice) and use idempotency keys for external side effects.
+- Configure retries with exponential backoff and a dead-letter queue; log and alert on DLQ growth.
+- Return quickly to the client (202 + job id or status endpoint) for long work.
+
+## 6. CDN (Content Delivery Network)
+- Serve static assets (JS, CSS, images, fonts, video) through a CDN with fingerprinted filenames.
+- Optimize media: modern formats (WebP/AVIF), responsive sizes, lazy loading below the fold, compressed video.
+- Enable gzip or brotli compression and HTTP/2+.
+- Keep user uploads in object storage (S3, R2, GCS) behind the CDN, not on the app server.
+
+## 7. Scalability
+- Design for horizontal scaling: stateless app instances, shared DB, cache, and queue.
+- Add rate limiting on public and auth endpoints, and request size limits.
+- Use timeouts on every outbound call (HTTP, DB, AI APIs); never wait forever.
+- Avoid loading whole tables or files into memory; stream and batch.
+- Note the expected load and the first bottleneck for new features.
+
+## 8. Reliability & security
+Reliability:
+- Handle errors explicitly with a central error handler; never leak stack traces to clients.
+- Use retries with backoff and circuit breakers for flaky dependencies; degrade gracefully when a non-critical service is down.
+- Keep automated DB backups and a documented restore path.
+- Write tests for critical paths (auth, payments, data writes) and run them in CI.
+
+Security:
+- Validate and sanitize all input; use parameterized queries or an ORM (no string-built SQL).
+- Hash passwords with bcrypt or argon2; use short-lived access tokens with refresh tokens; enforce authorization on every endpoint, not just authentication.
+- Set security headers (helmet or equivalent: CSP, HSTS, X-Content-Type-Options, frame protection) and a strict CORS allowlist.
+- HTTPS everywhere; secure, httpOnly, sameSite cookies.
+- Never commit secrets; keep dependencies updated and audited (`npm audit`, `pip-audit`, Dependabot).
+- Apply least privilege to DB users, API keys, and cloud roles.
+
+## 9. Monitoring
+- Use structured logging (JSON, with level, timestamp, request id) via pino, winston, or structlog; never log secrets or personal data.
+- Propagate a request/correlation id through logs, queues, and outbound calls.
+- Capture errors in an error tracker (Sentry or similar) for frontend and backend.
+- Track key metrics: request rate, error rate, latency (p50/p95/p99), queue depth, DB and cache health.
+- Set up uptime checks on `/health` and alerts for error spikes and downtime.
+- For websites, also track Core Web Vitals (LCP, CLS, INP).
+
+## Review checklist
+Before finishing any task, check the change against these nine areas and mention any gaps
+you found, what you fixed, and what should be a follow-up.
