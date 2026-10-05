@@ -5,13 +5,16 @@ import { prisma } from "@/lib/db";
 import { handleApiError, jsonCreated, jsonOk } from "@/lib/api";
 import { saveUpload } from "@/lib/storage";
 import { embedCandidate } from "@/lib/ai/embeddings";
-import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { rateLimit } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/security/client-ip";
 import { candidateAccountsEnabled } from "@/lib/auth/candidate-accounts";
 import {
   isAllowedResumeFile,
   resumeMimeError,
   RESUME_MAX_BYTES,
 } from "@/lib/resume/mime";
+
+const HOUR_MS = 60 * 60 * 1000;
 
 /**
  * Public careers apply — no auth required.
@@ -20,11 +23,13 @@ import {
  */
 export async function POST(request: Request) {
   try {
+    // Without a trusted proxy there is no client IP: one bucket for the whole site bounds resume
+    // processing, and the per-email limit below stops repeat submissions.
     const ip = clientIp(request);
     const rl = rateLimit({
-      key: `careers-apply:${ip}`,
-      limit: 5,
-      windowMs: 60 * 60 * 1000,
+      key: ip ? `careers-apply:${ip}` : "careers-apply:no-client-ip",
+      limit: ip ? 5 : 120,
+      windowMs: HOUR_MS,
     });
     if (!rl.ok) {
       return Response.json(
@@ -71,6 +76,9 @@ export async function POST(request: Request) {
     }
 
     const body = parsed.data;
+    if (!rateLimit({ key: `careers-apply:email:${body.email}`, limit: 5, windowMs: HOUR_MS }).ok) {
+      return Response.json({ error: "Too many applications. Try again later." }, { status: 429 });
+    }
     const file = form.get("resume");
     if (!(file instanceof File) || file.size === 0) {
       return Response.json({ error: "Resume is required" }, { status: 400 });

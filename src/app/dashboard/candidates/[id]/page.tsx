@@ -43,6 +43,7 @@ import {
   stageBadgeClass,
 } from "@/lib/candidate-detail-ui";
 import { profileReadingStatus } from "@/lib/resume-upload/profile-worker";
+import { publicResumeText } from "@/lib/resume/text";
 import { verifyStoredFile } from "@/lib/storage";
 import {
   RESUME_PARSER_LABEL,
@@ -243,6 +244,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
   const uploadedName = selectedApp
     ? resumeUploadedName(selectedApp.timelineEvents)
     : null;
+  const resumeParsed = Boolean(publicResumeText(candidate.resumeText));
   const attention = selectedApp
     ? buildAttentionItems({
         interviewStatus: latestInterview?.status ?? null,
@@ -251,7 +253,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
         screeningAction: scores?.recommendedAction ?? null,
         stage: selectedApp.stage,
         resumeUrl: candidate.resumeUrl,
-        resumeText: candidate.resumeText,
+        resumeText: publicResumeText(candidate.resumeText),
         secondaryRecordingAvailable: recordingReady,
       })
     : [];
@@ -553,11 +555,11 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
               <span
                 className={cn(
                   "h-2 w-2 rounded-full",
-                  candidate.resumeText ? "bg-success" : "bg-warning",
+                  resumeParsed ? "bg-success" : "bg-warning",
                 )}
                 aria-hidden
               />
-              {candidate.resumeText
+              {resumeParsed
                 ? "Parsed successfully"
                 : "Resume could not be fully parsed."}
             </p>

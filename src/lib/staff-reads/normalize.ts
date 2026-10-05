@@ -102,27 +102,25 @@ export function normalizeJob(job: DjangoJob) {
   };
 }
 
-export function normalizeCandidateListItem(c: DjangoCandidate) {
+export type DjangoCandidateListItem = Pick<
+  DjangoCandidate,
+  "id" | "email" | "firstName" | "lastName" | "location" | "skills" | "experience" | "createdAt" | "updatedAt"
+> & { applicationCount?: number; hasResume?: boolean };
+
+/** Next GET /api/candidates item. Picks list fields only, whatever else Django sends. */
+export function normalizeCandidateListItem(c: DjangoCandidateListItem) {
   return {
     id: c.id,
-    organizationId: c.organizationId,
-    userId: c.userId,
-    email: c.email,
     firstName: c.firstName,
     lastName: c.lastName,
-    phone: c.phone,
-    linkedIn: c.linkedIn,
+    email: c.email,
     location: c.location,
-    summary: c.summary,
     skills: c.skills ?? [],
     experience: c.experience,
-    education: c.education,
-    certifications: c.certifications,
-    resumeUrl: c.resumeUrl,
-    resumeText: c.resumeText,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
-    _count: { applications: c.applicationCount ?? 0 },
+    applicationCount: c.applicationCount ?? 0,
+    hasResume: Boolean(c.hasResume),
   };
 }
 

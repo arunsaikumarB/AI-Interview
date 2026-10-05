@@ -58,30 +58,45 @@ describe("normalizeJob", () => {
 });
 
 describe("normalizeCandidateListItem", () => {
-  it("does not invent nested applications", () => {
-    const c = normalizeCandidateListItem({
+  it("keeps list fields only, even when Django sends the full candidate", () => {
+    const full: DjangoCandidate & { hasResume: boolean } = {
       id: "c1",
       organizationId: "o1",
-      userId: null,
+      userId: "u1",
       email: "a@example.com",
       firstName: "Ada",
       lastName: "Lovelace",
-      phone: null,
-      linkedIn: null,
+      phone: "+1 555 0100",
+      linkedIn: "https://example.com/ada",
       location: null,
-      summary: null,
+      summary: "summary",
       skills: ["python"],
       experience: 2,
-      education: [],
+      education: [{ school: "x" }],
       certifications: [],
-      resumeUrl: null,
-      resumeText: "text",
+      resumeUrl: "resumes/a.pdf",
+      resumeText: "text -- 1 of 1 --",
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: "2026-01-02T00:00:00Z",
       applicationCount: 1,
-    } satisfies DjangoCandidate);
-    assert.equal(c._count.applications, 1);
-    assert.equal("applications" in c, false);
+      hasResume: true,
+    };
+    const c = normalizeCandidateListItem(full);
+    assert.deepEqual(Object.keys(c).sort(), [
+      "applicationCount",
+      "createdAt",
+      "email",
+      "experience",
+      "firstName",
+      "hasResume",
+      "id",
+      "lastName",
+      "location",
+      "skills",
+      "updatedAt",
+    ]);
+    assert.equal(c.applicationCount, 1);
+    assert.equal(c.hasResume, true);
   });
 });
 

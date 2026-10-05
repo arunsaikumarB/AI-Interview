@@ -52,4 +52,4 @@ def apply_candidate_filters(
             | Q(skills__overlap=[term])
         )
     order = sort if sort in ALLOWED_SORT else DEFAULT_SORT
-    return qs.order_by(order)
+    return qs.order_by(order, "-id")

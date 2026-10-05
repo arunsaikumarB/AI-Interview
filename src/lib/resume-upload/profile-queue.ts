@@ -3,6 +3,7 @@ import path from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import type { AiProfile } from "./ai-profile";
 import { extractResumeProfile, type ResumeProfile } from "./profile";
+import { stripPageMarkers } from "@/lib/resume/text";
 
 /**
  * Background resume reading, one candidate at a time: OCR when the stored resume
@@ -171,12 +172,6 @@ export async function fillEmptyProfile(
   return filled;
 }
 
-const PAGE_MARKER = /^\s*--\s*\d+\s+of\s+\d+\s*--\s*$/gm;
-
-function cleanText(text: string): string {
-  return text.replace(PAGE_MARKER, "").replace(/\n{3,}/g, "\n\n").trim();
-}
-
 type Outcome =
   | { kind: "done" }
   | { kind: "deferred" }
@@ -200,8 +195,8 @@ export async function runProfileJob(job: ProfileJob, deps: ProfileWorkerDeps): P
       : lower.endsWith(".docx")
         ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         : "text/plain";
-    text = cleanText(await deps.extractText({ buffer, mimeType, fileName: path.basename(c.resumeUrl) }).catch(() => ""));
-    if (!text && mimeType === "application/pdf") text = cleanText(await deps.ocr(buffer));
+    text = stripPageMarkers(await deps.extractText({ buffer, mimeType, fileName: path.basename(c.resumeUrl) }).catch(() => ""));
+    if (!text && mimeType === "application/pdf") text = stripPageMarkers(await deps.ocr(buffer));
     if (text) {
       await db.candidate.updateMany({ where: { id: c.id, organizationId: job.organizationId, resumeText: null }, data: { resumeText: text } });
       await fillEmptyProfile(db, c.id, job.organizationId, extractResumeProfile(text), job.experienceSet);

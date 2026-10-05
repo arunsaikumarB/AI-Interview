@@ -1,8 +1,9 @@
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
-import { AuthError, canManagePipeline, requireStaff } from "@/lib/auth/rbac";
+import { AuthError, canManagePipeline, orgScopeWhere, requireStaff } from "@/lib/auth/rbac";
 import { handleApiError, jsonCreated } from "@/lib/api";
-import { saveUpload } from "@/lib/storage";
+import { deleteStoredFile, saveUpload } from "@/lib/storage";
 import { embedCandidate } from "@/lib/ai/embeddings";
 import {
   isAllowedResumeFile,
@@ -13,50 +14,75 @@ import { enqueueDjangoJob } from "@/lib/staff-async/enqueue";
 import { useDjangoAsync } from "@/lib/staff-async/flag";
 import { djangoReadToResponse } from "@/lib/staff-reads/errors";
 
+const idSchema = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
+
+const PARSE_FAILED = "Text could not be extracted from this file. The resume file is stored.";
+
+function formId(form: FormData, key: string): string | null | undefined {
+  const raw = form.get(key);
+  if (raw === null || raw === "") return null;
+  const parsed = idSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
 /**
  * Staff resume upload + parse. Candidates use PUT /api/portal/profile.
- * CANDIDATE JWT → 403.
+ * CANDIDATE JWT → 403. The target candidate must belong to the caller's organization;
+ * ownership is checked before anything is written to disk or the database.
  */
 export async function POST(request: Request) {
   try {
     const session = await getSession();
     const user = requireStaff(session);
+    const scope = orgScopeWhere(user);
     const form = await request.formData();
     const file = form.get("file");
-    const applicationId = String(form.get("applicationId") ?? "") || null;
-    const candidateIdParam = String(form.get("candidateId") ?? "") || null;
+    const applicationId = formId(form, "applicationId");
+    const candidateIdParam = formId(form, "candidateId");
 
+    if (applicationId === undefined || candidateIdParam === undefined) {
+      return Response.json({ error: "Invalid candidateId or applicationId" }, { status: 400 });
+    }
     if (!(file instanceof File)) {
       return Response.json({ error: "file is required" }, { status: 400 });
     }
     if (file.size > RESUME_MAX_BYTES || !isAllowedResumeFile(file)) {
       return Response.json({ error: resumeMimeError() }, { status: 400 });
     }
+    if (!applicationId && !candidateIdParam) {
+      throw new AuthError("candidateId or applicationId required", 400);
+    }
+    if (!canManagePipeline(user.role)) {
+      throw new AuthError("Insufficient permissions", 403);
+    }
 
-    let candidateId: string | null = null;
-
+    let candidateId: string;
     if (applicationId) {
-      const application = await prisma.application.findUnique({
-        where: { id: applicationId },
-        include: { job: true, candidate: true },
+      const application = await prisma.application.findFirst({
+        where: {
+          id: applicationId,
+          ...(scope.organizationId
+            ? {
+                job: { organizationId: scope.organizationId },
+                candidate: { organizationId: scope.organizationId },
+              }
+            : {}),
+        },
+        select: { candidateId: true },
       });
       if (!application) {
         return Response.json({ error: "Application not found" }, { status: 404 });
       }
-
-      const staffOk =
-        canManagePipeline(user.role) &&
-        (user.role === "SUPER_ADMIN" ||
-          application.job.organizationId === user.organizationId);
-
-      if (!staffOk) {
-        throw new AuthError("Insufficient permissions", 403);
-      }
       candidateId = application.candidateId;
-    } else if (candidateIdParam && canManagePipeline(user.role)) {
-      candidateId = candidateIdParam;
     } else {
-      throw new AuthError("candidateId or applicationId required", 400);
+      const candidate = await prisma.candidate.findFirst({
+        where: { id: candidateIdParam!, ...scope },
+        select: { id: true },
+      });
+      if (!candidate) {
+        return Response.json({ error: "Candidate not found" }, { status: 404 });
+      }
+      candidateId = candidate.id;
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -77,17 +103,25 @@ export async function POST(request: Request) {
           fileName: file.name,
         });
       } catch (err) {
-        parseError = err instanceof Error ? err.message : "Parse failed";
+        console.warn("[upload] resume text extraction failed:", err instanceof Error ? err.name : "unknown");
+        parseError = PARSE_FAILED;
       }
     }
 
-    const candidate = await prisma.candidate.update({
-      where: { id: candidateId },
-      data: {
-        resumeUrl: stored.relativePath,
-        ...(resumeText ? { resumeText } : {}),
-      },
-    });
+    let candidate;
+    try {
+      candidate = await prisma.candidate.update({
+        where: { id: candidateId },
+        data: {
+          resumeUrl: stored.relativePath,
+          ...(resumeText ? { resumeText } : {}),
+        },
+        select: { id: true, resumeText: true },
+      });
+    } catch (err) {
+      await deleteStoredFile(stored.relativePath).catch(() => undefined);
+      throw err;
+    }
 
     if (useDjangoAsync()) {
       try {
@@ -114,7 +148,6 @@ export async function POST(request: Request) {
         return jsonCreated({
           candidate: {
             id: candidate.id,
-            resumeUrl: candidate.resumeUrl,
             resumeTextLength: candidate.resumeText?.length ?? 0,
           },
           parsed: false,
@@ -167,7 +200,6 @@ export async function POST(request: Request) {
     return jsonCreated({
       candidate: {
         id: candidate.id,
-        resumeUrl: candidate.resumeUrl,
         resumeTextLength: candidate.resumeText?.length ?? 0,
       },
       parsed: Boolean(resumeText),

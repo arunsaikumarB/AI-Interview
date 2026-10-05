@@ -5,6 +5,7 @@ import { RESUME_UPLOAD_SOURCE, rowWarnings, type UploadRow } from "./constants";
 import { extractResumeFields, type ResumeFields } from "./extract";
 import { extractResumeProfile, type ResumeProfile } from "./profile";
 import { recallOcrText, rememberOcrText } from "./text-cache";
+import { stripPageMarkers } from "@/lib/resume/text";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -100,13 +101,6 @@ async function planFor(
   return { status: applied ? "already_applied" : "link", candidateId };
 }
 
-/** The PDF reader adds "-- 1 of 2 --" page markers; a scanned PDF yields nothing else. */
-const PAGE_MARKER = /^\s*--\s*\d+\s+of\s+\d+\s*--\s*$/gm;
-
-function cleanText(text: string): string {
-  return text.replace(PAGE_MARKER, "").replace(/\n{3,}/g, "\n\n").trim();
-}
-
 async function readText(extractText: UploadDeps["extractText"], name: string, buffer: Buffer): Promise<string | null> {
   try {
     const text = await extractText({
@@ -114,7 +108,7 @@ async function readText(extractText: UploadDeps["extractText"], name: string, bu
       mimeType: resumeMimeType(name) ?? "application/octet-stream",
       fileName: name,
     });
-    return cleanText(text) || null;
+    return stripPageMarkers(text) || null;
   } catch {
     return null;
   }
@@ -168,7 +162,7 @@ export async function ocrUploadedResume(
   if (problem) return { name, status: "invalid", reason: problem };
   if (!isPdf(name)) return { name, status: "invalid", reason: "only PDF files can be scanned" };
   const pdfText = await readText(args.deps.extractText, name, buffer);
-  const ocrText = cleanText(await args.deps.ocr(buffer).catch(() => ""));
+  const ocrText = stripPageMarkers(await args.deps.ocr(buffer).catch(() => ""));
   if (ocrText) rememberOcrText(organizationId, buffer, ocrText);
   const pdfFields = extractResumeFields(pdfText ?? "", name);
   const fields = ocrText ? mergeFields(pdfFields, extractResumeFields(ocrText, name)) : pdfFields;

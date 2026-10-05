@@ -224,6 +224,19 @@ NEXT_PUBLIC_APP_URL="https://10.0.12.218"
 This is a `NEXT_PUBLIC_*` value, baked in at build time, so deploy again after changing it (section 11).
 Never run `npm ci` or `npm run build` in the folder the live app runs from.
 
+### 5.6 Client IP (rate limits)
+
+The careers form and assessment links are rate limited per client IP. The app ignores `X-Forwarded-For` unless told
+how many proxies sit in front of it, because any client can send that header. With nginx as the only proxy, in `APP_DIR/.env`:
+
+```bash
+TRUST_PROXY=1
+```
+
+nginx appends the real client address (`$proxy_add_x_forwarded_for`, section 5.2) and the app reads that last entry.
+This is only safe while port 5000 is closed to the network (section 6). If `TRUST_PROXY` is unset, IP limits are
+off and the careers form falls back to a per-email limit plus one site-wide limit. Restart the app after changing it.
+
 ## 6. Firewall (app server)
 
 ```bash

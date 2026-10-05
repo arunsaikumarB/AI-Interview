@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { orgScopeWhere, requireStaff } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
+import { publicResumeText } from "@/lib/resume/text";
 
 type Ctx = { params: { id: string } };
 
@@ -44,7 +45,11 @@ export async function GET(_request: Request, { params }: Ctx) {
       return Response.json({ error: "Candidate not found" }, { status: 404 });
     }
 
-    return jsonOk({ candidate });
+    const { resumeUrl, resumeText, ...rest } = candidate;
+    return jsonOk(
+      { candidate: { ...rest, hasResume: Boolean(resumeUrl), resumeText: publicResumeText(resumeText) } },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (err) {
     return handleApiError(err);
   }

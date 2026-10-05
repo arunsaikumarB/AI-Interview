@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
-import { AuthError, canManagePipeline, requireUser } from "@/lib/auth/rbac";
+import { AuthError, canManagePipeline, orgScopeWhere, requireUser } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
 import { djangoAsyncStatus } from "@/lib/staff-async/enqueue";
 import { normalizeAsyncStatus, useDjangoAsync } from "@/lib/staff-async/flag";
@@ -21,12 +21,7 @@ export async function GET(request: Request) {
       return jsonOk({ status: "IDLE", task_id: null });
     }
     const candidate = await prisma.candidate.findFirst({
-      where: {
-        id: candidateId,
-        ...(user.role === "SUPER_ADMIN" || !user.organizationId
-          ? {}
-          : { organizationId: user.organizationId }),
-      },
+      where: { id: candidateId, ...orgScopeWhere(user) },
       select: { id: true },
     });
     if (!candidate) {

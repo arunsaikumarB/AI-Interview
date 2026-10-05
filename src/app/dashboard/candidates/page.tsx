@@ -77,7 +77,10 @@ export default async function CandidatesPage({
     where: ACTIVE_PIPELINE_FILTER,
     orderBy: { updatedAt: "desc" },
     take: 1,
-    include: {
+    select: {
+      id: true,
+      stage: true,
+      status: true,
       job: { select: { title: true } },
       aiEvaluations: {
         where: { kind: "RESUME_SCREEN" },
@@ -92,12 +95,18 @@ export default async function CandidatesPage({
       },
     },
   } satisfies Prisma.Candidate$applicationsArgs;
-  const include = {
+  const select = {
+    id: true,
+    firstName: true,
+    lastName: true,
+    email: true,
+    experience: true,
+    updatedAt: true,
     applications: latestApplication,
     _count: {
       select: { applications: { where: { source: RESUME_PARSER_SOURCE } } },
     },
-  } satisfies Prisma.CandidateInclude;
+  } satisfies Prisma.CandidateSelect;
 
   const sort = searchParams?.sort ?? "updated";
   const total = await prisma.candidate.count({ where });
@@ -133,7 +142,7 @@ export default async function CandidatesPage({
     if (pageIds.length < PAGE_SIZE) {
       const rest = await prisma.candidate.findMany({
         where: { AND: [where, { id: { notIn: scored.map((c) => c.id) } }] },
-        orderBy: { updatedAt: "desc" },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         skip: Math.max(0, skip - scored.length),
         take: PAGE_SIZE - pageIds.length,
         select: { id: true },
@@ -142,7 +151,7 @@ export default async function CandidatesPage({
     }
     const found = await prisma.candidate.findMany({
       where: { id: { in: pageIds } },
-      include,
+      select,
     });
     const byId = new Map(found.map((c) => [c.id, c]));
     candidates = pageIds.flatMap((id) => byId.get(id) ?? []);
@@ -151,11 +160,11 @@ export default async function CandidatesPage({
       where,
       orderBy:
         sort === "name"
-          ? [{ firstName: "asc" }, { lastName: "asc" }]
-          : { updatedAt: "desc" },
+          ? [{ firstName: "asc" }, { lastName: "asc" }, { id: "asc" }]
+          : [{ updatedAt: "desc" }, { id: "desc" }],
       skip,
       take: PAGE_SIZE,
-      include,
+      select,
     });
   }
 
@@ -296,7 +305,9 @@ export default async function CandidatesPage({
                   colSpan={6}
                   className="px-4 py-10 text-center text-muted-foreground"
                 >
-                  No candidates in hiring yet.
+                  {q || stageFilter
+                    ? "No candidates match these filters."
+                    : "No candidates in hiring yet."}
                 </td>
               </tr>
             ) : null}

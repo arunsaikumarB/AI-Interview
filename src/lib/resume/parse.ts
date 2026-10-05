@@ -2,6 +2,7 @@ import mammoth from "mammoth";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { stripPageMarkers } from "./text";
 
 /**
  * Local resume text extraction — PDF + DOCX + plain text.
@@ -110,7 +111,7 @@ export async function extractResumeText(params: {
     const parser = new PDFParse({ data: params.buffer });
     try {
       const result = await parser.getText();
-      const text = cleanText(result.text ?? "");
+      const text = stripPageMarkers(cleanText(result.text ?? ""));
       if (!text) {
         throw new Error("Could not extract text from this PDF");
       }

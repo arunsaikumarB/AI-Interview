@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
@@ -13,6 +14,11 @@ from apps.accounts.roles import HireOSRole
 from apps.accounts.tests.test_rbac import ORG_A, ORG_B, SETTINGS, mint
 from apps.candidates.models import Candidate
 from apps.candidates.querysets import apply_candidate_filters, scoped_candidates
+from apps.candidates.serializers import (
+    CandidateListSerializer,
+    CandidateSerializer,
+    public_resume_text,
+)
 from apps.candidates.views import CandidateDetailView, CandidateListView
 
 CAND_SETTINGS = {
@@ -143,3 +149,73 @@ class CandidateQueryTests(SimpleTestCase):
         )
         self.assertIn("alex", sql.lower())
         self.assertIn("updatedAt", sql)
+
+    def test_list_query_skips_resume_text_and_orders_deterministically(self):
+        principal = HireOSPrincipal(
+            id="u1",
+            email="r@example.com",
+            name="R",
+            role=HireOSRole.RECRUITER,
+            source_role="RECRUITER",
+            organization_id=ORG_A,
+        )
+        view = CandidateListView()
+        view.request = SimpleNamespace(user=principal, query_params={"sort": "-created_at"})
+        sql = str(view.get_queryset().query)
+        self.assertNotIn("resumeText", sql)
+        self.assertIn('"createdAt" DESC', sql)
+        self.assertIn('"id" DESC', sql)
+
+
+class CandidateListSerializerTests(SimpleTestCase):
+    def test_list_row_has_no_contact_or_resume_content(self):
+        cand = Candidate(
+            id="c1",
+            organization_id=ORG_A,
+            email="a@example.com",
+            first_name="Ada",
+            last_name="Lovelace",
+            phone="+1 555 0100",
+            location=None,
+            summary="summary",
+            skills=["python"],
+            experience=2,
+            education=[],
+            certifications=[],
+            resume_url="resumes/a.pdf",
+            resume_text="secret resume text",
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        )
+        cand.application_count = 2
+        data = CandidateListSerializer(cand).data
+        self.assertEqual(
+            sorted(data.keys()),
+            sorted(
+                [
+                    "id",
+                    "email",
+                    "firstName",
+                    "lastName",
+                    "location",
+                    "skills",
+                    "experience",
+                    "createdAt",
+                    "updatedAt",
+                    "applicationCount",
+                    "hasResume",
+                ]
+            ),
+        )
+        self.assertTrue(data["hasResume"])
+        self.assertEqual(data["applicationCount"], 2)
+
+    def test_detail_resume_text_has_no_pdf_page_markers(self):
+        self.assertEqual(
+            public_resume_text("Ada Lovelace\n\n-- 1 of 2 --\n\nPython\n-- 2 of 2 --"),
+            "Ada Lovelace\n\nPython",
+        )
+        self.assertIsNone(public_resume_text("-- 1 of 1 --"))
+        self.assertIsNone(public_resume_text(None))
+        cand = Candidate(id="c1", organization_id=ORG_A, resume_text="Ada\n-- 1 of 1 --")
+        self.assertEqual(CandidateSerializer().get_resumeText(cand), "Ada")

@@ -1,5 +1,5 @@
 import { djangoGetAllPages, djangoGetJson } from "./django-client";
-import type { DjangoApplication, DjangoCandidate, DjangoJob } from "./normalize";
+import type { DjangoApplication, DjangoCandidateListItem, DjangoJob } from "./normalize";
 import {
   normalizeApplicationListItem,
   normalizeCandidateListItem,
@@ -28,13 +28,22 @@ export async function djangoGetJob(request: Request, id: string) {
   return normalizeJob(body.job);
 }
 
-export async function djangoListCandidates(request: Request, q?: string) {
-  const candidates = await djangoGetAllPages<DjangoCandidate>(
+export async function djangoListCandidatesPage(
+  request: Request,
+  query: { page: number; pageSize: number; q?: string },
+) {
+  const body = await djangoGetJson<{ count?: number; candidates?: DjangoCandidateListItem[] }>(
     "/api/v1/candidates/",
-    "candidates",
-    { request, query: { q, sort: "-updated_at" } },
+    {
+      request,
+      query: { q: query.q, sort: "-created_at", page: query.page, page_size: query.pageSize },
+    },
   );
-  return candidates.map(normalizeCandidateListItem);
+  const rows = Array.isArray(body.candidates) ? body.candidates : [];
+  return {
+    items: rows.map(normalizeCandidateListItem),
+    total: typeof body.count === "number" ? body.count : rows.length,
+  };
 }
 
 export async function djangoListApplications(

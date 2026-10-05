@@ -5,7 +5,7 @@ from apps.accounts.principals import HireOSPrincipal
 from apps.accounts.roles import HireOSRole
 from apps.candidates.models import Candidate
 from apps.candidates.querysets import scoped_candidates
-from apps.candidates.serializers import CandidateSerializer
+from apps.candidates.serializers import CandidateSerializer, public_resume_text
 
 
 class Command(BaseCommand):
@@ -59,7 +59,7 @@ class Command(BaseCommand):
                 "organizationId": (data["organizationId"], raw["organizationId"]),
                 "userId": (data["userId"], raw["userId"]),
                 "resumeUrl": (data["resumeUrl"], raw["resumeUrl"]),
-                "resumeText": (data["resumeText"], raw["resumeText"]),
+                "resumeText": (data["resumeText"], public_resume_text(raw["resumeText"])),
             }
             row_ok = True
             for key, (left, right) in checks.items():

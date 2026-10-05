@@ -6,17 +6,17 @@ from apps.accounts.authentication import HireOSJWTAuthentication
 from apps.accounts.permissions import StaffOnly
 from apps.candidates.pagination import CandidatePagination
 from apps.candidates.querysets import apply_candidate_filters, scoped_candidates
-from apps.candidates.serializers import CandidateSerializer
+from apps.candidates.serializers import CandidateListSerializer, CandidateSerializer
 
 
 class CandidateListView(ListAPIView):
     authentication_classes = [HireOSJWTAuthentication]
     permission_classes = [IsAuthenticated, StaffOnly]
-    serializer_class = CandidateSerializer
+    serializer_class = CandidateListSerializer
     pagination_class = CandidatePagination
 
     def get_queryset(self):
-        qs = scoped_candidates(self.request.user)
+        qs = scoped_candidates(self.request.user).defer("resume_text")
         params = self.request.query_params
         return apply_candidate_filters(
             qs,

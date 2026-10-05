@@ -1,6 +1,7 @@
 import { AuthError } from "@/lib/auth/rbac";
 import { handleApiError, isDatabaseUnavailable, jsonError } from "@/lib/api";
-import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { rateLimit } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/security/client-ip";
 import { hashAccessToken } from "./token";
 import { PracticalError } from "./service";
 
@@ -37,7 +38,10 @@ export function practicalErrorResponse(err: unknown, context: string): Response 
   return jsonError("Something went wrong. Please try again.", 500);
 }
 
-/** Candidate-side limiter keyed by token hash and client IP. Returns a 429 response when exceeded. */
+/**
+ * Candidate-side limiter keyed by token hash, plus client IP when a trusted proxy supplies one.
+ * Returns a 429 response when exceeded.
+ */
 export function limitCandidate(
   request: Request,
   token: string,
@@ -47,7 +51,8 @@ export function limitCandidate(
 ): Response | null {
   const tokenKey = hashAccessToken(token).slice(0, 24);
   const byToken = rateLimit({ key: `practical:${action}:t:${tokenKey}`, ...perToken });
-  const byIp = rateLimit({ key: `practical:${action}:ip:${clientIp(request)}`, ...perIp });
+  const ip = clientIp(request);
+  const byIp = ip ? rateLimit({ key: `practical:${action}:ip:${ip}`, ...perIp }) : { ok: true };
   if (!byToken.ok || !byIp.ok) return jsonError("Too many requests. Please wait a moment and try again.", 429);
   return null;
 }
