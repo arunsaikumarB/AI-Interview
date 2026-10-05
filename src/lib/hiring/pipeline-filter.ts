@@ -1,8 +1,8 @@
 import type { Prisma } from "@prisma/client";
-import { RESUME_PARSER_SOURCE } from "./constants";
+import { RESUME_PARSER_SOURCE } from "@/lib/integrations/resume-parser/constants";
 
 /**
- * Keeps imported history that nobody has acted on yet (Resume Parser source, still
+ * Keeps Resume Parser history that nobody has acted on yet (Resume Parser source, still
  * Applied + On hold) out of active-pipeline views. Once HR moves the stage or status,
  * the application shows up like any other.
  */
@@ -17,8 +17,8 @@ export const ACTIVE_PIPELINE_FILTER: Prisma.ApplicationWhereInput = {
 
 /**
  * Candidates page: people with at least one real HireOS application (Careers, upload with a
- * job, Add to Hiring, or an import HR has acted on). Talent-only profiles (uploaded without a
- * job, untouched Resume Parser history) live in Talent Pool until HR adds them to hiring.
+ * job, Add to Hiring, or Resume Parser history HR has acted on). Talent-only profiles (uploaded
+ * without a job, untouched Resume Parser history) live in Talent Pool until HR adds them to hiring.
  */
 export const IN_HIRING_CANDIDATE_FILTER: Prisma.CandidateWhereInput = {
   applications: { some: ACTIVE_PIPELINE_FILTER },

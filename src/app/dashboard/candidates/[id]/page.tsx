@@ -47,8 +47,8 @@ import { verifyStoredFile } from "@/lib/storage";
 import {
   RESUME_PARSER_LABEL,
   RESUME_PARSER_SOURCE,
-} from "@/lib/resume-parser-import/constants";
-import { isUntouchedImport } from "@/lib/resume-parser-import/pipeline-filter";
+} from "@/lib/integrations/resume-parser/constants";
+import { isUntouchedImport } from "@/lib/hiring/pipeline-filter";
 import { cn } from "@/lib/utils";
 
 type Ctx = {
@@ -260,18 +260,6 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
     ? hiringApps.filter((a) => a.id !== selectedApp.id)
     : hiringApps;
 
-  const importedPayload =
-    selectedApp?.source === RESUME_PARSER_SOURCE
-      ? selectedApp.timelineEvents.find((t) => t.type === "APPLICATION_CREATED")?.payload
-      : null;
-  const importedResumeReference =
-    importedPayload &&
-    typeof importedPayload === "object" &&
-    !Array.isArray(importedPayload) &&
-    typeof importedPayload.resumeReference === "string"
-      ? importedPayload.resumeReference
-      : null;
-
   const interviewApp = selectedApp
     ? {
         id: selectedApp.id,
@@ -353,18 +341,10 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
               {selectedApp.job.title}
             </p>
             {selectedApp.source === RESUME_PARSER_SOURCE ? (
-              <div className="mt-1 space-y-0.5 text-[13px] text-muted-foreground">
-                <p>
-                  Source: {RESUME_PARSER_LABEL} · Applied {formatDate(selectedApp.createdAt)}
-                  {selectedApp.status === "ON_HOLD" ? " · On hold" : ""}
-                </p>
-                {importedResumeReference && !candidate.resumeUrl ? (
-                  <p className="break-all">
-                    Resume file named in {RESUME_PARSER_LABEL} (not attached yet):{" "}
-                    {importedResumeReference}
-                  </p>
-                ) : null}
-              </div>
+              <p className="mt-1 text-[13px] text-muted-foreground">
+                Source: {RESUME_PARSER_LABEL} · Applied {formatDate(selectedApp.createdAt)}
+                {selectedApp.status === "ON_HOLD" ? " · On hold" : ""}
+              </p>
             ) : null}
           </div>
           <PipelineStrip current={selectedApp.stage} />
@@ -421,24 +401,12 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
             </p>
           </div>
           <ul className="space-y-1 text-sm text-foreground/90">
-            {historyApps.map((app) => {
-              const created = app.timelineEvents.find((t) => t.type === "APPLICATION_CREATED")?.payload;
-              const reference =
-                created && typeof created === "object" && !Array.isArray(created) && typeof created.resumeReference === "string"
-                  ? created.resumeReference
-                  : null;
-              return (
-                <li key={app.id}>
-                  {app.job.title}
-                  <span className="text-muted-foreground"> · Applied {formatDate(app.createdAt)}</span>
-                  {reference && !candidate.resumeUrl ? (
-                    <span className="block break-all text-[13px] text-muted-foreground">
-                      Resume file named in {RESUME_PARSER_LABEL} (not attached yet): {reference}
-                    </span>
-                  ) : null}
-                </li>
-              );
-            })}
+            {historyApps.map((app) => (
+              <li key={app.id}>
+                {app.job.title}
+                <span className="text-muted-foreground"> · Applied {formatDate(app.createdAt)}</span>
+              </li>
+            ))}
           </ul>
         </section>
       ) : null}

@@ -1,12 +1,9 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { canManagePipeline } from "@/lib/auth/rbac";
-import { buttonVariants } from "@/components/ui/button";
 import { TalentSearch } from "@/components/talent-search";
 import { TalentBrowse } from "@/components/talent-browse";
-import { IMPORT_ROLES } from "@/lib/resume-parser-import/constants";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -27,24 +24,16 @@ export default async function TalentPoolPage() {
         orderBy: { title: "asc" },
       })
     : [];
-  const canImport = IMPORT_ROLES.includes(session.role) && Boolean(session.organizationId);
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="page-title">Talent pool</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Historical and available candidates, including Resume Parser history and resumes uploaded
-            without a job. Nobody here is in hiring until you choose Add to Hiring and pick a current
-            job opening.
-          </p>
-        </div>
-        {canImport ? (
-          <Link href="/dashboard/talent/import" className={buttonVariants({ variant: "outline", size: "sm" })}>
-            Import Resume Parser export
-          </Link>
-        ) : null}
+      <div>
+        <h1 className="page-title">Talent pool</h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Historical and available candidates, including Resume Parser history and resumes uploaded
+          without a job. Nobody here is in hiring until you choose Add to Hiring and pick a current
+          job opening.
+        </p>
       </div>
 
       {session.organizationId ? (

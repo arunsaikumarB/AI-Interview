@@ -24,7 +24,7 @@ const NOW = new Date(Date.UTC(2026, 9, 5, 12));
 type Browse = typeof import("../../src/lib/talent/browse");
 type Hiring = typeof import("../../src/lib/hiring/add-to-hiring");
 type Integration = typeof import("../../src/lib/integrations/resume-parser");
-type Filter = typeof import("../../src/lib/resume-parser-import/pipeline-filter");
+type Filter = typeof import("../../src/lib/hiring/pipeline-filter");
 let browse: Browse;
 let hiring: Hiring;
 let rp: Integration;
@@ -33,6 +33,7 @@ let filter: Filter;
 let orgId: string;
 let otherOrgId: string;
 let perfOrgId: string;
+let volumeOrgId: string;
 let userId: string;
 const jobs: Record<string, string> = {};
 const ids: Record<string, string> = {};
@@ -56,7 +57,7 @@ before(async () => {
     import("../../src/lib/talent/browse"),
     import("../../src/lib/hiring/add-to-hiring"),
     import("../../src/lib/integrations/resume-parser"),
-    import("../../src/lib/resume-parser-import/pipeline-filter"),
+    import("../../src/lib/hiring/pipeline-filter"),
   ]);
   const [org, other, perf] = await Promise.all([
     prisma.organization.create({ data: { name: `TP ${tag}`, slug: tag } }),
@@ -126,7 +127,7 @@ before(async () => {
 });
 
 after(async () => {
-  const orgs = [orgId, otherOrgId, perfOrgId].filter(Boolean);
+  const orgs = [orgId, otherOrgId, perfOrgId, volumeOrgId].filter(Boolean);
   await prisma.job.deleteMany({ where: { organizationId: { in: orgs } } });
   await prisma.candidate.deleteMany({ where: { organizationId: { in: orgs } } });
   await prisma.user.deleteMany({ where: { email: { endsWith: `${tag}@example.com` } } });
@@ -352,6 +353,80 @@ describe("Resume Parser integration boundary", () => {
     assert.equal(r.applicationsNew, 1);
     const after = await prisma.candidate.findUniqueOrThrow({ where: { id: ids.careers } });
     assert.deepEqual(after, before);
+  });
+
+  it("history never lands on a current opening; a dry run writes nothing", async () => {
+    const untouched = await prisma.application.findMany({
+      where: { job: { organizationId: orgId }, source: "resume_parser", status: "ON_HOLD" },
+      select: { job: { select: { status: true } } },
+    });
+    assert.ok(untouched.length >= 5);
+    assert.ok(untouched.every((a) => a.job.status === "CLOSED"));
+    const before = await prisma.application.count({ where: { job: { organizationId: orgId } } });
+    const r = await rp.importResumeParserRecords({
+      prisma,
+      organizationId: orgId,
+      userId,
+      records: [{ externalId: `D1-${tag}`, fullName: "Dry Run", email: email("dry"), jobRole: "Brand New Role", appliedAt: "2024-01-01" }],
+      apply: false,
+      now: NOW,
+    });
+    assert.equal(r.applied, false);
+    assert.equal(r.applicationsNew, 1);
+    assert.equal(r.jobsNew, 1);
+    assert.equal(await prisma.application.count({ where: { job: { organizationId: orgId } } }), before);
+    assert.equal(await prisma.job.count({ where: { organizationId: orgId, title: "Brand New Role" } }), 0);
+  });
+
+  it("invalid dates and duplicates inside one batch are skipped", async () => {
+    const base = { fullName: "Batch Person", email: email("batch"), jobRole: "Support Engineer", experienceYears: 1 };
+    const r = await rp.importResumeParserRecords({
+      prisma,
+      organizationId: orgId,
+      userId,
+      records: [
+        { ...base, externalId: `B1-${tag}`, appliedAt: "2024-02-10" },
+        { ...base, externalId: `B1-${tag}`, appliedAt: "2024-02-11" },
+        { ...base, externalId: `B2-${tag}`, appliedAt: "2024-02-12" },
+        { ...base, externalId: `B3-${tag}`, jobRole: "Other Role", appliedAt: "2023-02-30" },
+        { ...base, externalId: `B4-${tag}`, jobRole: "Other Role", appliedAt: "2027-01-01" },
+        { ...base, externalId: `B5-${tag}`, jobRole: "Other Role", appliedAt: "1985-06-01" },
+      ],
+      apply: false,
+      now: NOW,
+    });
+    assert.equal(r.received, 6);
+    assert.equal(r.invalidRecords, 3);
+    assert.equal(r.duplicatesInBatch, 2);
+    assert.equal(r.applicationsNew, 1);
+  });
+
+  it("20,000 records in one batch are written in bulk, then fully skipped on repeat", async () => {
+    volumeOrgId = (await prisma.organization.create({ data: { name: `TP volume ${tag}`, slug: `${tag}-volume` } })).id;
+    const roles = ["Java Developer", ".NET Developer", "QA Engineer", "Data Analyst", "DevOps Engineer"];
+    const many = Array.from({ length: 20_000 }, (_, i) => ({
+      externalId: `V${i}-${tag}`,
+      fullName: `Volume Person${i}`,
+      email: `v${Math.floor(i / 2)}.${tag}@example.com`,
+      jobRole: roles[i % roles.length],
+      experienceYears: i % 15,
+      appliedAt: `20${String(15 + (i % 10)).padStart(2, "0")}-0${1 + (i % 9)}-1${i % 9}`,
+    }));
+    const started = Date.now();
+    const r = await rp.importResumeParserRecords({ prisma, organizationId: volumeOrgId, userId, records: many, apply: true, now: NOW });
+    const ms = Date.now() - started;
+    assert.equal(r.invalidRecords, 0);
+    assert.equal(r.applicationsNew, 20_000);
+    assert.equal(r.candidatesNew, 10_000);
+    assert.equal(r.jobsNew, roles.length);
+    assert.ok(ms < 120_000, `took ${ms} ms`);
+    assert.equal(await prisma.application.count({ where: { job: { organizationId: volumeOrgId }, status: "ON_HOLD" } }), 20_000);
+    assert.equal(await prisma.candidate.count({ where: { organizationId: volumeOrgId, ...filter.IN_HIRING_CANDIDATE_FILTER } }), 0);
+    const page = await browse.browseTalent(prisma, volumeOrgId, f({ role: "QA Engineer", page: 3 }));
+    assert.equal(page.rows.length, browse.TALENT_PAGE_SIZE);
+    const again = await rp.importResumeParserRecords({ prisma, organizationId: volumeOrgId, userId, records: many, apply: true, now: NOW });
+    assert.equal(again.applicationsNew, 0);
+    assert.equal(again.duplicatesExisting, 20_000);
   });
 
   it("no API is pretended: the client reports not configured", async () => {

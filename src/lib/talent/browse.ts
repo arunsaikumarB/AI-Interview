@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import { RESUME_PARSER_SOURCE } from "@/lib/resume-parser-import/constants";
-import { isUntouchedImport } from "@/lib/resume-parser-import/pipeline-filter";
+import { RESUME_PARSER_SOURCE } from "@/lib/integrations/resume-parser/constants";
+import { isUntouchedImport } from "@/lib/hiring/pipeline-filter";
 
 export const TALENT_PAGE_SIZE = 25;
 

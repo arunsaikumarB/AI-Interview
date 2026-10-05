@@ -164,22 +164,29 @@ try {
     assert.doesNotMatch(html, new RegExp(`Seetharam Hist${tag}|Uma Upload${tag}`));
   });
 
-  await check("Talent Pool page: HR sees search + import; hiring manager no import; interviewer redirected", async () => {
+  await check("Talent Pool page: HR and hiring manager see search, no CSV import anywhere; interviewer redirected", async () => {
     const hr = await get(`/dashboard/talent`, cookie.hr);
     assert.equal(hr.res.status, 200);
     assert.match(hr.text, /Search historical and available candidates/);
-    assert.match(hr.text, /Import Resume Parser export/);
+    assert.doesNotMatch(hr.text, /Import Resume Parser|Resume Parser export|Upload CSV|Import CSV|\.csv/i);
     assert.match(hr.text, new RegExp(`TPI DotNet ${tag}`));
     assert.doesNotMatch(hr.text, new RegExp(`TPI Paused ${tag}|TPI DotNet 2023 ${tag}|TPI Secret ${tag}`), "only open openings of own org");
     const mgr = await get(`/dashboard/talent`, cookie.manager);
     assert.equal(mgr.res.status, 200);
-    assert.doesNotMatch(mgr.text, /Import Resume Parser export/);
+    assert.match(mgr.text, /Search historical and available candidates/);
     const iv = await get(`/dashboard/talent`, cookie.interviewer);
     assert.ok([307, 308].includes(iv.res.status) || /NEXT_REDIRECT/.test(iv.text), `interviewer got ${iv.res.status}`);
-    const imp = await get(`/dashboard/talent/import`, cookie.manager);
-    assert.ok([307, 308].includes(imp.res.status) || /NEXT_REDIRECT/.test(imp.text), `manager import got ${imp.res.status}`);
-    const impHr = await get(`/dashboard/talent/import`, cookie.hr);
-    assert.equal(impHr.res.status, 200);
+  });
+
+  await check("Resume Parser CSV import page and APIs are gone (404)", async () => {
+    assert.equal((await get(`/dashboard/talent/import`, cookie.hr)).res.status, 404);
+    for (const path of ["/api/candidates/import/resume-parser", "/api/candidates/import/resume-parser/resumes"]) {
+      const fd = new FormData();
+      fd.set("mode", "columns");
+      fd.set("file", new Blob(["Email,Applied Role\na@example.com,QA\n"], { type: "text/csv" }), "export.csv");
+      const res = await fetch(`${BASE}${path}`, { method: "POST", body: fd, headers: { Cookie: cookie.hr, Origin: BASE } });
+      assert.equal(res.status, 404, `${path} got ${res.status}`);
+    }
   });
 
   await check("candidate page: historical person shows Talent Pool state + history, no screening/interview controls", async () => {

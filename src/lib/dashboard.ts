@@ -3,7 +3,7 @@ import { StoredFinalResultSchema } from "@/lib/ai/stored-final-result";
 import type { SessionUser } from "@/lib/auth/session";
 import { orgScopeWhere } from "@/lib/auth/rbac";
 import { prisma } from "@/lib/db";
-import { IN_HIRING_CANDIDATE_FILTER } from "@/lib/resume-parser-import/pipeline-filter";
+import { IN_HIRING_CANDIDATE_FILTER } from "@/lib/hiring/pipeline-filter";
 
 export type MetricValue =
   | { ok: true; value: number }

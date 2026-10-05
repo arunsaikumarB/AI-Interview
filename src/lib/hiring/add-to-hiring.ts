@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { isUntouchedImport } from "@/lib/resume-parser-import/pipeline-filter";
+import { isUntouchedImport } from "@/lib/hiring/pipeline-filter";
 
 export const ADD_TO_HIRING_SOURCE = "added_by_staff";
 

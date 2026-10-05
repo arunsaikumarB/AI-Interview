@@ -1,7 +1,7 @@
 import { Prisma, type PipelineStage } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { PIPELINE_STAGES, STAGE_LABELS } from "@/lib/constants";
-import { ACTIVE_PIPELINE_FILTER } from "@/lib/resume-parser-import/pipeline-filter";
+import { ACTIVE_PIPELINE_FILTER } from "@/lib/hiring/pipeline-filter";
 
 const INTERVIEW_STAGES: PipelineStage[] = [
   "ASSESSMENT",

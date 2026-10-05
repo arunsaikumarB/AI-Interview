@@ -22,8 +22,6 @@ export const resumeParserRecordSchema = z
       .trim()
       .regex(/^\d{4}-\d{2}-\d{2}/)
       .optional(),
-    /** Resume file name in Resume Parser, used to attach the PDF later. */
-    resumeFileName: z.string().trim().max(500).optional(),
   })
   .strict();
 

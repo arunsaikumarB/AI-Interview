@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { orgScopeWhere, requireStaff } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
 import { PIPELINE_STAGES } from "@/lib/constants";
-import { ACTIVE_PIPELINE_FILTER } from "@/lib/resume-parser-import/pipeline-filter";
+import { ACTIVE_PIPELINE_FILTER } from "@/lib/hiring/pipeline-filter";
 import { djangoPipelineCounts } from "@/lib/staff-reads/django-reads";
 import { djangoReadToResponse } from "@/lib/staff-reads/errors";
 import { useDjangoReads } from "@/lib/staff-reads/flag";
