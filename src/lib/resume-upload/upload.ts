@@ -1,22 +1,47 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { checkUploadedResume, resumeMimeType } from "@/lib/resume-import";
 import { deleteStoredFile, saveUpload } from "@/lib/storage";
-import { RESUME_UPLOAD_SOURCE, type UploadRow } from "./constants";
+import { RESUME_UPLOAD_SOURCE, rowWarnings, type UploadRow } from "./constants";
 import { extractResumeFields, type ResumeFields } from "./extract";
+import { extractResumeProfile, type ResumeProfile } from "./profile";
+import { recallOcrText, rememberOcrText } from "./text-cache";
 
 type Db = PrismaClient | Prisma.TransactionClient;
+
+export type ProfileJobInput = { candidateId: string; organizationId: string; experienceSet: boolean };
 
 export type UploadDeps = {
   extractText: (p: { buffer: Buffer; mimeType: string; fileName: string }) => Promise<string>;
   embed: (candidateId: string) => Promise<unknown>;
+  /** Background AI reading of new candidates' resumes (fills empty profile fields). */
+  queueProfile?: (jobs: ProfileJobInput[]) => Promise<void>;
 };
 
 /** What saving would do: new candidate, link an existing one to the job, or nothing. */
 export type PlanStatus = "new" | "link" | "exists" | "already_applied";
 
+/** What else was read from the resume, shown in the review table. */
+export type ProfileSummary = {
+  skills: number;
+  education: number;
+  certifications: number;
+  location: string;
+  linkedIn: boolean;
+  summary: boolean;
+};
+
 export type ReadResult =
   | { name: string; status: "invalid"; reason: string }
-  | { name: string; status: PlanStatus; parsed: boolean; fields: ResumeFields };
+  | {
+      name: string;
+      status: PlanStatus;
+      parsed: boolean;
+      fields: ResumeFields;
+      profile: ProfileSummary;
+      /** Scanned, or the PDF's text layer looks damaged: worth an OCR pass. */
+      needsOcr: boolean;
+      ocr?: boolean;
+    };
 
 export type SaveResult = {
   name: string;
@@ -24,6 +49,31 @@ export type SaveResult = {
   parsed?: boolean;
   reason?: string;
 };
+
+const EMPTY_PROFILE: ResumeProfile = {
+  location: "",
+  linkedIn: "",
+  summary: "",
+  skills: [],
+  education: [],
+  certifications: [],
+  experienceYears: null,
+};
+
+function summarize(p: ResumeProfile): ProfileSummary {
+  return {
+    skills: p.skills.length,
+    education: p.education.length,
+    certifications: p.certifications.length,
+    location: p.location,
+    linkedIn: Boolean(p.linkedIn),
+    summary: Boolean(p.summary),
+  };
+}
+
+function isPdf(name: string): boolean {
+  return name.toLowerCase().endsWith(".pdf");
+}
 
 async function findCandidateId(db: Db, organizationId: string, email: string): Promise<string | null> {
   const rows = await db.$queryRaw<{ id: string }[]>`
@@ -53,6 +103,10 @@ async function planFor(
 /** The PDF reader adds "-- 1 of 2 --" page markers; a scanned PDF yields nothing else. */
 const PAGE_MARKER = /^\s*--\s*\d+\s+of\s+\d+\s*--\s*$/gm;
 
+function cleanText(text: string): string {
+  return text.replace(PAGE_MARKER, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 async function readText(extractText: UploadDeps["extractText"], name: string, buffer: Buffer): Promise<string | null> {
   try {
     const text = await extractText({
@@ -60,8 +114,7 @@ async function readText(extractText: UploadDeps["extractText"], name: string, bu
       mimeType: resumeMimeType(name) ?? "application/octet-stream",
       fileName: name,
     });
-    const clean = text.replace(PAGE_MARKER, "").replace(/\n{3,}/g, "\n\n").trim();
-    return clean || null;
+    return cleanText(text) || null;
   } catch {
     return null;
   }
@@ -77,8 +130,52 @@ export async function readUploadedResume(
   if (problem) return { name, status: "invalid", reason: problem };
   const text = await readText(args.deps.extractText, name, buffer);
   const fields = extractResumeFields(text ?? "", name);
+  const profile = text ? extractResumeProfile(text) : EMPTY_PROFILE;
   const { status } = await planFor(db, organizationId, fields.email, jobId);
-  return { name, status, parsed: Boolean(text), fields };
+  const needsOcr = isPdf(name) && (!text || rowWarnings(fields).length > 0);
+  return { name, status, parsed: Boolean(text), fields, profile: summarize(profile), needsOcr };
+}
+
+/** Prefer the PDF's own value; use the OCR value when the PDF's is missing or looks cut off. */
+function mergeFields(pdf: ResumeFields, ocr: ResumeFields): ResumeFields {
+  const pdfWarn = rowWarnings(pdf);
+  return {
+    firstName: pdf.firstName || ocr.firstName,
+    lastName: pdf.firstName ? pdf.lastName : ocr.lastName,
+    email: !pdf.email || pdfWarn.includes("email looks cut off") ? ocr.email || pdf.email : pdf.email,
+    phone: !pdf.phone || pdfWarn.includes("phone looks incomplete") ? ocr.phone || pdf.phone : pdf.phone,
+    experience: pdf.experience ?? ocr.experience,
+  };
+}
+
+/**
+ * Read-only OCR pass for one scanned or damaged PDF. The OCR text is remembered
+ * briefly so Save stores it without running OCR again.
+ */
+export async function ocrUploadedResume(
+  db: Db,
+  args: {
+    organizationId: string;
+    jobId: string | null;
+    name: string;
+    type: string;
+    buffer: Buffer;
+    deps: Pick<UploadDeps, "extractText"> & { ocr: (buffer: Buffer) => Promise<string> };
+  },
+): Promise<ReadResult> {
+  const { organizationId, jobId, name, buffer } = args;
+  const problem = checkUploadedResume(name, args.type, buffer);
+  if (problem) return { name, status: "invalid", reason: problem };
+  if (!isPdf(name)) return { name, status: "invalid", reason: "only PDF files can be scanned" };
+  const pdfText = await readText(args.deps.extractText, name, buffer);
+  const ocrText = cleanText(await args.deps.ocr(buffer).catch(() => ""));
+  if (ocrText) rememberOcrText(organizationId, buffer, ocrText);
+  const pdfFields = extractResumeFields(pdfText ?? "", name);
+  const fields = ocrText ? mergeFields(pdfFields, extractResumeFields(ocrText, name)) : pdfFields;
+  const best = ocrText || pdfText;
+  const profile = best ? extractResumeProfile(best) : EMPTY_PROFILE;
+  const { status } = await planFor(db, organizationId, fields.email, jobId);
+  return { name, status, parsed: Boolean(best), fields, profile: summarize(profile), needsOcr: false, ocr: Boolean(ocrText) };
 }
 
 class DuplicateEmail extends Error {}
@@ -126,7 +223,8 @@ export async function saveUploadedResume(
     return { name, status: "linked" };
   }
 
-  const resumeText = await readText(deps.extractText, name, buffer);
+  const resumeText = recallOcrText(organizationId, buffer) ?? (await readText(deps.extractText, name, buffer));
+  const profile = resumeText ? extractResumeProfile(resumeText) : EMPTY_PROFILE;
   const stored = await saveUpload({ category: "resumes", originalName: name, data: buffer });
   let candidateId: string;
   try {
@@ -143,6 +241,12 @@ export async function saveUploadedResume(
           ...(row.experience !== null ? { experience: row.experience } : {}),
           resumeUrl: stored.relativePath,
           ...(resumeText ? { resumeText } : {}),
+          ...(profile.location ? { location: profile.location } : {}),
+          ...(profile.linkedIn ? { linkedIn: profile.linkedIn } : {}),
+          ...(profile.summary ? { summary: profile.summary } : {}),
+          ...(profile.skills.length > 0 ? { skills: profile.skills } : {}),
+          ...(profile.education.length > 0 ? { education: profile.education } : {}),
+          ...(profile.certifications.length > 0 ? { certifications: profile.certifications } : {}),
         },
         select: { id: true },
       });
@@ -182,6 +286,15 @@ export async function saveUploadedResume(
       await deps.embed(candidateId);
     } catch {
       // Search embedding can be rebuilt later (npm run embed:backfill); the candidate is saved.
+    }
+  }
+  if (deps.queueProfile) {
+    try {
+      await deps.queueProfile([{ candidateId, organizationId, experienceSet: row.experience !== null }]);
+    } catch (err) {
+      console.error("[upload-resumes] could not queue background reading", {
+        name: err instanceof Error ? err.name : typeof err,
+      });
     }
   }
   return { name, status: "created", parsed: Boolean(resumeText) };

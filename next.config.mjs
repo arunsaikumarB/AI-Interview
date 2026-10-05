@@ -15,8 +15,20 @@ const nextConfig = {
   poweredByHeader: false,
   transpilePackages: ["three", "@react-three/fiber", "@react-three/drei", "thinking-orbs"],
   experimental: {
-    serverComponentsExternalPackages: ["pdf-parse", "mammoth"],
+    serverComponentsExternalPackages: ["pdf-parse", "mammoth", "@napi-rs/canvas"],
     instrumentationHook: true,
+    // Loaded from disk at runtime, so file tracing cannot see them: the pdfjs worker
+    // (without it the standalone server reads no PDF text), and the OCR child process
+    // with its packages (canvas native binary + ICU data, Tesseract, English data).
+    outputFileTracingIncludes: {
+      "/**/*": [
+        "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+        "./scripts/ocr-child.mjs",
+        "./node_modules/@napi-rs/**/*",
+        "./node_modules/{tesseract.js,tesseract.js-core,bmp-js,idb-keyval,is-url,node-fetch,whatwg-url,tr46,webidl-conversions,regenerator-runtime,wasm-feature-detect,zlibjs}/**/*",
+        "./node_modules/@tesseract.js-data/eng/4.0.0_best_int/*",
+      ],
+    },
   },
   async headers() {
     return [

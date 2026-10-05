@@ -22,11 +22,22 @@ type SaveStatus = "created" | "linked" | "exists" | "already_applied" | "invalid
 
 type Fields = { firstName: string; lastName: string; email: string; phone: string; experience: string };
 
+type ProfileSummary = {
+  skills: number;
+  education: number;
+  certifications: number;
+  location: string;
+  linkedIn: boolean;
+  summary: boolean;
+};
+
 type Row = {
   file: File;
   status: PlanStatus | "invalid";
   reason?: string;
   parsed?: boolean;
+  ocr?: boolean;
+  profile?: ProfileSummary;
   include: boolean;
   emailEdited: boolean;
   fields: Fields;
@@ -40,7 +51,21 @@ type ReadResult =
       status: PlanStatus;
       parsed: boolean;
       fields: { firstName: string; lastName: string; email: string; phone: string; experience: number | null };
+      profile: ProfileSummary;
+      needsOcr: boolean;
+      ocr?: boolean;
     };
+
+function profileText(p: ProfileSummary): string {
+  const parts: string[] = [];
+  if (p.skills) parts.push(`${p.skills} skill${p.skills === 1 ? "" : "s"}`);
+  if (p.education) parts.push(`${p.education} education`);
+  if (p.certifications) parts.push(`${p.certifications} certification${p.certifications === 1 ? "" : "s"}`);
+  if (p.location) parts.push(p.location);
+  if (p.linkedIn) parts.push("LinkedIn");
+  if (p.summary) parts.push("summary");
+  return parts.join(" · ");
+}
 
 type SaveResult = { name: string; status: SaveStatus; reason?: string; parsed?: boolean };
 
@@ -117,12 +142,12 @@ function toUploadRow(row: Row): { ok: true; data: UploadRow } | { ok: false; pro
 export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
   const [jobId, setJobId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
-  const [phase, setPhase] = useState<"idle" | "reading" | "review" | "saving" | "done">("idle");
+  const [phase, setPhase] = useState<"idle" | "reading" | "scanning" | "review" | "saving" | "done">("idle");
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const busy = phase === "reading" || phase === "saving";
+  const busy = phase === "reading" || phase === "scanning" || phase === "saving";
 
   function reset() {
     setRows([]);
@@ -167,6 +192,25 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
       for (const r of res.results) byName.set(r.name, r);
       setProgress({ done: byName.size, total: toRead.length });
     }
+
+    const toScan = toRead.filter((row) => {
+      const r = byName.get(row.file.name);
+      return r && r.status !== "invalid" && r.needsOcr;
+    });
+    if (toScan.length > 0) {
+      setPhase("scanning");
+      for (let i = 0; i < toScan.length; i++) {
+        setProgress({ done: i, total: toScan.length });
+        const form = new FormData();
+        form.set("mode", "ocr");
+        if (jobId) form.set("jobId", jobId);
+        form.append("files", toScan[i].file, toScan[i].file.name);
+        const res = await post<ReadResult>(form);
+        const r = res.ok ? res.results[0] : undefined;
+        if (r && r.status !== "invalid" && r.parsed) byName.set(r.name, r);
+      }
+    }
+
     setRows(
       initial.map((row) => {
         if (row.status === "invalid") return row;
@@ -177,6 +221,8 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
           ...row,
           status: r.status,
           parsed: r.parsed,
+          ocr: r.ocr,
+          profile: r.profile,
           include: r.status === "new" || r.status === "link",
           fields: {
             firstName: r.fields.firstName,
@@ -261,6 +307,7 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
   const count = (s: SaveStatus) => rows.filter((r) => r.result?.status === s).length;
   const notSaved = rows.filter((r) => r.result && (r.result.status === "invalid" || r.result.status === "failed")).length;
   const unreadSaved = rows.filter((r) => r.result?.status === "created" && r.result.parsed === false).length;
+  const created = count("created");
 
   return (
     <div className="space-y-5">
@@ -320,20 +367,33 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
 
       {progress ? (
         <p className="text-sm text-muted-foreground" aria-live="polite">
-          {phase === "reading" ? "Reading resumes…" : "Saving…"} {progress.done} of {progress.total}
+          {phase === "reading"
+            ? `Reading resumes… ${progress.done} of ${progress.total}`
+            : phase === "scanning"
+              ? `Reading scanned resume ${progress.done + 1} of ${progress.total}… (about 10–20 seconds each)`
+              : `Saving… ${progress.done} of ${progress.total}`}
         </p>
       ) : null}
 
-      {rows.length > 0 && phase !== "reading" ? (
+      {rows.length > 0 && phase !== "reading" && phase !== "scanning" ? (
         <div className="space-y-3">
           {done ? (
-            <p className="text-sm text-foreground" aria-live="polite">
-              Saved {count("created")} new candidate{count("created") === 1 ? "" : "s"}
-              {count("linked") ? `, added ${count("linked")} existing to the job` : ""}
-              {unreadSaved ? ` (${unreadSaved} with no readable text, e.g. scanned PDFs)` : ""}.
-              {count("exists") + count("already_applied") ? ` Already in HireOS: ${count("exists") + count("already_applied")}.` : ""}
-              {notSaved ? ` Not saved: ${notSaved}.` : ""}
-            </p>
+            <div className="space-y-1" aria-live="polite">
+              <p className="text-sm text-foreground">
+                Saved {created} new candidate{created === 1 ? "" : "s"}
+                {count("linked") ? `, added ${count("linked")} existing to the job` : ""}
+                {unreadSaved ? ` (${unreadSaved} with no readable text, e.g. scanned PDFs)` : ""}.
+                {count("exists") + count("already_applied") ? ` Already in HireOS: ${count("exists") + count("already_applied")}.` : ""}
+                {notSaved ? ` Not saved: ${notSaved}.` : ""}
+              </p>
+              {created > 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  The local AI is now reading {created === 1 ? "this resume" : `these ${created} resumes`} again in the
+                  background, one at a time (about 1–3 minutes each), to fill in details that are still empty. It
+                  never changes what you entered.
+                </p>
+              ) : null}
+            </div>
           ) : (
             <p className="text-sm text-foreground">
               Check the details read from each resume and correct them if needed. Untick a file to skip it.
@@ -370,7 +430,9 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
                   } else {
                     statusText = row.emailEdited ? "Checked when saved" : PLAN_TEXT[row.status];
                     if (row.parsed === false) statusText += " · no text read (scanned?)";
+                    else if (row.ocr) statusText += " · read with OCR";
                   }
+                  const alsoRead = !row.result && row.profile ? profileText(row.profile) : "";
                   return (
                     <tr key={`${row.file.name}-${i}`} className="border-t border-border align-top">
                       <td className="px-3 py-2">
@@ -418,6 +480,7 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
                             Check: {w}
                           </span>
                         ))}
+                        {alsoRead ? <span className="block text-muted-foreground">Also read: {alsoRead}</span> : null}
                       </td>
                     </tr>
                   );

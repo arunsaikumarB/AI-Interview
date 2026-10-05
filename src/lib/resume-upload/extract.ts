@@ -3,6 +3,8 @@
  * suggestion that HR reviews and corrects before anything is saved.
  */
 
+import { extractResumeProfile, joinSpacedLetters } from "./profile";
+
 export type ResumeFields = {
   firstName: string;
   lastName: string;
@@ -30,17 +32,6 @@ function tidyName(raw: string): string {
   const words = raw.replace(/\s+/g, " ").trim().split(" ");
   const mixed = /[a-z]/.test(raw) && /[A-Z]/.test(raw);
   return mixed ? words.join(" ") : titleCase(words);
-}
-
-/** Designed resumes often letter-space the name: "S e e t h a r a m   R e d d y". */
-function joinSpacedLetters(line: string): string {
-  return line
-    .split(/\t| {2,}/)
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
-    .map((chunk) => (/^(?:\S ){2,}\S$/.test(chunk) ? chunk.replace(/ /g, "") : chunk))
-    .join(" ")
-    .replace(/\s+/g, " ");
 }
 
 function nameFromText(text: string): string | null {
@@ -121,7 +112,7 @@ function findExperience(text: string, fileName: string): number | null {
   return null;
 }
 
-export function extractResumeFields(text: string, fileName: string): ResumeFields {
+export function extractResumeFields(text: string, fileName: string, now: Date = new Date()): ResumeFields {
   const name = nameFromText(text) ?? nameFromFileName(fileName) ?? "";
   const [first = "", ...rest] = name ? name.split(" ") : [];
   return {
@@ -129,6 +120,6 @@ export function extractResumeFields(text: string, fileName: string): ResumeField
     lastName: rest.join(" "),
     email: findEmail(text),
     phone: findPhone(text),
-    experience: findExperience(text, fileName),
+    experience: findExperience(text, fileName) ?? extractResumeProfile(text, now).experienceYears,
   };
 }

@@ -129,13 +129,32 @@ export function formatEducationEntries(raw: unknown): string[] {
     }
     if (item && typeof item === "object") {
       const o = item as Record<string, unknown>;
-      const parts = [o.degree, o.field, o.school, o.institution, o.university, o.name]
+      const parts = [o.degree, o.field, o.school, o.institution, o.university, o.name, o.year]
         .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
         .map((s) => s.trim());
       if (parts.length) out.push(Array.from(new Set(parts)).join(" · "));
     }
   }
   return out;
+}
+
+export function formatCertifications(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const item of raw.slice(0, 10)) {
+    if (typeof item === "string" && item.trim()) out.push(item.trim());
+    else if (item && typeof item === "object") {
+      const name = (item as Record<string, unknown>).name;
+      if (typeof name === "string" && name.trim()) out.push(name.trim());
+    }
+  }
+  return out;
+}
+
+/** Only well-formed LinkedIn profile URLs become links; anything else is shown as text. */
+export function safeLinkedInHref(raw: string | null | undefined): string | null {
+  const v = raw?.trim() ?? "";
+  return /^https:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_%-]+\/?$/.test(v) ? v : null;
 }
 
 export function formatActivityWhen(at: Date | string): string {

@@ -124,6 +124,34 @@ try {
     assert.equal(res.status, "new");
     assert.equal(res.parsed, true);
     assert.deepEqual(res.fields, { firstName: "Kiran", lastName: "Kumar", email: kiranEmail, phone: "9876543210", experience: 5 });
+    assert.equal(res.needsOcr, false);
+    assert.equal(typeof res.profile?.skills, "number");
+    assert.equal(await db.candidate.count({ where: { organizationId: orgA.id } }), 0);
+  });
+
+  await check("ocr: auth, roles and one-PDF-only are enforced", async () => {
+    assert.equal((await send(null, { mode: "ocr", files: [["a.pdf", kiranPdf]] })).res.status, 401);
+    for (const role of ["candidate", "interviewer", "manager"]) {
+      assert.equal((await send(cookie[role], { mode: "ocr", files: [["a.pdf", kiranPdf]] })).res.status, 403, role);
+    }
+    const two = await send(cookie.hr, { mode: "ocr", files: [["a.pdf", kiranPdf], ["b.pdf", kiranPdf]] });
+    assert.equal(two.res.status, 400);
+    assertSafeError(two);
+    const txt = await send(cookie.hr, { mode: "ocr", files: [["cv.txt", new TextEncoder().encode("Kiran"), "text/plain"]] });
+    assert.equal(txt.json.results[0].status, "invalid");
+    const fake = await send(cookie.hr, { mode: "ocr", files: [["fake.pdf", new TextEncoder().encode("MZ not a pdf")]] });
+    assert.equal(fake.json.results[0].status, "invalid");
+    assert.equal((await send(cookie.hr, { mode: "ocr", files: [["k.pdf", kiranPdf]], jobId: jobB.id })).res.status, 400, "other org job");
+  });
+
+  await check("ocr: a real PDF is read with local OCR on this server; nothing is written", async () => {
+    const r = await send(cookie.hr, { mode: "ocr", files: [["kiran_cv.pdf", kiranPdf]] });
+    assert.equal(r.res.status, 200, r.text.slice(0, 200));
+    assert.equal(r.res.headers.get("cache-control"), "no-store");
+    const [res] = r.json.results;
+    assert.equal(res.ocr, true, "OCR produced text");
+    assert.equal(res.fields.firstName, "Kiran");
+    assert.equal(res.fields.phone, "9876543210");
     assert.equal(await db.candidate.count({ where: { organizationId: orgA.id } }), 0);
   });
 
@@ -170,6 +198,7 @@ try {
     assert.equal(c.applications[0].jobId, jobA.id);
     assert.equal(c.applications[0].stage, "APPLIED");
     assert.equal(c.applications[0].status, "ACTIVE");
+    assert.equal(c.firstName, "Kiran", "the AI never changes the name");
     storedResumes.push(c.resumeUrl);
     assert.equal(await db.candidate.count({ where: { organizationId: orgB.id } }), 0);
   });

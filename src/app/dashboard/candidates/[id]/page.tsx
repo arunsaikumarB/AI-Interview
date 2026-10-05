@@ -27,6 +27,7 @@ import {
   countProctoringSignals,
   experienceProfileLabel,
   experienceSnapshotLabel,
+  formatCertifications,
   formatEducationEntries,
   humanTimelineTitle,
   interviewHumanStatus,
@@ -37,9 +38,11 @@ import {
   resumeFileName,
   resumeUploadedAt,
   resumeUploadedName,
+  safeLinkedInHref,
   secondaryCameraAvailable,
   stageBadgeClass,
 } from "@/lib/candidate-detail-ui";
+import { profileReadingStatus } from "@/lib/resume-upload/profile-worker";
 import { verifyStoredFile } from "@/lib/storage";
 import {
   RESUME_PARSER_LABEL,
@@ -196,6 +199,9 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
   const expProfile = experienceProfileLabel(candidate.experience);
   const expSnapshot = experienceSnapshotLabel(candidate.experience);
   const education = formatEducationEntries(candidate.education);
+  const certifications = formatCertifications(candidate.certifications);
+  const linkedInHref = safeLinkedInHref(candidate.linkedIn);
+  const aiReading = await profileReadingStatus(candidate.id, candidate.organizationId).catch(() => null);
   const signals = latestInterview
     ? countProctoringSignals(latestInterview.proctoring)
     : { tabSwitches: 0, copyPaste: 0, cameraInterruptions: 0 };
@@ -465,10 +471,30 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
               </a>
             </dd>
           </div>
+          {canDecide ? (
+            <div>
+              <dt className="text-[12px] text-muted-foreground">Phone</dt>
+              <dd>{candidate.phone || "—"}</dd>
+            </div>
+          ) : null}
           <div>
             <dt className="text-[12px] text-muted-foreground">Location</dt>
             <dd>{candidate.location || "—"}</dd>
           </div>
+          {candidate.linkedIn ? (
+            <div>
+              <dt className="text-[12px] text-muted-foreground">LinkedIn</dt>
+              <dd className="break-all">
+                {linkedInHref ? (
+                  <a href={linkedInHref} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                    {linkedInHref.replace(/^https:\/\/(www\.)?/, "")}
+                  </a>
+                ) : (
+                  candidate.linkedIn
+                )}
+              </dd>
+            </div>
+          ) : null}
           <div>
             <dt className="text-[12px] text-muted-foreground">Experience</dt>
             <dd>{expProfile}</dd>
@@ -481,7 +507,24 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
                 : "No skills available"}
             </dd>
           </div>
+          {candidate.summary ? (
+            <div>
+              <dt className="text-[12px] text-muted-foreground">Summary</dt>
+              <dd className="whitespace-pre-line text-foreground">{candidate.summary}</dd>
+            </div>
+          ) : null}
         </dl>
+        {aiReading?.status === "pending" || aiReading?.status === "running" ? (
+          <p className="text-[13px] text-muted-foreground" aria-live="polite">
+            The local AI is reading this resume to fill in details that are still empty. Refresh in a few minutes.
+          </p>
+        ) : aiReading?.status === "failed" ? (
+          <p className="text-[13px] text-muted-foreground">
+            {aiReading.error === "no_readable_text"
+              ? "No text could be read from this resume, even with OCR. Fill in the details by hand."
+              : "The local AI could not read this resume. Empty details can be filled in by hand."}
+          </p>
+        ) : null}
         <CandidateTags candidateId={candidate.id} />
       </section>
 
@@ -518,7 +561,21 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
             {education.length > 0 ? (
               <div>
                 <p className="text-[12px] text-muted-foreground">Education</p>
-                <p className="text-sm">{education.join(" · ")}</p>
+                <ul className="space-y-0.5 text-sm">
+                  {education.map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {certifications.length > 0 ? (
+              <div>
+                <p className="text-[12px] text-muted-foreground">Certifications</p>
+                <ul className="space-y-0.5 text-sm">
+                  {certifications.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             {resumeStored ? (
