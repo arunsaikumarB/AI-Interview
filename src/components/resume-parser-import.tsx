@@ -62,7 +62,7 @@ function ReportView({ report }: { report: ImportReport }) {
         <Stat
           label={report.applied ? "Imported" : "Will be imported"}
           value={report.applicationsNew}
-          hint={`applications · ${report.candidatesNew} new candidates, ${report.candidatesExisting} existing`}
+          hint={`past applications · ${report.candidatesNew} new profiles, ${report.candidatesExisting} existing`}
         />
         <Stat label="Skipped" value={duplicates + report.errorRows} hint="duplicates + rows with errors" />
         <Stat
@@ -76,7 +76,7 @@ function ReportView({ report }: { report: ImportReport }) {
       {report.jobsNew > 0 ? (
         <p className="text-sm text-muted-foreground">
           {report.applied ? "Created" : "Will create"} {report.jobsNew} Closed historical job
-          {report.jobsNew === 1 ? "" : "s"} for roles with no matching job:{" "}
+          {report.jobsNew === 1 ? "" : "s"} for roles with no matching closed job (never shown on Careers):{" "}
           {report.jobsNewTitles.join(", ")}
           {report.jobsNew > report.jobsNewTitles.length ? ", …" : ""}
         </p>
@@ -198,16 +198,16 @@ export function ResumeParserImport() {
     return (
       <div className="space-y-4">
         <p className="text-sm font-medium text-foreground">
-          Import finished. Imported records are marked {RESUME_PARSER_LABEL} in Candidates. Next,
-          attach the resume files in Step 2 below.
+          Import finished. Imported people are in the Talent Pool (source {RESUME_PARSER_LABEL}), not in
+          hiring. Next, attach the resume files in Step 2 below.
         </p>
         <ReportView report={result} />
         <div className="flex flex-wrap gap-2">
           <Link
-            href="/dashboard/candidates"
+            href="/dashboard/talent"
             className="inline-flex h-8 items-center rounded-[12px] border border-border px-3 text-sm font-medium text-foreground hover:bg-muted/70"
           >
-            Go to Candidates
+            Go to Talent Pool
           </Link>
           <Button variant="outline" onClick={reset}>
             Import another file

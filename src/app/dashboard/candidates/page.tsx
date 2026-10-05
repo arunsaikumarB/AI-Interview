@@ -4,6 +4,7 @@ import type { PipelineStage, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { buttonVariants } from "@/components/ui/button";
 import { RESUME_PARSER_LABEL, RESUME_PARSER_SOURCE } from "@/lib/resume-parser-import/constants";
+import { ACTIVE_PIPELINE_FILTER, IN_HIRING_CANDIDATE_FILTER } from "@/lib/resume-parser-import/pipeline-filter";
 import { UPLOAD_ROLES } from "@/lib/resume-upload/constants";
 import { getSession } from "@/lib/auth/session";
 import { orgScopeWhere } from "@/lib/auth/rbac";
@@ -45,29 +46,35 @@ export default async function CandidatesPage({
       : undefined;
 
   const where: Prisma.CandidateWhereInput = {
-      ...(scope.organizationId ? { organizationId: scope.organizationId } : {}),
+    ...(scope.organizationId ? { organizationId: scope.organizationId } : {}),
+    AND: [
+      IN_HIRING_CANDIDATE_FILTER,
       ...(q
-        ? {
-            OR: [
-              { firstName: { contains: q, mode: "insensitive" } },
-              { lastName: { contains: q, mode: "insensitive" } },
-              { email: { contains: q, mode: "insensitive" } },
-              {
-                applications: {
-                  some: {
-                    job: { title: { contains: q, mode: "insensitive" } },
+        ? [
+            {
+              OR: [
+                { firstName: { contains: q, mode: "insensitive" } },
+                { lastName: { contains: q, mode: "insensitive" } },
+                { email: { contains: q, mode: "insensitive" } },
+                {
+                  applications: {
+                    some: {
+                      AND: [ACTIVE_PIPELINE_FILTER, { job: { title: { contains: q, mode: "insensitive" } } }],
+                    },
                   },
                 },
-              },
-            ],
-          }
-        : {}),
+              ],
+            } satisfies Prisma.CandidateWhereInput,
+          ]
+        : []),
       ...(stageFilter
-        ? { applications: { some: { stage: stageFilter } } }
-        : {}),
+        ? [{ applications: { some: { AND: [ACTIVE_PIPELINE_FILTER, { stage: stageFilter }] } } }]
+        : []),
+    ],
   };
 
   const latestApplication = {
+    where: ACTIVE_PIPELINE_FILTER,
     orderBy: { updatedAt: "desc" },
     take: 1,
     include: {
@@ -188,8 +195,12 @@ export default async function CandidatesPage({
         <div>
           <h1 className="page-title">Candidates</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Review applicants across jobs. Open a role from Jobs for a focused
-            workspace.
+            People in a HireOS hiring process. Open a role from Jobs for a focused
+            workspace. Historical and uploaded profiles not in hiring are in the{" "}
+            <Link href="/dashboard/talent" className="underline hover:text-foreground">
+              Talent Pool
+            </Link>
+            .
           </p>
         </div>
         {canImport ? (
@@ -285,7 +296,7 @@ export default async function CandidatesPage({
                   colSpan={6}
                   className="px-4 py-10 text-center text-muted-foreground"
                 >
-                  No candidates yet.
+                  No candidates in hiring yet.
                 </td>
               </tr>
             ) : null}

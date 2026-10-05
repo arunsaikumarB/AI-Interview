@@ -314,7 +314,7 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="ru-job" className="text-sm font-medium text-foreground">
-            Job (optional)
+            Job opening (optional)
           </label>
           <select
             id="ru-job"
@@ -332,7 +332,8 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
             ))}
           </select>
           <p className="text-xs text-muted-foreground">
-            With a job, each candidate starts at Applied for that job and can be AI-screened.
+            With a job opening, each person starts at Applied for it and appears in Candidates. Without one,
+            they go to the Talent Pool only.
           </p>
         </div>
         <div className="space-y-1.5">
@@ -495,8 +496,11 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
                 <Button variant="outline" onClick={reset}>
                   Upload more resumes
                 </Button>
-                <Link href="/dashboard/candidates" className={buttonVariants({ variant: "ghost" })}>
-                  View candidates
+                <Link
+                  href={jobId ? "/dashboard/candidates" : "/dashboard/talent"}
+                  className={buttonVariants({ variant: "ghost" })}
+                >
+                  {jobId ? "View candidates" : "View Talent Pool"}
                 </Link>
               </>
             ) : (

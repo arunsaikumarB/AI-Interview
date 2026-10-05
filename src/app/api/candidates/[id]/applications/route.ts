@@ -1,17 +1,17 @@
-import { Prisma, type Role } from "@prisma/client";
+import type { Role } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { AuthError, requireOrganizationId, requireRoles } from "@/lib/auth/rbac";
 import { isDatabaseUnavailable, jsonError, jsonOk } from "@/lib/api";
 import { rateLimit } from "@/lib/rate-limit";
+import { addToHiring } from "@/lib/hiring/add-to-hiring";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: { id: string } };
 
-const ADD_TO_JOB_SOURCE = "added_by_staff";
-const ADD_TO_JOB_ROLES: Role[] = ["SUPER_ADMIN", "HR_ADMIN", "RECRUITER", "HIRING_MANAGER"];
+const ADD_TO_HIRING_ROLES: Role[] = ["SUPER_ADMIN", "HR_ADMIN", "RECRUITER", "HIRING_MANAGER"];
 
 const idSchema = z.string().min(1).max(64);
 const bodySchema = z.object({ jobId: idSchema }).strict();
@@ -21,10 +21,10 @@ function noStore(res: Response): Response {
   return res;
 }
 
-/** Adds an existing candidate to a job: one Applied application, so it can be screened and interviewed. */
+/** Add to Hiring: puts a candidate into one open job opening (Applied). No AI runs; no interview is created. */
 export async function POST(request: Request, { params }: Ctx) {
   try {
-    const user = requireRoles(await getSession(), ADD_TO_JOB_ROLES);
+    const user = requireRoles(await getSession(), ADD_TO_HIRING_ROLES);
     const organizationId = requireOrganizationId(user);
 
     const rl = rateLimit({ key: `add-to-job:${user.id}`, limit: 60, windowMs: 10 * 60 * 1000 });
@@ -36,46 +36,26 @@ export async function POST(request: Request, { params }: Ctx) {
     const candidateId = idSchema.safeParse(params.id);
     const body = bodySchema.safeParse(await request.json().catch(() => null));
     if (!candidateId.success) return noStore(jsonError("Candidate not found", 404));
-    if (!body.success) return noStore(jsonError("Choose a job from the list.", 400));
+    if (!body.success) return noStore(jsonError("Choose a job opening from the list.", 400));
 
-    const [candidate, job] = await Promise.all([
-      prisma.candidate.findFirst({ where: { id: candidateId.data, organizationId }, select: { id: true } }),
-      prisma.job.findFirst({
-        where: { id: body.data.jobId, organizationId, status: { not: "CLOSED" } },
-        select: { id: true },
-      }),
-    ]);
-    if (!candidate) return noStore(jsonError("Candidate not found", 404));
-    if (!job) return noStore(jsonError("Choose a job from the list.", 400));
-
-    try {
-      const application = await prisma.application.create({
-        data: {
-          candidateId: candidate.id,
-          jobId: job.id,
-          stage: "APPLIED",
-          status: "ACTIVE",
-          source: ADD_TO_JOB_SOURCE,
-          timelineEvents: {
-            create: { type: "APPLICATION_CREATED", payload: { source: ADD_TO_JOB_SOURCE, existingCandidate: true } },
-          },
-        },
-        select: { id: true },
-      });
-      return noStore(jsonOk({ applicationId: application.id }, { status: 201 }));
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-        return noStore(jsonError("This candidate is already in that job.", 409));
-      }
-      throw err;
+    const result = await addToHiring(prisma, { organizationId, candidateId: candidateId.data, jobId: body.data.jobId });
+    switch (result.kind) {
+      case "added":
+        return noStore(jsonOk({ applicationId: result.applicationId }, { status: 201 }));
+      case "candidate_not_found":
+        return noStore(jsonError("Candidate not found", 404));
+      case "job_not_open":
+        return noStore(jsonError("Choose an open job opening from the list.", 400));
+      case "already_in_job":
+        return noStore(jsonError("This candidate is already in that job opening.", 409));
     }
   } catch (err) {
     if (err instanceof AuthError) return noStore(jsonError(err.message, err.status));
     if (isDatabaseUnavailable(err)) return noStore(jsonError("HireOS is temporarily unavailable. Try again.", 503));
-    console.error("[add-to-job] failed", {
+    console.error("[add-to-hiring] failed", {
       name: err instanceof Error ? err.name : typeof err,
       code: (err as { code?: unknown } | null)?.code,
     });
-    return noStore(jsonError("Could not add to the job. Try again.", 500));
+    return noStore(jsonError("Could not add to hiring. Try again.", 500));
   }
 }

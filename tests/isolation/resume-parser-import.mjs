@@ -229,19 +229,23 @@ try {
   });
 
   await check("other org's HR sees none of it", async () => {
-    const res = await fetch(`${BASE}/dashboard/candidates?q=${encodeURIComponent(tag)}`, { headers: { Cookie: cookie.hrB } });
+    const res = await fetch(`${BASE}/api/talent/browse?q=${encodeURIComponent(tag)}`, { headers: { Cookie: cookie.hrB } });
     assert.equal(res.status, 200);
-    assert.doesNotMatch(await res.text(), new RegExp(`ravi\\.${tag}`));
+    assert.equal((await res.json()).total, 0);
   });
 
-  await check("imported candidates appear in Candidates with the Resume Parser label", async () => {
+  await check("imported people are in the Talent Pool as Resume Parser, not in Candidates", async () => {
+    const pool = await fetch(`${BASE}/api/talent/browse?q=${encodeURIComponent(tag)}`, { headers: { Cookie: cookie.hr } });
+    assert.equal(pool.status, 200);
+    const body = await pool.json();
+    const names = body.rows.map((r) => r.name).join("|");
+    assert.match(names, /Iso Ravi/);
+    assert.match(names, /Iso Asha/);
+    assert.ok(body.rows.every((r) => r.sources.includes("resume_parser") && r.inHiring === null));
     const res = await fetch(`${BASE}/dashboard/candidates?q=${encodeURIComponent(tag)}`, { headers: { Cookie: cookie.hr } });
     assert.equal(res.status, 200);
     const html = await res.text();
-    assert.match(html, /Iso Ravi/);
-    assert.match(html, /Iso Asha/);
-    assert.match(html, /Resume Parser/);
-    assert.match(html, /On hold/);
+    assert.doesNotMatch(html, /Iso Ravi|Iso Asha/);
     assert.match(html, /Upload resumes/);
   });
 

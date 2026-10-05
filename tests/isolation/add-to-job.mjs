@@ -143,32 +143,33 @@ try {
     assert.equal(`${cand.firstName} ${cand.lastName}`, "Asha Rao", "profile is not changed");
   });
 
-  await check("same job again → 409, still one application; hiring manager can add to a draft job", async () => {
+  await check("same job again → 409, still one application; draft job → 400 (open openings only)", async () => {
     const again = await add(cookie.hr, candA.id, { jobId: jobA.id });
     assert.equal(again.res.status, 409);
     assertSafeError(again);
     const mgr = await add(cookie.manager, candA.id, { jobId: draftA.id });
-    assert.equal(mgr.res.status, 201);
-    assert.equal(await db.application.count({ where: { candidateId: candA.id } }), 2);
+    assert.equal(mgr.res.status, 400);
+    assertSafeError(mgr);
+    assert.equal(await db.application.count({ where: { candidateId: candA.id } }), 1);
   });
 
-  await check("candidate page: no-job candidate shows Add to job with own-org non-closed jobs only", async () => {
+  await check("candidate page: no-job candidate shows Add to Hiring with own-org open openings only", async () => {
     const fresh = await db.candidate.create({
       data: { organizationId: orgA.id, email: `ravi.${tag}@example.com`, firstName: "Ravi", lastName: "K" },
     });
     const page = await fetch(`${BASE}/dashboard/candidates/${fresh.id}`, { headers: { Cookie: cookie.hr } });
     assert.equal(page.status, 200);
     const html = await page.text();
-    assert.match(html, /Not in a job yet/);
+    assert.match(html, /In Talent Pool · not in hiring yet/);
+    assert.match(html, /Add to Hiring/);
     assert.match(html, new RegExp(`ATJ Java ${tag}`));
-    assert.match(html, new RegExp(`ATJ Draft ${tag}`));
-    assert.doesNotMatch(html, new RegExp(`ATJ Closed ${tag}|ATJ Secret ${tag}`));
+    assert.doesNotMatch(html, new RegExp(`ATJ Draft ${tag}|ATJ Closed ${tag}|ATJ Secret ${tag}`));
     const asInterviewer = await fetch(`${BASE}/dashboard/candidates/${fresh.id}`, { headers: { Cookie: cookie.interviewer } });
     const ihtml = await asInterviewer.text();
-    assert.doesNotMatch(ihtml, /Not in a job yet|Add to job/);
+    assert.doesNotMatch(ihtml, /Add to Hiring|ATJ Java/);
     const otherOrg = await (await fetch(`${BASE}/dashboard/candidates/${fresh.id}`, { headers: { Cookie: cookie.hrB } })).text();
     assert.match(otherOrg, /NEXT_NOT_FOUND|could not be found|404/i);
-    assert.doesNotMatch(otherOrg, new RegExp(`ravi\\.${tag}|Not in a job yet|ATJ Java ${tag}`));
+    assert.doesNotMatch(otherOrg, new RegExp(`ravi\\.${tag}|not in hiring yet|ATJ Java ${tag}`));
   });
 } finally {
   await db.application.deleteMany({ where: { job: { organizationId: { in: [orgA.id, orgB.id] } } } });

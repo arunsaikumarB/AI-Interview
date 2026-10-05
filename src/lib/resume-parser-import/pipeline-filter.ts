@@ -14,3 +14,16 @@ export const ACTIVE_PIPELINE_FILTER: Prisma.ApplicationWhereInput = {
     { stage: { not: "APPLIED" } },
   ],
 };
+
+/**
+ * Candidates page: people with at least one real HireOS application (Careers, upload with a
+ * job, Add to Hiring, or an import HR has acted on). Talent-only profiles (uploaded without a
+ * job, untouched Resume Parser history) live in Talent Pool until HR adds them to hiring.
+ */
+export const IN_HIRING_CANDIDATE_FILTER: Prisma.CandidateWhereInput = {
+  applications: { some: ACTIVE_PIPELINE_FILTER },
+};
+
+export function isUntouchedImport(app: { source: string | null; status: string; stage: string }): boolean {
+  return app.source === RESUME_PARSER_SOURCE && app.status === "ON_HOLD" && app.stage === "APPLIED";
+}

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
-type JobOption = { id: string; title: string; status: string };
+type JobOption = { id: string; title: string; status: string; location?: string | null };
 
 export function AddToJob({ candidateId, jobs }: { candidateId: string; jobs: JobOption[] }) {
   const router = useRouter();
@@ -24,7 +24,7 @@ export function AddToJob({ candidateId, jobs }: { candidateId: string; jobs: Job
       });
       const data = (await res.json().catch(() => null)) as { applicationId?: string; error?: string } | null;
       if (!res.ok || !data?.applicationId) {
-        setError(data?.error ?? "Could not add to the job. Try again.");
+        setError(data?.error ?? "Could not add to hiring. Try again.");
         return;
       }
       setJobId("");
@@ -38,7 +38,7 @@ export function AddToJob({ candidateId, jobs }: { candidateId: string; jobs: Job
   }
 
   if (jobs.length === 0) {
-    return <p className="text-[13px] text-muted-foreground">No open jobs to add this candidate to.</p>;
+    return <p className="text-[13px] text-muted-foreground">No open job openings to add this candidate to.</p>;
   }
 
   return (
@@ -49,18 +49,19 @@ export function AddToJob({ candidateId, jobs }: { candidateId: string; jobs: Job
           value={jobId}
           disabled={busy}
           onChange={(e) => setJobId(e.target.value)}
-          aria-label="Job to add this candidate to"
+          aria-label="Select job opening"
         >
-          <option value="">Choose a job…</option>
+          <option value="">Select job opening…</option>
           {jobs.map((j) => (
             <option key={j.id} value={j.id}>
               {j.title}
+              {j.location ? ` — ${j.location}` : ""}
               {j.status !== "OPEN" ? ` (${j.status.toLowerCase()})` : ""}
             </option>
           ))}
         </select>
         <Button type="button" size="sm" onClick={() => void add()} disabled={!jobId || busy}>
-          {busy ? "Adding…" : "Add to job"}
+          {busy ? "Adding…" : "Add to Hiring"}
         </Button>
       </div>
       {error ? (

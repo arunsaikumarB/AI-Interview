@@ -9,7 +9,7 @@ export const IMPORT_FIELDS = [
   { key: "lastName", label: "Last name", hint: "" },
   { key: "email", label: "Email", hint: "Required." },
   { key: "phone", label: "Phone", hint: "" },
-  { key: "jobRole", label: "Job role applied for", hint: "Required. Matched to an existing job with the same title, otherwise a Closed historical job is created." },
+  { key: "jobRole", label: "Job role applied for", hint: "Required. Matched to a Closed job with the same title, otherwise a Closed historical job is created. Never added to a current opening." },
   { key: "experience", label: "Experience (years)", hint: "Numbers like 3, 3.5, \"3 years\", \"3 yrs 6 months\", \"Fresher\". Blank = 0." },
   { key: "appliedAt", label: "Application date", hint: "Blank = date of import." },
   { key: "resumeReference", label: "Resume file name / link", hint: "Used to match the resume files you attach after the import (by file name)." },

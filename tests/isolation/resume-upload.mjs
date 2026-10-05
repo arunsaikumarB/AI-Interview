@@ -97,7 +97,8 @@ const users = {
 };
 const cookie = {};
 for (const [k, u] of Object.entries(users)) cookie[k] = await mintCookie(u);
-const jobA = await db.job.create({ data: { organizationId: orgA.id, title: `RU Java ${tag}`, description: "d", status: "DRAFT", createdById: users.hr.id } });
+const jobA = await db.job.create({ data: { organizationId: orgA.id, title: `RU Java ${tag}`, description: "d", status: "OPEN", createdById: users.hr.id } });
+const draftA = await db.job.create({ data: { organizationId: orgA.id, title: `RU Draft ${tag}`, description: "d", status: "DRAFT", createdById: users.hr.id } });
 const jobB = await db.job.create({ data: { organizationId: orgB.id, title: `RU Secret ${tag}`, description: "d", status: "OPEN", createdById: users.hrB.id } });
 const closedA = await db.job.create({ data: { organizationId: orgA.id, title: `RU Closed ${tag}`, description: "d", status: "CLOSED", createdById: users.hr.id } });
 
@@ -160,6 +161,7 @@ try {
     assert.equal(otherJob.res.status, 400, "another organization's job");
     assertSafeError(otherJob);
     assert.equal((await send(cookie.hr, { mode: "read", files: [["k.pdf", kiranPdf]], jobId: closedA.id })).res.status, 400, "closed job");
+    assert.equal((await send(cookie.hr, { mode: "read", files: [["k.pdf", kiranPdf]], jobId: draftA.id })).res.status, 400, "draft job");
     assert.equal((await send(cookie.hr, { mode: "read", files: [["k.pdf", kiranPdf]], jobId: "x".repeat(200) })).res.status, 400);
     assert.equal((await send(cookie.hr, { mode: "nope", files: [["k.pdf", kiranPdf]] })).res.status, 400);
     assert.equal((await send(cookie.hr, { mode: "read" })).res.status, 400, "no files");

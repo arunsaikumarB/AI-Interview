@@ -63,8 +63,9 @@ async function candidatesByEmail(db: Db, organizationId: string, emails: string[
 async function buildPlan(db: Db, organizationId: string, rows: ImportRow[]): Promise<Plan> {
   const candidateByEmail = await candidatesByEmail(db, organizationId, Array.from(new Set(rows.map((r) => r.email))));
 
+  // History never lands on a current opening: Add to Hiring creates that application separately.
   const jobs = await db.job.findMany({
-    where: { organizationId },
+    where: { organizationId, status: "CLOSED" },
     select: { id: true, title: true },
     orderBy: { createdAt: "asc" },
   });
@@ -229,7 +230,8 @@ async function writePlan(
  * Validates a Resume Parser export against HR's column mapping and, when `apply` is set,
  * writes it in one transaction: either every valid row is saved or nothing is.
  * Existing candidates are never modified; they only gain applications. Imported applications
- * are APPLIED + ON_HOLD with source "resume_parser". Bulk queries only (no query per row).
+ * are APPLIED + ON_HOLD with source "resume_parser", on a Closed job with the same title
+ * (created when missing). Bulk queries only (no query per row).
  */
 export async function runResumeParserImport(args: {
   prisma: PrismaClient;

@@ -126,12 +126,12 @@ describe("Resume Parser import (throwaway DB)", () => {
     assert.equal(r.errorRows, 2);
     assert.deepEqual(r.errors.map((e) => e.rowNumber), [8, 9]);
     assert.equal(r.duplicatesInFile, 1);
-    assert.equal(r.duplicatesExisting, 1, "existing candidate already applied to Java Developer");
-    assert.equal(r.applicationsNew, 4);
+    assert.equal(r.duplicatesExisting, 0, "history never collides with the current Java Developer opening");
+    assert.equal(r.applicationsNew, 5);
     assert.equal(r.candidatesNew, 2);
     assert.equal(r.candidatesExisting, 1);
-    assert.equal(r.jobsNew, 2);
-    assert.deepEqual(r.jobsNewTitles.sort(), ["Data Analyst", "QA Tester"]);
+    assert.equal(r.jobsNew, 3);
+    assert.deepEqual(r.jobsNewTitles.sort(), ["Data Analyst", "QA Tester", "java developer"]);
     assert.equal(r.missingDates, 1);
     assert.deepEqual(await orgCounts(), before);
   });
@@ -140,14 +140,14 @@ describe("Resume Parser import (throwaway DB)", () => {
     const before = await orgCounts();
     const r = await run(true);
     assert.equal(r.applied, true);
-    assert.equal(r.applicationsNew, 4);
+    assert.equal(r.applicationsNew, 5);
     assert.equal(r.candidatesNew, 2);
-    assert.equal(r.jobsNew, 2);
+    assert.equal(r.jobsNew, 3);
     const afterCounts = await orgCounts();
     assert.equal(afterCounts.candidates, before.candidates + 2);
-    assert.equal(afterCounts.applications, before.applications + 4);
-    assert.equal(afterCounts.jobs, before.jobs + 2);
-    assert.equal(afterCounts.events, before.events + 4);
+    assert.equal(afterCounts.applications, before.applications + 5);
+    assert.equal(afterCounts.jobs, before.jobs + 3);
+    assert.equal(afterCounts.events, before.events + 5);
 
     const ravi = await prisma.candidate.findFirstOrThrow({
       where: { organizationId: orgId, email: `ravi.${tag}@example.com` },
@@ -159,7 +159,9 @@ describe("Resume Parser import (throwaway DB)", () => {
     assert.equal(ravi.resumeUrl, null, "external resume is never stored as a HireOS file path");
     assert.equal(ravi.applications.length, 2, "one candidate, two applications");
     const [javaApp, analystApp] = ravi.applications;
-    assert.equal(javaApp.jobId, javaJobId, "matched the existing job case-insensitively");
+    assert.notEqual(javaApp.jobId, javaJobId, "history is never attached to the open opening");
+    assert.equal(javaApp.job.status, "CLOSED");
+    assert.equal(javaApp.job.title.toLowerCase(), "java developer");
     assert.equal(javaApp.stage, "APPLIED");
     assert.equal(javaApp.status, "ON_HOLD");
     assert.equal(javaApp.source, RESUME_PARSER_SOURCE);
@@ -190,11 +192,14 @@ describe("Resume Parser import (throwaway DB)", () => {
     const now = (await prisma.candidate.findUniqueOrThrow({ where: { id: existingId } })) as unknown as Record<string, unknown>;
     assert.deepEqual(now, existingBefore);
     const apps = await prisma.application.findMany({ where: { candidateId: existingId }, include: { job: true } });
-    assert.equal(apps.length, 2);
+    assert.equal(apps.length, 3);
     const careers = apps.find((a) => a.source === "careers_site");
     assert.equal(careers?.stage, "SCREENING", "existing application untouched");
     assert.equal(careers?.status, "ACTIVE");
-    assert.equal(apps.find((a) => a.source === RESUME_PARSER_SOURCE)?.job.title, "QA Tester");
+    assert.equal(careers?.jobId, javaJobId);
+    const history = apps.filter((a) => a.source === RESUME_PARSER_SOURCE);
+    assert.deepEqual(history.map((a) => a.job.title.toLowerCase()).sort(), ["java developer", "qa tester"]);
+    assert.ok(history.every((a) => a.job.status === "CLOSED"));
     assert.equal(await prisma.candidate.count({ where: { organizationId: orgId, email: { equals: `existing.${tag}@example.com`, mode: "insensitive" } } }), 1);
   });
 
@@ -203,6 +208,22 @@ describe("Resume Parser import (throwaway DB)", () => {
     assert.equal(other.firstName, "Other");
     assert.equal(other.applications.length, 0);
     assert.equal((await orgCounts(otherOrgId)).jobs, 0);
+  });
+
+  it("a later import reuses the Closed historical job instead of the open one", async () => {
+    const t = readCsvTable(
+      new TextEncoder().encode(
+        ["ID,Name,Email,Phone,Role,Exp,Date,Resume", `RP-9,Kiran Das,kiran.${tag}@example.com,,Java  Developer,2,01/01/2024,`].join("\n"),
+      ),
+    );
+    const r = await runResumeParserImport({ prisma, organizationId: orgId, userId, header: t.header, rows: t.rows, mapping, apply: true, now: NOW });
+    assert.equal(r.jobsNew, 0);
+    const app = await prisma.application.findFirstOrThrow({
+      where: { candidate: { email: `kiran.${tag}@example.com` } },
+      include: { job: true },
+    });
+    assert.equal(app.job.status, "CLOSED");
+    assert.notEqual(app.jobId, javaJobId);
   });
 
   it("uploading the same file again creates nothing", async () => {

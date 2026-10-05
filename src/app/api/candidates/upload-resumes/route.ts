@@ -84,11 +84,11 @@ export async function POST(request: Request) {
       const parsed = jobIdSchema.safeParse(rawJob);
       const job = parsed.success
         ? await prisma.job.findFirst({
-            where: { id: parsed.data, organizationId, status: { not: "CLOSED" } },
+            where: { id: parsed.data, organizationId, status: "OPEN" },
             select: { id: true },
           })
         : null;
-      if (!job) return noStore(jsonError("Choose a job from the list.", 400));
+      if (!job) return noStore(jsonError("Choose an open job opening from the list.", 400));
       jobId = job.id;
     }
 

@@ -48,6 +48,7 @@ import {
   RESUME_PARSER_LABEL,
   RESUME_PARSER_SOURCE,
 } from "@/lib/resume-parser-import/constants";
+import { isUntouchedImport } from "@/lib/resume-parser-import/pipeline-filter";
 import { cn } from "@/lib/utils";
 
 type Ctx = {
@@ -110,24 +111,27 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
 
   if (!candidate) notFound();
 
-  const appliedJobIds = candidate.applications.map((a) => a.job.id);
+  // Untouched Resume Parser history is context, not a hiring process: it never drives the
+  // screening / interview / stage controls. Add to Hiring starts a real application.
+  const hiringApps = candidate.applications.filter((a) => !isUntouchedImport(a));
+  const historyApps = candidate.applications.filter((a) => isUntouchedImport(a));
+
+  const inHiringJobIds = hiringApps.map((a) => a.job.id);
   const addableJobs = canDecide
-    ? (
-        await prisma.job.findMany({
-          where: {
-            organizationId: candidate.organizationId,
-            status: { not: "CLOSED" },
-            id: { notIn: appliedJobIds },
-          },
-          orderBy: { title: "asc" },
-          select: { id: true, title: true, status: true },
-        })
-      ).sort((a, b) => Number(b.status === "OPEN") - Number(a.status === "OPEN"))
+    ? await prisma.job.findMany({
+        where: {
+          organizationId: candidate.organizationId,
+          status: "OPEN",
+          id: { notIn: inHiringJobIds },
+        },
+        orderBy: { title: "asc" },
+        select: { id: true, title: true, status: true, location: true },
+      })
     : [];
 
   const selectedApp =
-    candidate.applications.find((a) => a.id === searchParams.applicationId) ??
-    candidate.applications[0] ??
+    hiringApps.find((a) => a.id === searchParams.applicationId) ??
+    hiringApps[0] ??
     null;
 
   const latestScreen =
@@ -193,7 +197,9 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
 
   const backHref = selectedApp
     ? `/dashboard/jobs/${selectedApp.job.id}`
-    : "/dashboard/candidates";
+    : canDecide
+      ? "/dashboard/talent"
+      : "/dashboard/candidates";
 
   const fullName = `${candidate.firstName} ${candidate.lastName}`.trim();
   const expProfile = experienceProfileLabel(candidate.experience);
@@ -251,8 +257,8 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
     : [];
 
   const otherApps = selectedApp
-    ? candidate.applications.filter((a) => a.id !== selectedApp.id)
-    : candidate.applications;
+    ? hiringApps.filter((a) => a.id !== selectedApp.id)
+    : hiringApps;
 
   const importedPayload =
     selectedApp?.source === RESUME_PARSER_SOURCE
@@ -286,7 +292,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
           href={backHref}
           className="text-[13px] text-muted-foreground hover:underline"
         >
-          ← {selectedApp ? selectedApp.job.title : "Back to candidates"}
+          ← {selectedApp ? selectedApp.job.title : canDecide ? "Talent Pool" : "Back to candidates"}
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 space-y-2">
@@ -383,7 +389,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
           ) : null}
           {canDecide && addableJobs.length > 0 ? (
             <div className="space-y-1.5">
-              <h3 className="text-[13px] font-medium text-muted-foreground">Add to another job</h3>
+              <h3 className="text-[13px] font-medium text-muted-foreground">Add to Hiring for another opening</h3>
               <AddToJob candidateId={candidate.id} jobs={addableJobs} />
             </div>
           ) : null}
@@ -392,17 +398,50 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
         <section className={section} aria-labelledby="add-to-job">
           <div>
             <h2 id="add-to-job" className="text-[17px] font-semibold text-foreground">
-              Not in a job yet
+              In Talent Pool · not in hiring yet
             </h2>
             <p className="mt-1 text-[13px] text-muted-foreground">
-              Add this candidate to a job to run AI screening and create an interview link.
+              Add to Hiring for a current job opening to run AI screening and create an interview link.
             </p>
           </div>
           <AddToJob candidateId={candidate.id} jobs={addableJobs} />
         </section>
       ) : (
-        <p className="px-1 text-sm text-muted-foreground">No applications yet.</p>
+        <p className="px-1 text-sm text-muted-foreground">In Talent Pool · not in hiring yet.</p>
       )}
+
+      {historyApps.length > 0 ? (
+        <section className={section} aria-labelledby="application-history">
+          <div>
+            <h2 id="application-history" className="text-[17px] font-semibold text-foreground">
+              Application history
+            </h2>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Past applications from {RESUME_PARSER_LABEL}. Kept for reference; they are not part of hiring.
+            </p>
+          </div>
+          <ul className="space-y-1 text-sm text-foreground/90">
+            {historyApps.map((app) => {
+              const created = app.timelineEvents.find((t) => t.type === "APPLICATION_CREATED")?.payload;
+              const reference =
+                created && typeof created === "object" && !Array.isArray(created) && typeof created.resumeReference === "string"
+                  ? created.resumeReference
+                  : null;
+              return (
+                <li key={app.id}>
+                  {app.job.title}
+                  <span className="text-muted-foreground"> · Applied {formatDate(app.createdAt)}</span>
+                  {reference && !candidate.resumeUrl ? (
+                    <span className="block break-all text-[13px] text-muted-foreground">
+                      Resume file named in {RESUME_PARSER_LABEL} (not attached yet): {reference}
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {selectedApp ? (
         <section className={section} aria-labelledby="hiring-snapshot">
