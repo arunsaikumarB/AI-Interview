@@ -14,6 +14,7 @@ import { CandidateComposeButton } from "@/components/candidate-compose-button";
 import { CommunicationHistory } from "@/components/communication-history";
 import { CandidateTags } from "@/components/candidate-tags";
 import { CreateInterviewDialog } from "@/components/create-interview-dialog";
+import { AddToJob } from "@/components/add-to-job";
 import { PracticalAssessmentsCard } from "@/components/practical/practical-assessments-card";
 import { CandidateAssessmentCard } from "@/components/candidate-assessment/candidate-assessment-card";
 import type { ScreeningResult } from "@/lib/ai/screening";
@@ -105,6 +106,21 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
   });
 
   if (!candidate) notFound();
+
+  const appliedJobIds = candidate.applications.map((a) => a.job.id);
+  const addableJobs = canDecide
+    ? (
+        await prisma.job.findMany({
+          where: {
+            organizationId: candidate.organizationId,
+            status: { not: "CLOSED" },
+            id: { notIn: appliedJobIds },
+          },
+          orderBy: { title: "asc" },
+          select: { id: true, title: true, status: true },
+        })
+      ).sort((a, b) => Number(b.status === "OPEN") - Number(a.status === "OPEN"))
+    : [];
 
   const selectedApp =
     candidate.applications.find((a) => a.id === searchParams.applicationId) ??
@@ -359,6 +375,24 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
               </ul>
             </div>
           ) : null}
+          {canDecide && addableJobs.length > 0 ? (
+            <div className="space-y-1.5">
+              <h3 className="text-[13px] font-medium text-muted-foreground">Add to another job</h3>
+              <AddToJob candidateId={candidate.id} jobs={addableJobs} />
+            </div>
+          ) : null}
+        </section>
+      ) : canDecide ? (
+        <section className={section} aria-labelledby="add-to-job">
+          <div>
+            <h2 id="add-to-job" className="text-[17px] font-semibold text-foreground">
+              Not in a job yet
+            </h2>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Add this candidate to a job to run AI screening and create an interview link.
+            </p>
+          </div>
+          <AddToJob candidateId={candidate.id} jobs={addableJobs} />
         </section>
       ) : (
         <p className="px-1 text-sm text-muted-foreground">No applications yet.</p>
