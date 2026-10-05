@@ -3,11 +3,8 @@ import { redirect } from "next/navigation";
 import type { PipelineStage, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  IMPORT_ROLES,
-  RESUME_PARSER_LABEL,
-  RESUME_PARSER_SOURCE,
-} from "@/lib/resume-parser-import/constants";
+import { RESUME_PARSER_LABEL, RESUME_PARSER_SOURCE } from "@/lib/resume-parser-import/constants";
+import { UPLOAD_ROLES } from "@/lib/resume-upload/constants";
 import { getSession } from "@/lib/auth/session";
 import { orgScopeWhere } from "@/lib/auth/rbac";
 import { RecruitingSubnav } from "@/components/recruiting-subnav";
@@ -182,7 +179,7 @@ export default async function CandidatesPage({
     const s = sp.toString();
     return s ? `/dashboard/candidates?${s}` : "/dashboard/candidates";
   };
-  const canImport = IMPORT_ROLES.includes(session.role);
+  const canImport = UPLOAD_ROLES.includes(session.role);
 
   return (
     <div className="space-y-6">
@@ -200,7 +197,7 @@ export default async function CandidatesPage({
             href="/dashboard/candidates/import"
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
-            Import from {RESUME_PARSER_LABEL}
+            Upload resumes
           </Link>
         ) : null}
       </div>

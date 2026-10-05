@@ -1,24 +1,30 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { RecruitingSubnav } from "@/components/recruiting-subnav";
-import { ResumeParserImport } from "@/components/resume-parser-import";
-import { ResumeParserResumes } from "@/components/resume-parser-resumes";
-import { IMPORT_ROLES, RESUME_PARSER_LABEL } from "@/lib/resume-parser-import/constants";
+import { ResumeBulkUpload } from "@/components/resume-bulk-upload";
+import { UPLOAD_ROLES } from "@/lib/resume-upload/constants";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: `Import from ${RESUME_PARSER_LABEL}`,
+  title: "Upload resumes",
 };
 
-export default async function ResumeParserImportPage() {
+export default async function UploadResumesPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (!IMPORT_ROLES.includes(session.role)) redirect("/dashboard/candidates");
+  if (!UPLOAD_ROLES.includes(session.role) || !session.organizationId) redirect("/dashboard/candidates");
 
-  const section = "glass-card space-y-4 rounded-[var(--radius-card)] p-5";
+  const jobs = (
+    await prisma.job.findMany({
+      where: { organizationId: session.organizationId, status: { not: "CLOSED" } },
+      select: { id: true, title: true, status: true },
+      orderBy: { title: "asc" },
+    })
+  ).sort((a, b) => Number(b.status === "OPEN") - Number(a.status === "OPEN"));
 
   return (
     <div className="space-y-6">
@@ -30,25 +36,15 @@ export default async function ResumeParserImportPage() {
         >
           ← Candidates
         </Link>
-        <h1 className="page-title mt-2">Import from {RESUME_PARSER_LABEL}</h1>
+        <h1 className="page-title mt-2">Upload resumes</h1>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          Step 1: upload the CSV export of past applications. Step 2: attach the resume files
-          named in it. Imported applications are marked {RESUME_PARSER_LABEL}, start at Applied
-          and On hold, and appear in Candidates. Existing candidate profiles are not changed.
-          Uploading the same files again does not create duplicates.
+          Select resume files. HireOS reads the name, email, phone and experience from each one so
+          you can check them before saving. Each file becomes a candidate; an email that is already
+          in HireOS is never duplicated or changed.
         </p>
       </div>
-      <section className={section} aria-labelledby="rp-step-csv">
-        <h2 id="rp-step-csv" className="text-[17px] font-semibold text-foreground">
-          Step 1 · Applications (CSV)
-        </h2>
-        <ResumeParserImport />
-      </section>
-      <section className={section} aria-labelledby="rp-step-resumes">
-        <h2 id="rp-step-resumes" className="text-[17px] font-semibold text-foreground">
-          Step 2 · Resume files (PDF)
-        </h2>
-        <ResumeParserResumes />
+      <section className="glass-card rounded-[var(--radius-card)] p-5">
+        <ResumeBulkUpload jobs={jobs} />
       </section>
     </div>
   );

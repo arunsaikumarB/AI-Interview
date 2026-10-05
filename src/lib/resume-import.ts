@@ -165,6 +165,21 @@ export function contentMatchesExtension(ext: string, buf: Buffer): boolean {
   return !buf.subarray(0, 4096).includes(0);
 }
 
+export function resumeMimeType(fileName: string): string | undefined {
+  return MIME_BY_EXT[path.extname(fileName).toLowerCase()];
+}
+
+/** Checks a resume uploaded through the browser. Returns the problem, or null if it is acceptable. */
+export function checkUploadedResume(name: string, type: string, buffer: Buffer): string | null {
+  if (!isPlainFileName(name) || name.length > 255) return "file name is not allowed";
+  if (!isAllowedResumeFile({ name, type })) return "must be PDF, DOCX or TXT";
+  if (buffer.length === 0) return "file is empty";
+  if (buffer.length > RESUME_MAX_BYTES) return "file is larger than 10 MB";
+  const ext = path.extname(name).toLowerCase();
+  if (!contentMatchesExtension(ext, buffer)) return `file content is not a real ${ext.slice(1).toUpperCase()}`;
+  return null;
+}
+
 export type LoadedResume = { buffer: Buffer; mimeType: string; fileName: string };
 
 export async function loadResumeFile(

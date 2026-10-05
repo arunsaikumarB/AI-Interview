@@ -1,7 +1,5 @@
-import path from "node:path";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { contentMatchesExtension, isPlainFileName } from "@/lib/resume-import";
-import { isAllowedResumeFile, RESUME_MAX_BYTES } from "@/lib/resume/mime";
+import { checkUploadedResume, resumeMimeType } from "@/lib/resume-import";
 import { deleteStoredFile, saveUpload } from "@/lib/storage";
 import { RESUME_PARSER_SOURCE } from "./constants";
 
@@ -12,12 +10,6 @@ export {
 } from "./constants";
 
 type Db = PrismaClient | Prisma.TransactionClient;
-
-const MIME_BY_EXT: Record<string, string> = {
-  ".pdf": "application/pdf",
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".txt": "text/plain",
-};
 
 /** Lowercased file name of a resume reference: "C:\cv\Ravi.pdf" or "https://x/files/Ravi.pdf?v=2" → "ravi.pdf". */
 export function resumeKey(ref: string): string {
@@ -87,16 +79,6 @@ export type AttachDeps = {
 
 export type AttachResult = { name: string; status: ResumeAttachStatus; parsed?: boolean; reason?: string };
 
-function checkFile(name: string, type: string, buffer: Buffer): string | null {
-  if (!isPlainFileName(name) || name.length > 255) return "file name is not allowed";
-  if (!isAllowedResumeFile({ name, type })) return "must be PDF, DOCX or TXT";
-  if (buffer.length === 0) return "file is empty";
-  if (buffer.length > RESUME_MAX_BYTES) return "file is larger than 10 MB";
-  const ext = path.extname(name).toLowerCase();
-  if (!contentMatchesExtension(ext, buffer)) return `file content is not a real ${ext.slice(1).toUpperCase()}`;
-  return null;
-}
-
 /**
  * Attaches one resume file to the imported candidate whose Resume Parser row named it.
  * Only fills an empty resume; a candidate who already has one is left unchanged.
@@ -107,14 +89,14 @@ export async function attachResumeFile(
   args: { organizationId: string; name: string; type: string; buffer: Buffer; deps: AttachDeps },
 ): Promise<AttachResult> {
   const { organizationId, name, buffer, deps } = args;
-  const problem = checkFile(name, args.type, buffer);
+  const problem = checkUploadedResume(name, args.type, buffer);
   if (problem) return { name, status: "invalid", reason: problem };
 
   const key = resumeKey(name);
   const { status, target } = statusOf((await findTargets(db, organizationId, [key])).get(key));
   if (status !== "ready" || !target) return { name, status };
 
-  const mimeType = MIME_BY_EXT[path.extname(name).toLowerCase()];
+  const mimeType = resumeMimeType(name) ?? "application/octet-stream";
   let resumeText: string | null = null;
   try {
     resumeText = (await deps.extractText({ buffer, mimeType, fileName: name })) || null;

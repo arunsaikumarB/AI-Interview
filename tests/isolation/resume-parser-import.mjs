@@ -242,13 +242,13 @@ try {
     assert.match(html, /Iso Asha/);
     assert.match(html, /Resume Parser/);
     assert.match(html, /On hold/);
-    assert.match(html, /Import from (<!-- -->)?Resume Parser/);
+    assert.match(html, /Upload resumes/);
   });
 
-  await check("import page: HR sees the uploader, interviewer is redirected", async () => {
+  await check("upload page: HR sees the uploader, interviewer is redirected", async () => {
     const ok = await fetch(`${BASE}/dashboard/candidates/import`, { headers: { Cookie: cookie.hr } });
     assert.equal(ok.status, 200);
-    assert.match(await ok.text(), /rp-file/);
+    assert.match(await ok.text(), /ru-files/);
     const denied = await fetch(`${BASE}/dashboard/candidates/import`, { headers: { Cookie: cookie.interviewer }, redirect: "manual" });
     if ([303, 307, 308].includes(denied.status)) {
       assert.match(denied.headers.get("location") ?? "", /\/dashboard\/candidates$/);
@@ -256,10 +256,10 @@ try {
       // Streamed response: Next sends the redirect in the payload once the layout has started.
       const body = await denied.text();
       assert.match(body, /NEXT_REDIRECT;(replace|push);\/dashboard\/candidates;/);
-      assert.doesNotMatch(body, /rp-file/);
+      assert.doesNotMatch(body, /ru-files/);
     }
     const list = await fetch(`${BASE}/dashboard/candidates?q=${encodeURIComponent(tag)}`, { headers: { Cookie: cookie.interviewer } });
-    assert.doesNotMatch(await list.text(), /Import from (<!-- -->)?Resume Parser/);
+    assert.doesNotMatch(await list.text(), /Upload resumes/);
   });
 
   await check("untouched imports stay off the pipeline board and stage counts", async () => {
