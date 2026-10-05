@@ -10,7 +10,7 @@ import {
 
 /** Wires the background resume reader to the real database, storage, OCR and local Ollama. */
 async function productionDeps(): Promise<ProfileWorkerDeps> {
-  const [{ prisma }, { chatJSON, AIError }, storage, parse, ocr, embeddings, ai] = await Promise.all([
+  const [{ prisma }, { chatJSON, AIError, foregroundChatBusy }, storage, parse, ocr, embeddings, ai] = await Promise.all([
     import("@/lib/db"),
     import("@/lib/ai/ollama"),
     import("@/lib/storage"),
@@ -28,6 +28,7 @@ async function productionDeps(): Promise<ProfileWorkerDeps> {
         temperature: 0,
         numPredict: 1500,
         jsonSchema,
+        background: true,
       });
       return ai.sanitizeAiProfile(data);
     },
@@ -37,6 +38,8 @@ async function productionDeps(): Promise<ProfileWorkerDeps> {
     embed: embeddings.embedCandidate,
     isTransient: (err) => err instanceof AIError && (err.code === "OLLAMA_UNREACHABLE" || err.code === "OLLAMA_HTTP"),
     errorCode: (err) => (err instanceof AIError ? err.code : err instanceof Error ? err.name : "unknown"),
+    isPreempted: (err) => err instanceof AIError && err.code === "PREEMPTED",
+    foregroundBusy: () => foregroundChatBusy(),
     liveInterviews: () =>
       prisma.interviewSession.count({
         where: { status: "IN_PROGRESS", updatedAt: { gte: new Date(Date.now() - 30 * 60_000) } },

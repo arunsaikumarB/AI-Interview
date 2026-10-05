@@ -11,7 +11,9 @@ export class AIError extends Error {
     | "OLLAMA_HTTP"
     | "INVALID_JSON"
     | "VALIDATION"
-    | "EMBEDDING";
+    | "EMBEDDING"
+    /** Background call cancelled so a foreground AI request gets the model. */
+    | "PREEMPTED";
   readonly causeDetail?: unknown;
 
   constructor(
@@ -93,16 +95,38 @@ export type OllamaMessage = {
   content: string;
 };
 
+/**
+ * Ollama runs one chat generation at a time on CPU hosts. Foreground calls (screening,
+ * interviews, anything a person waits on) cancel in-flight background calls; Ollama
+ * stops generating when the connection closes, so the foreground call starts at once.
+ */
+type ChatTraffic = { foreground: number; lastForegroundAt: number; background: Set<AbortController> };
+const trafficHolder = globalThis as typeof globalThis & { __hireosChatTraffic?: ChatTraffic };
+const traffic: ChatTraffic = (trafficHolder.__hireosChatTraffic ??= {
+  foreground: 0,
+  lastForegroundAt: 0,
+  background: new Set(),
+});
+
+/** True while a foreground chat call is running or finished less than `quietMs` ago. */
+export function foregroundChatBusy(quietMs = 60_000, now = Date.now()): boolean {
+  return traffic.foreground > 0 || now - traffic.lastForegroundAt < quietMs;
+}
+
 async function ollamaFetch<T>(
   baseUrl: string,
   path: string,
   body: unknown,
   headers: HeadersInit,
   timeoutMs = Number(process.env.OLLAMA_TIMEOUT_MS ?? 240_000),
+  controller: AbortController = new AbortController(),
 ): Promise<T> {
   let res: Response;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     res = await fetch(`${baseUrl}${path}`, {
       method: "POST",
@@ -111,6 +135,9 @@ async function ollamaFetch<T>(
       signal: controller.signal,
     });
   } catch (err) {
+    if (err instanceof Error && err.name === "AbortError" && !timedOut) {
+      throw new AIError("PREEMPTED", "Background AI call gave way to a foreground request.", err);
+    }
     if (err instanceof Error && err.name === "AbortError") {
       throw new AIError(
         "OLLAMA_UNREACHABLE",
@@ -136,7 +163,14 @@ async function ollamaFetch<T>(
     );
   }
 
-  return res.json() as Promise<T>;
+  try {
+    return (await res.json()) as T;
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new AIError("PREEMPTED", "Background AI call gave way to a foreground request.", err);
+    }
+    throw err;
+  }
 }
 
 function parseJsonLoose(content: string): unknown {
@@ -190,7 +224,46 @@ export async function chatJSON<T>(
     jsonSchema?: Record<string, unknown>;
     timeoutMs?: number;
     maxAttempts?: number;
+    /** Low priority: cancelled (AIError PREEMPTED) whenever a foreground chat call starts. */
+    background?: boolean;
   },
+): Promise<{ data: T; model: string; raw: unknown }> {
+  if (options?.background) return chatJSONBackground(system, user, zodSchema, options);
+  traffic.foreground++;
+  traffic.lastForegroundAt = Date.now();
+  for (const c of Array.from(traffic.background)) c.abort();
+  try {
+    return await chatJSONOnce(system, user, zodSchema, options);
+  } finally {
+    traffic.foreground--;
+    traffic.lastForegroundAt = Date.now();
+  }
+}
+
+async function chatJSONBackground<T>(
+  system: string,
+  user: string,
+  zodSchema: ZodType<T>,
+  options: NonNullable<Parameters<typeof chatJSON>[3]>,
+): Promise<{ data: T; model: string; raw: unknown }> {
+  if (traffic.foreground > 0) {
+    throw new AIError("PREEMPTED", "Background AI call gave way to a foreground request.");
+  }
+  const controller = new AbortController();
+  traffic.background.add(controller);
+  try {
+    return await chatJSONOnce(system, user, zodSchema, options, controller);
+  } finally {
+    traffic.background.delete(controller);
+  }
+}
+
+async function chatJSONOnce<T>(
+  system: string,
+  user: string,
+  zodSchema: ZodType<T>,
+  options?: Parameters<typeof chatJSON>[3],
+  controller?: AbortController,
 ): Promise<{ data: T; model: string; raw: unknown }> {
   const model = options?.model ?? OLLAMA_MODEL();
   const temperature = options?.temperature ?? 0.1;
@@ -234,6 +307,7 @@ export async function chatJSON<T>(
       },
       headers,
       timeoutMs,
+      controller,
     );
 
     const content = raw.message?.content ?? "";

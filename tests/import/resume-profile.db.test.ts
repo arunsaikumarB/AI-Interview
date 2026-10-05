@@ -81,6 +81,16 @@ const emptyAi: AiProfile = {
 };
 
 class Transient extends Error {}
+class Preempted extends Error {}
+
+/** Waits for the background worker to finish its last queue write. */
+async function workerStopped() {
+  const state = () =>
+    (globalThis as { __hireosProfileQueue?: { running: boolean; lock: Promise<unknown> } }).__hireosProfileQueue;
+  for (let i = 0; i < 50 && state()?.running; i++) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(state()?.running ?? false, false);
+  await state()?.lock;
+}
 
 function workerDeps(file: string, over: Partial<ProfileWorkerDeps> = {}): ProfileWorkerDeps {
   return {
@@ -93,6 +103,8 @@ function workerDeps(file: string, over: Partial<ProfileWorkerDeps> = {}): Profil
     embed: async () => undefined,
     isTransient: (err) => err instanceof Transient,
     errorCode: (err) => (err instanceof Transient ? "OLLAMA_UNREACHABLE" : "VALIDATION"),
+    isPreempted: (err) => err instanceof Preempted,
+    foregroundBusy: () => false,
     liveInterviews: async () => 0,
     sleep: async () => undefined,
     ...over,
@@ -351,6 +363,50 @@ describe("Background worker (fake AI)", () => {
     assert.equal(after.location, null);
   });
 
+  it("giving way to foreground AI re-queues the job without using an attempt", async () => {
+    const c = await newCandidate("preempt", { resumeText: "Resume text" });
+    await enqueueProfileJobs(file, [{ candidateId: c.id, organizationId: orgId, experienceSet: false }]);
+    let calls = 0;
+    let clock = Date.now();
+    const d = workerDeps(file, {
+      now: () => clock,
+      aiProfile: async () => {
+        calls++;
+        if (calls <= MAX_PROFILE_ATTEMPTS + 2) throw new Preempted("screening started");
+        return { ...emptyAi, location: "Tirupati" };
+      },
+    });
+    for (let i = 0; i < 20; i++) {
+      const r = await processNextProfileJob(d);
+      if (r.kind === "idle") break;
+      if (calls <= MAX_PROFILE_ATTEMPTS + 2) {
+        const status = await profileJobStatus(file, c.id, orgId);
+        assert.equal(status?.status, "pending");
+        assert.equal(status?.error, undefined);
+      }
+      clock += 60_000;
+    }
+    assert.equal(calls, MAX_PROFILE_ATTEMPTS + 3);
+    assert.equal((await profileJobStatus(file, c.id, orgId))?.status, "done");
+    assert.equal((await prisma.candidate.findUniqueOrThrow({ where: { id: c.id } })).location, "Tirupati");
+  });
+
+  it("a preempted job waits before trying again", async () => {
+    const c = await newCandidate("preempt-wait", { resumeText: "Resume text" });
+    const ownFile = path.join(storageRoot, "queue", "preempt-wait.json");
+    await enqueueProfileJobs(ownFile, [{ candidateId: c.id, organizationId: orgId, experienceSet: false }]);
+    const clock = Date.now();
+    const d = workerDeps(ownFile, {
+      now: () => clock,
+      aiProfile: async () => {
+        throw new Preempted("screening started");
+      },
+    });
+    assert.equal((await processNextProfileJob(d)).kind, "ran");
+    const next = await processNextProfileJob(d);
+    assert.equal(next.kind, "wait");
+  });
+
   it("a bad AI answer fails at once without retrying", async () => {
     const c = await newCandidate("bad", { resumeText: "Resume text" });
     await enqueueProfileJobs(file, [{ candidateId: c.id, organizationId: orgId, experienceSet: false }]);
@@ -439,6 +495,33 @@ describe("Background worker (fake AI)", () => {
     assert.equal((await profileJobStatus(file, c.id, orgId))?.status, "done");
     assert.ok(waits >= 1);
     assert.equal(aiCalls, 1);
+    await workerStopped();
     assert.equal((await prisma.candidate.findUniqueOrThrow({ where: { id: c.id } })).location, "Nellore");
+  });
+
+  it("the worker waits while foreground AI (e.g. screening) is busy", async () => {
+    const c = await newCandidate("fg", { resumeText: "Resume text" });
+    await enqueueProfileJobs(file, [{ candidateId: c.id, organizationId: orgId, experienceSet: false }]);
+    let busy = true;
+    let waits = 0;
+    kickProfileWorker(async () =>
+      workerDeps(file, {
+        foregroundBusy: () => busy,
+        sleep: async () => {
+          waits++;
+          busy = false;
+        },
+        aiProfile: async () => {
+          assert.equal(busy, false, "background AI never starts while foreground AI is busy");
+          return { ...emptyAi, location: "Kurnool" };
+        },
+      }),
+    );
+    for (let i = 0; i < 50 && (await profileJobStatus(file, c.id, orgId))?.status !== "done"; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.equal((await profileJobStatus(file, c.id, orgId))?.status, "done");
+    assert.ok(waits >= 1);
+    await workerStopped();
   });
 });

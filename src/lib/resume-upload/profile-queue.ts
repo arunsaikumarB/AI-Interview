@@ -12,12 +12,16 @@ import { extractResumeProfile, type ResumeProfile } from "./profile";
  * - Fill-empty: a field that already has a value (rule-based, HR or AI) is never changed.
  * - Bounded: R-3 attempt limit, transient errors only; failures are recorded honestly.
  * - Waits while any live interview is running so it never slows the interview AI.
+ * - Gives way to foreground AI (screening etc.): a cancelled call is re-queued without
+ *   using an attempt, and the worker waits until foreground AI has been quiet.
  * - The queue is a small JSON file under the private storage root (survives restarts).
  */
 
 export const MAX_PROFILE_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 60_000;
 const LIVE_INTERVIEW_WAIT_MS = 30_000;
+const FOREGROUND_WAIT_MS = 15_000;
+const PREEMPTED_DELAY_MS = 30_000;
 const KEEP_DONE_MS = 7 * 24 * 3600_000;
 const KEEP_FAILED_MS = 30 * 24 * 3600_000;
 
@@ -47,6 +51,10 @@ export type ProfileWorkerDeps = {
   embed: (candidateId: string) => Promise<unknown>;
   isTransient: (err: unknown) => boolean;
   errorCode: (err: unknown) => string;
+  /** The AI call was cancelled so a foreground request could use the model. */
+  isPreempted: (err: unknown) => boolean;
+  /** Foreground AI is running or ran very recently. */
+  foregroundBusy: () => boolean;
   liveInterviews: () => Promise<number>;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -169,7 +177,11 @@ function cleanText(text: string): string {
   return text.replace(PAGE_MARKER, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-type Outcome = { kind: "done" } | { kind: "retry"; error: string } | { kind: "failed"; error: string };
+type Outcome =
+  | { kind: "done" }
+  | { kind: "deferred" }
+  | { kind: "retry"; error: string }
+  | { kind: "failed"; error: string };
 
 export async function runProfileJob(job: ProfileJob, deps: ProfileWorkerDeps): Promise<Outcome> {
   const { db } = deps;
@@ -201,6 +213,7 @@ export async function runProfileJob(job: ProfileJob, deps: ProfileWorkerDeps): P
     const ai = await deps.aiProfile(text);
     await fillEmptyProfile(db, c.id, job.organizationId, ai, job.experienceSet);
   } catch (err) {
+    if (deps.isPreempted(err)) return { kind: "deferred" };
     const error = deps.errorCode(err);
     return deps.isTransient(err) ? { kind: "retry", error } : { kind: "failed", error };
   }
@@ -241,6 +254,10 @@ export async function processNextProfileJob(
     if (outcome.kind === "done") {
       current.status = "done";
       delete current.error;
+    } else if (outcome.kind === "deferred") {
+      current.status = "pending";
+      current.attempts = Math.max(0, current.attempts - 1);
+      current.notBefore = now() + PREEMPTED_DELAY_MS;
     } else if (outcome.kind === "retry" && current.attempts < MAX_PROFILE_ATTEMPTS) {
       current.status = "pending";
       current.error = outcome.error;
@@ -266,6 +283,10 @@ export function kickProfileWorker(getDeps: () => Promise<ProfileWorkerDeps>): vo
       for (;;) {
         if ((await deps.liveInterviews().catch(() => 0)) > 0) {
           await sleep(LIVE_INTERVIEW_WAIT_MS);
+          continue;
+        }
+        if (deps.foregroundBusy()) {
+          await sleep(FOREGROUND_WAIT_MS);
           continue;
         }
         const r = await processNextProfileJob(deps);
