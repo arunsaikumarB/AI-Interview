@@ -166,8 +166,9 @@ try {
     const asInterviewer = await fetch(`${BASE}/dashboard/candidates/${fresh.id}`, { headers: { Cookie: cookie.interviewer } });
     const ihtml = await asInterviewer.text();
     assert.doesNotMatch(ihtml, /Not in a job yet|Add to job/);
-    const otherOrg = await fetch(`${BASE}/dashboard/candidates/${fresh.id}`, { headers: { Cookie: cookie.hrB } });
-    assert.equal(otherOrg.status, 404);
+    const otherOrg = await (await fetch(`${BASE}/dashboard/candidates/${fresh.id}`, { headers: { Cookie: cookie.hrB } })).text();
+    assert.match(otherOrg, /NEXT_NOT_FOUND|could not be found|404/i);
+    assert.doesNotMatch(otherOrg, new RegExp(`ravi\\.${tag}|Not in a job yet|ATJ Java ${tag}`));
   });
 } finally {
   await db.application.deleteMany({ where: { job: { organizationId: { in: [orgA.id, orgB.id] } } } });
