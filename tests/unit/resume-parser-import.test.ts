@@ -11,6 +11,7 @@ import {
   type ImportMapping,
 } from "../../src/lib/resume-parser-import/mapping";
 import { IMPORT_MAX_ROWS } from "../../src/lib/resume-parser-import/constants";
+import { resumeKey } from "../../src/lib/resume-parser-import/resumes";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const NOW = new Date(Date.UTC(2026, 9, 2, 12));
@@ -18,6 +19,16 @@ const NOW = new Date(Date.UTC(2026, 9, 2, 12));
 function fileError(fn: () => unknown, pattern: RegExp) {
   assert.throws(fn, (err: unknown) => err instanceof ImportFileError && pattern.test(err.message));
 }
+
+describe("resumeKey", () => {
+  it("reduces a resume reference to its lowercased file name", () => {
+    assert.equal(resumeKey("Ravi.PDF"), "ravi.pdf");
+    assert.equal(resumeKey("  C:\\resumes\\2025\\Ravi Kumar.pdf "), "ravi kumar.pdf");
+    assert.equal(resumeKey("/data/cv/ravi.pdf"), "ravi.pdf");
+    assert.equal(resumeKey("https://rp.local/files/ravi.pdf?token=abc#page=2"), "ravi.pdf");
+    assert.equal(resumeKey(""), "");
+  });
+});
 
 describe("readCsvTable", () => {
   it("rejects an empty file", () => {

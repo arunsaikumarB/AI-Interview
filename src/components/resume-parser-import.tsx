@@ -198,7 +198,8 @@ export function ResumeParserImport() {
     return (
       <div className="space-y-4">
         <p className="text-sm font-medium text-foreground">
-          Import finished. Imported records are marked {RESUME_PARSER_LABEL} in Candidates.
+          Import finished. Imported records are marked {RESUME_PARSER_LABEL} in Candidates. Next,
+          attach the resume files in Step 2 below.
         </p>
         <ReportView report={result} />
         <div className="flex flex-wrap gap-2">

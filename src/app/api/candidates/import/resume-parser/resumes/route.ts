@@ -1,0 +1,108 @@
+import { z, ZodError } from "zod";
+import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth/session";
+import { AuthError, requireOrganizationId, requireRoles } from "@/lib/auth/rbac";
+import { handleApiError, isDatabaseUnavailable, jsonError, jsonOk } from "@/lib/api";
+import { rateLimit } from "@/lib/rate-limit";
+import { IMPORT_ROLES } from "@/lib/resume-parser-import/constants";
+import {
+  attachResumeFile,
+  matchResumeNames,
+  RESUME_BATCH_MAX_BYTES,
+  RESUME_BATCH_MAX_FILES,
+  RESUME_SELECTION_MAX_FILES,
+  type AttachResult,
+} from "@/lib/resume-parser-import/resumes";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const namesSchema = z.array(z.string().min(1).max(255)).min(1).max(RESUME_SELECTION_MAX_FILES);
+
+function noStore(res: Response): Response {
+  res.headers.set("Cache-Control", "no-store");
+  return res;
+}
+
+/**
+ * Resume files for imported Resume Parser applications, matched by file name.
+ * mode=match: names (JSON array) → what would happen to each, nothing saved.
+ * mode=attach: files (up to 20 / 40 MB per request) → stored and attached.
+ */
+export async function POST(request: Request) {
+  try {
+    const user = requireRoles(await getSession(), IMPORT_ROLES);
+    const organizationId = requireOrganizationId(user);
+
+    const rl = rateLimit({ key: `resume-parser-resumes:${user.id}`, limit: 200, windowMs: 10 * 60 * 1000 });
+    if (!rl.ok) return noStore(jsonError("Too many uploads. Wait a few minutes and try again.", 429));
+
+    const length = Number(request.headers.get("content-length") ?? "0");
+    if (length > RESUME_BATCH_MAX_BYTES + 1024 * 1024) {
+      return noStore(jsonError("Upload resumes in smaller batches.", 413));
+    }
+
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return noStore(jsonError("Choose the resume files to upload.", 400));
+    }
+    const mode = form.get("mode");
+
+    if (mode === "match") {
+      let names: string[];
+      try {
+        names = namesSchema.parse(JSON.parse(String(form.get("names") ?? "")));
+      } catch {
+        return noStore(jsonError(`Choose between 1 and ${RESUME_SELECTION_MAX_FILES} resume files.`, 400));
+      }
+      return noStore(jsonOk({ results: await matchResumeNames(prisma, organizationId, names) }));
+    }
+
+    if (mode === "attach") {
+      const files = form.getAll("files").filter((f): f is File => f instanceof File);
+      if (files.length === 0 || files.length > RESUME_BATCH_MAX_FILES) {
+        return noStore(jsonError(`Send between 1 and ${RESUME_BATCH_MAX_FILES} files per batch.`, 400));
+      }
+      if (files.reduce((sum, f) => sum + f.size, 0) > RESUME_BATCH_MAX_BYTES) {
+        return noStore(jsonError("Upload resumes in smaller batches.", 413));
+      }
+      const { extractResumeText } = await import("@/lib/resume/parse");
+      const { embedCandidate } = await import("@/lib/ai/embeddings");
+      const results: AttachResult[] = [];
+      for (const file of files) {
+        try {
+          results.push(
+            await attachResumeFile(prisma, {
+              organizationId,
+              name: file.name,
+              type: file.type,
+              buffer: Buffer.from(await file.arrayBuffer()),
+              deps: { extractText: extractResumeText, embed: embedCandidate },
+            }),
+          );
+        } catch (err) {
+          if (isDatabaseUnavailable(err)) throw err;
+          console.error("[resume-parser-resumes] file failed", {
+            name: err instanceof Error ? err.name : typeof err,
+            code: (err as { code?: unknown } | null)?.code,
+          });
+          results.push({ name: file.name, status: "failed", reason: "could not be saved; try again" });
+        }
+      }
+      return noStore(jsonOk({ results }));
+    }
+
+    return noStore(jsonError("Unknown action.", 400));
+  } catch (err) {
+    if (err instanceof AuthError || err instanceof ZodError || isDatabaseUnavailable(err)) {
+      return noStore(handleApiError(err));
+    }
+    console.error("[resume-parser-resumes] failed", {
+      name: err instanceof Error ? err.name : typeof err,
+      code: (err as { code?: unknown } | null)?.code,
+    });
+    return noStore(jsonError("The upload failed. Try again.", 500));
+  }
+}

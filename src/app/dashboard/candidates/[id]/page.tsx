@@ -330,9 +330,10 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
                   Source: {RESUME_PARSER_LABEL} · Applied {formatDate(selectedApp.createdAt)}
                   {selectedApp.status === "ON_HOLD" ? " · On hold" : ""}
                 </p>
-                {importedResumeReference ? (
+                {importedResumeReference && !candidate.resumeUrl ? (
                   <p className="break-all">
-                    Resume in {RESUME_PARSER_LABEL} (not imported): {importedResumeReference}
+                    Resume file named in {RESUME_PARSER_LABEL} (not attached yet):{" "}
+                    {importedResumeReference}
                   </p>
                 ) : null}
               </div>

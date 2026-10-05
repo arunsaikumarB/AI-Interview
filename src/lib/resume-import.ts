@@ -157,7 +157,7 @@ export function isPlainFileName(name: string): boolean {
   );
 }
 
-function contentMatchesExtension(ext: string, buf: Buffer): boolean {
+export function contentMatchesExtension(ext: string, buf: Buffer): boolean {
   if (ext === ".pdf") return buf.subarray(0, 5).toString("latin1") === "%PDF-";
   if (ext === ".docx") {
     return buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04;
