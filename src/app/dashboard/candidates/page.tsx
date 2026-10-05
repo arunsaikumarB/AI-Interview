@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { PipelineStage } from "@prisma/client";
+import type { PipelineStage, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { buttonVariants } from "@/components/ui/button";
+import {
+  IMPORT_ROLES,
+  RESUME_PARSER_LABEL,
+  RESUME_PARSER_SOURCE,
+} from "@/lib/resume-parser-import/constants";
 import { getSession } from "@/lib/auth/session";
 import { orgScopeWhere } from "@/lib/auth/rbac";
 import { RecruitingSubnav } from "@/components/recruiting-subnav";
@@ -22,7 +28,10 @@ type Search = {
   q?: string;
   stage?: string;
   sort?: string;
+  page?: string;
 };
+
+const PAGE_SIZE = 50;
 
 export default async function CandidatesPage({
   searchParams,
@@ -38,8 +47,7 @@ export default async function CandidatesPage({
       ? (searchParams.stage as PipelineStage)
       : undefined;
 
-  const candidates = await prisma.candidate.findMany({
-    where: {
+  const where: Prisma.CandidateWhereInput = {
       ...(scope.organizationId ? { organizationId: scope.organizationId } : {}),
       ...(q
         ? {
@@ -60,65 +68,141 @@ export default async function CandidatesPage({
       ...(stageFilter
         ? { applications: { some: { stage: stageFilter } } }
         : {}),
-    },
+  };
+
+  const latestApplication = {
     orderBy: { updatedAt: "desc" },
+    take: 1,
     include: {
-      applications: {
+      job: { select: { title: true } },
+      aiEvaluations: {
+        where: { kind: "RESUME_SCREEN" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { scores: true },
+      },
+      interviewSessions: {
         orderBy: { updatedAt: "desc" },
         take: 1,
-        include: {
-          job: { select: { title: true } },
-          aiEvaluations: {
-            where: { kind: "RESUME_SCREEN" },
-            orderBy: { createdAt: "desc" },
-            take: 1,
-            select: { scores: true },
-          },
-          interviewSessions: {
-            orderBy: { updatedAt: "desc" },
-            take: 1,
-            select: { status: true },
-          },
-        },
+        select: { status: true },
       },
     },
-  });
+  } satisfies Prisma.Candidate$applicationsArgs;
+  const include = {
+    applications: latestApplication,
+    _count: {
+      select: { applications: { where: { source: RESUME_PARSER_SOURCE } } },
+    },
+  } satisfies Prisma.CandidateInclude;
 
-  let rows = candidates.map((c) => {
+  const sort = searchParams?.sort ?? "updated";
+  const total = await prisma.candidate.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const requestedPage = Number.parseInt(searchParams?.page ?? "1", 10);
+  const page = Number.isFinite(requestedPage)
+    ? Math.min(Math.max(requestedPage, 1), pageCount)
+    : 1;
+  const skip = (page - 1) * PAGE_SIZE;
+
+  const matchOf = (app: { aiEvaluations: { scores: unknown }[] } | undefined) => {
+    const parsed = ScreeningResultSchema.safeParse(app?.aiEvaluations[0]?.scores);
+    return parsed.success ? parsed.data.overall : null;
+  };
+
+  let candidates;
+  if (sort === "match") {
+    // Only screened candidates can have a match score; everyone else follows by last update.
+    const screened = await prisma.candidate.findMany({
+      where: {
+        AND: [
+          where,
+          { applications: { some: { aiEvaluations: { some: { kind: "RESUME_SCREEN" } } } } },
+        ],
+      },
+      select: { id: true, updatedAt: true, applications: latestApplication },
+    });
+    const scored = screened
+      .map((c) => ({ id: c.id, updatedAt: c.updatedAt, match: matchOf(c.applications[0]) }))
+      .filter((c): c is { id: string; updatedAt: Date; match: number } => c.match !== null)
+      .sort((a, b) => b.match - a.match || b.updatedAt.getTime() - a.updatedAt.getTime());
+    const pageIds = scored.slice(skip, skip + PAGE_SIZE).map((c) => c.id);
+    if (pageIds.length < PAGE_SIZE) {
+      const rest = await prisma.candidate.findMany({
+        where: { AND: [where, { id: { notIn: scored.map((c) => c.id) } }] },
+        orderBy: { updatedAt: "desc" },
+        skip: Math.max(0, skip - scored.length),
+        take: PAGE_SIZE - pageIds.length,
+        select: { id: true },
+      });
+      pageIds.push(...rest.map((c) => c.id));
+    }
+    const found = await prisma.candidate.findMany({
+      where: { id: { in: pageIds } },
+      include,
+    });
+    const byId = new Map(found.map((c) => [c.id, c]));
+    candidates = pageIds.flatMap((id) => byId.get(id) ?? []);
+  } else {
+    candidates = await prisma.candidate.findMany({
+      where,
+      orderBy:
+        sort === "name"
+          ? [{ firstName: "asc" }, { lastName: "asc" }]
+          : { updatedAt: "desc" },
+      skip,
+      take: PAGE_SIZE,
+      include,
+    });
+  }
+
+  const rows = candidates.map((c) => {
     const app = c.applications[0] ?? null;
-    const parsed = ScreeningResultSchema.safeParse(
-      app?.aiEvaluations[0]?.scores,
-    );
     return {
       id: c.id,
       name: `${c.firstName} ${c.lastName}`.trim(),
       email: c.email,
       experience: c.experience,
-      aiMatch: parsed.success ? parsed.data.overall : null,
+      aiMatch: matchOf(app ?? undefined),
       stage: app?.stage ?? null,
+      onHold: app?.status === "ON_HOLD",
       jobTitle: app?.job.title ?? null,
       applicationId: app?.id ?? null,
       interviewStatus: app?.interviewSessions[0]?.status ?? null,
       updatedAt: c.updatedAt,
+      fromResumeParser: c._count.applications > 0,
     };
   });
 
-  const sort = searchParams?.sort ?? "updated";
-  rows = [...rows].sort((a, b) => {
-    if (sort === "name") return a.name.localeCompare(b.name);
-    if (sort === "match") return (b.aiMatch ?? -1) - (a.aiMatch ?? -1);
-    return b.updatedAt.getTime() - a.updatedAt.getTime();
-  });
+  const pageHref = (p: number) => {
+    const sp = new URLSearchParams();
+    if (q) sp.set("q", q);
+    if (stageFilter) sp.set("stage", stageFilter);
+    if (sort !== "updated") sp.set("sort", sort);
+    if (p > 1) sp.set("page", String(p));
+    const s = sp.toString();
+    return s ? `/dashboard/candidates?${s}` : "/dashboard/candidates";
+  };
+  const canImport = IMPORT_ROLES.includes(session.role);
 
   return (
     <div className="space-y-6">
       <RecruitingSubnav />
-      <div>
-        <h1 className="page-title">Candidates</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Review applicants across jobs. Open a role from Jobs for a focused
-          workspace.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="page-title">Candidates</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Review applicants across jobs. Open a role from Jobs for a focused
+            workspace.
+          </p>
+        </div>
+        {canImport ? (
+          <Link
+            href="/dashboard/candidates/import"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            Import from {RESUME_PARSER_LABEL}
+          </Link>
+        ) : null}
       </div>
 
       <Suspense fallback={null}>
@@ -151,6 +235,11 @@ export default async function CandidatesPage({
                   >
                     {c.name}
                   </Link>
+                  {c.fromResumeParser ? (
+                    <span className="ml-2 rounded-full border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {RESUME_PARSER_LABEL}
+                    </span>
+                  ) : null}
                   <p className="text-xs text-muted-foreground">
                     {c.email}
                     {c.jobTitle ? ` · ${c.jobTitle}` : ""}
@@ -175,6 +264,9 @@ export default async function CandidatesPage({
                 </td>
                 <td className="px-4 py-3 text-foreground/90">
                   {c.stage ? STAGE_LABELS[c.stage] : "—"}
+                  {c.onHold ? (
+                    <span className="text-muted-foreground"> · On hold</span>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
                   {c.interviewStatus === "COMPLETED"
@@ -203,6 +295,37 @@ export default async function CandidatesPage({
           </tbody>
         </table>
       </div>
+
+      {total > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+          <p>
+            Showing {skip + 1}–{skip + rows.length} of {total}
+          </p>
+          {pageCount > 1 ? (
+            <div className="flex items-center gap-2">
+              {page > 1 ? (
+                <Link
+                  href={pageHref(page - 1)}
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  Previous
+                </Link>
+              ) : null}
+              <span className="tabular-nums">
+                Page {page} of {pageCount}
+              </span>
+              {page < pageCount ? (
+                <Link
+                  href={pageHref(page + 1)}
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  Next
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

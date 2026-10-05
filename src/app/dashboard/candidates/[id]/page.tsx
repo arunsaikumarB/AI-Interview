@@ -40,6 +40,10 @@ import {
   stageBadgeClass,
 } from "@/lib/candidate-detail-ui";
 import { verifyStoredFile } from "@/lib/storage";
+import {
+  RESUME_PARSER_LABEL,
+  RESUME_PARSER_SOURCE,
+} from "@/lib/resume-parser-import/constants";
 import { cn } from "@/lib/utils";
 
 type Ctx = {
@@ -228,6 +232,18 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
     ? candidate.applications.filter((a) => a.id !== selectedApp.id)
     : candidate.applications;
 
+  const importedPayload =
+    selectedApp?.source === RESUME_PARSER_SOURCE
+      ? selectedApp.timelineEvents.find((t) => t.type === "APPLICATION_CREATED")?.payload
+      : null;
+  const importedResumeReference =
+    importedPayload &&
+    typeof importedPayload === "object" &&
+    !Array.isArray(importedPayload) &&
+    typeof importedPayload.resumeReference === "string"
+      ? importedPayload.resumeReference
+      : null;
+
   const interviewApp = selectedApp
     ? {
         id: selectedApp.id,
@@ -308,6 +324,19 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
             <p className="mt-1 text-sm font-medium text-foreground">
               {selectedApp.job.title}
             </p>
+            {selectedApp.source === RESUME_PARSER_SOURCE ? (
+              <div className="mt-1 space-y-0.5 text-[13px] text-muted-foreground">
+                <p>
+                  Source: {RESUME_PARSER_LABEL} · Applied {formatDate(selectedApp.createdAt)}
+                  {selectedApp.status === "ON_HOLD" ? " · On hold" : ""}
+                </p>
+                {importedResumeReference ? (
+                  <p className="break-all">
+                    Resume in {RESUME_PARSER_LABEL} (not imported): {importedResumeReference}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <PipelineStrip current={selectedApp.stage} />
           {otherApps.length > 0 ? (

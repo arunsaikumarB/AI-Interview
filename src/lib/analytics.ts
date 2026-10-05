@@ -1,6 +1,7 @@
 import { Prisma, type PipelineStage } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { PIPELINE_STAGES, STAGE_LABELS } from "@/lib/constants";
+import { ACTIVE_PIPELINE_FILTER } from "@/lib/resume-parser-import/pipeline-filter";
 
 const INTERVIEW_STAGES: PipelineStage[] = [
   "ASSESSMENT",
@@ -122,10 +123,15 @@ export async function getOrgAnalytics(scope: OrgScope): Promise<AnalyticsPayload
     ? { organizationId: scope.organizationId }
     : {};
 
-  // 1) Funnel — same org scope as pipeline board (all apps)
+  const pipelineFilter: Prisma.ApplicationWhereInput = {
+    ...orgFilter,
+    AND: [ACTIVE_PIPELINE_FILTER],
+  };
+
+  // 1) Funnel — same org scope as pipeline board
   const stageGroups = await prisma.application.groupBy({
     by: ["stage"],
-    where: orgFilter,
+    where: pipelineFilter,
     _count: { _all: true },
   });
   const countByStage = Object.fromEntries(
@@ -155,7 +161,7 @@ export async function getOrgAnalytics(scope: OrgScope): Promise<AnalyticsPayload
 
   const orgAppIds = (
     await prisma.application.findMany({
-      where: orgFilter,
+      where: pipelineFilter,
       select: { id: true },
     })
   ).map((a) => a.id);
@@ -216,10 +222,12 @@ export async function getOrgAnalytics(scope: OrgScope): Promise<AnalyticsPayload
     select: {
       id: true,
       title: true,
-      applications: { select: { stage: true } },
+      applications: { where: ACTIVE_PIPELINE_FILTER, select: { stage: true } },
+      _count: { select: { applications: true } },
     },
   });
   const perJob = jobs
+    .filter((j) => j._count.applications === 0 || j.applications.length > 0)
     .map((j) => {
       const apps = j.applications;
       return {

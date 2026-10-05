@@ -13,6 +13,7 @@ export function CandidatesListToolbar() {
 
   function update(next: Record<string, string>) {
     const sp = new URLSearchParams(params.toString());
+    sp.delete("page");
     for (const [k, v] of Object.entries(next)) {
       if (!v || v === "all") sp.delete(k);
       else sp.set(k, v);

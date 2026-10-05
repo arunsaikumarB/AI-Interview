@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { orgScopeWhere, requireStaff } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
 import { PIPELINE_STAGES } from "@/lib/constants";
+import { ACTIVE_PIPELINE_FILTER } from "@/lib/resume-parser-import/pipeline-filter";
 
 /** Kanban board payload grouped by pipeline stage. */
 export async function GET(request: Request) {
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
       where: {
         ...(jobId ? { jobId } : {}),
         job: scope.organizationId ? { organizationId: scope.organizationId } : undefined,
+        AND: [ACTIVE_PIPELINE_FILTER],
       },
       orderBy: { updatedAt: "desc" },
       include: {
