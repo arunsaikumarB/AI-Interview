@@ -8,6 +8,7 @@ import {
   UPLOAD_BATCH_MAX_BYTES,
   UPLOAD_BATCH_MAX_FILES,
   UPLOAD_SELECTION_MAX_FILES,
+  rowWarnings,
   uploadRowSchema,
   type UploadRow,
 } from "@/lib/resume-upload/constants";
@@ -358,6 +359,7 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
               <tbody>
                 {rows.map((row, i) => {
                   const problem = done ? null : problemOf(row);
+                  const warnings = done || !row.include || row.status === "invalid" ? [] : rowWarnings(row.fields);
                   const locked = done || busy || row.status === "invalid";
                   const editable = !locked && row.include;
                   let statusText: string;
@@ -411,6 +413,11 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
                         <span className="text-muted-foreground">
                           {problem ? (row.parsed === false ? "No text read (scanned?)" : null) : statusText}
                         </span>
+                        {warnings.map((w) => (
+                          <span key={w} className="block text-warning">
+                            Check: {w}
+                          </span>
+                        ))}
                       </td>
                     </tr>
                   );

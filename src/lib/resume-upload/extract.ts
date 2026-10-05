@@ -16,6 +16,10 @@ const PHONE_RE = /\+?\d[\d \t().-]{7,18}\d/g;
 
 const NOT_A_NAME =
   /\b(resume|curriculum|vitae|cv|bio-?data|profile|summary|objective|contact|address|e-?mail|phone|mobile|linkedin|github|career|personal|details|experience|education|skills|declaration|projects?|page)\b/i;
+const SECTION_HEADING =
+  /^(?:professional |career |work |technical )?(?:summary|objective|experienc\w*|education|skills|projects|employment|about me)\b/i;
+const ORG_OR_TITLE =
+  /\b(solutions?|technolog(?:y|ies)|tech|pvt|ltd|limited|inc|llc|llp|services|systems|software|consult\w*|labs?|infotech|private|corp\w*|company|university|college|school|institute|academy|engineer|developer|designer|manager|analyst|architect|intern|specialist|administrator|tester|executive|recruiter|associate|officer|scientist|devops)\b/i;
 const FILE_NOISE = /^(resume|cv|naukri|updated|update|profile|final|new|latest|copy|my|doc|pdf)$/i;
 
 function titleCase(words: string[]): string {
@@ -28,16 +32,28 @@ function tidyName(raw: string): string {
   return mixed ? words.join(" ") : titleCase(words);
 }
 
+/** Designed resumes often letter-space the name: "S e e t h a r a m   R e d d y". */
+function joinSpacedLetters(line: string): string {
+  return line
+    .split(/\t| {2,}/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => (/^(?:\S ){2,}\S$/.test(chunk) ? chunk.replace(/ /g, "") : chunk))
+    .join(" ")
+    .replace(/\s+/g, " ");
+}
+
 function nameFromText(text: string): string | null {
   const lines = text
     .split("\n")
-    .map((l) => l.replace(/\s+/g, " ").trim())
+    .map(joinSpacedLetters)
     .filter(Boolean)
     .slice(0, 15);
   for (const raw of lines) {
-    const line = (raw.replace(/^name\s*[:\-]\s*/i, "").split(/\s[|•·]\s|\s{2,}/)[0] ?? "").trim();
+    if (SECTION_HEADING.test(raw)) break;
+    const line = (raw.replace(/^name\s*[:\-]\s*/i, "").split(/\s[|•·—]\s/)[0] ?? "").trim();
     if (line.length < 3 || line.length > 50) continue;
-    if (NOT_A_NAME.test(line) || /[@\d]/.test(line)) continue;
+    if (NOT_A_NAME.test(line) || ORG_OR_TITLE.test(line) || /\bIT\b/.test(line) || /[@\d]/.test(line)) continue;
     if (!/^[A-Za-z\u00C0-\u024F][A-Za-z\u00C0-\u024F.'\s-]*$/.test(line)) continue;
     const words = line.split(" ");
     if (words.length < 2 || words.length > 4) continue;

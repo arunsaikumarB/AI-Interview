@@ -20,3 +20,19 @@ export const uploadRowSchema = z.object({
 });
 
 export type UploadRow = z.infer<typeof uploadRowSchema>;
+
+/**
+ * Some PDFs drop the last character of each line from their text layer
+ * ("gmail.co", a 9-digit mobile). These are hints for HR, not blockers.
+ */
+export function rowWarnings(fields: { email: string; phone: string }): string[] {
+  const warnings: string[] = [];
+  if (/@(?:gmail|yahoo|outlook|hotmail|rediffmail|icloud|live)\.(?:c|co|cm|om)$/i.test(fields.email.trim())) {
+    warnings.push("email looks cut off");
+  }
+  const digits = fields.phone.replace(/\D/g, "");
+  if (digits && (digits.length < 10 || (digits.length === 11 && digits.startsWith("91")))) {
+    warnings.push("phone looks incomplete");
+  }
+  return warnings;
+}
