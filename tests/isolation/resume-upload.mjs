@@ -7,6 +7,8 @@
  *     STORAGE_ROOT=<server's storage root> AUTH_SECRET=... node tests/isolation/resume-upload.mjs
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { BASE, COOKIE_NAME, mintCookie } from "./helpers.mjs";
 
@@ -217,6 +219,41 @@ try {
     assert.equal(view.status, 200);
     assert.equal(view.headers.get("content-type"), "application/pdf");
     assert.equal((await fetch(`${BASE}/api/candidates/${c.id}/resume`, { headers: { Cookie: cookie.hrB } })).status, 404);
+  });
+
+  await check("old Word (.doc): staff read + save it, download is an attachment; fakes and the public careers form are refused", async () => {
+    const doc = readFileSync(join("tests", "fixtures", "resumes", "resume-plain.doc"));
+    const name = "Ravi_Kumar_Old.doc";
+    const read = await send(cookie.hr, { mode: "read", files: [[name, doc, "application/msword"]] });
+    assert.equal(read.res.status, 200, read.text.slice(0, 200));
+    const [res] = read.json.results;
+    assert.equal(res.status, "new");
+    assert.equal(res.parsed, true);
+    assert.equal(res.fields.email, "ravi.kumar.doc@example.com");
+    assert.equal(res.fields.firstName, "Ravi");
+
+    const saved = await send(cookie.hr, { mode: "save", files: [[name, doc, "application/msword"]], rows: [{ ...res.fields, fileName: name }] });
+    assert.deepEqual(saved.json.results, [{ name, status: "created", parsed: true }]);
+    const c = await db.candidate.findFirstOrThrow({ where: { organizationId: orgA.id, email: "ravi.kumar.doc@example.com" } });
+    storedResumes.push(c.resumeUrl);
+    assert.match(c.resumeText ?? "", /Senior Java Developer/);
+    assert.match(c.resumeUrl ?? "", /\.doc$/);
+    const view = await fetch(`${BASE}/api/candidates/${c.id}/resume`, { headers: { Cookie: cookie.hr } });
+    assert.equal(view.status, 200);
+    assert.equal(view.headers.get("content-type"), "application/msword");
+    assert.match(view.headers.get("content-disposition") ?? "", /^attachment;/);
+    assert.equal(view.headers.get("x-content-type-options"), "nosniff");
+    assert.equal((await fetch(`${BASE}/api/candidates/${c.id}/resume`, { headers: { Cookie: cookie.hrB } })).status, 404);
+
+    const fake = await send(cookie.hr, { mode: "read", files: [["fake.doc", new TextEncoder().encode("<html>x</html>"), "application/msword"]] });
+    assert.equal(fake.json.results[0].status, "invalid");
+
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ jobId: jobA.id, firstName: "Public", lastName: "Doc", email: `public.doc.${tag}@example.com` })) form.set(k, v);
+    form.append("resume", new Blob([doc], { type: "application/msword" }), "public.doc");
+    const careers = await fetch(`${BASE}/api/careers/apply`, { method: "POST", body: form });
+    assert.equal(careers.status, 400);
+    assert.equal(await db.candidate.count({ where: { email: `public.doc.${tag}@example.com` } }), 0);
   });
 
   await check("Candidates page: HR sees the candidate and the Upload resumes button; other org and interviewer do not", async () => {

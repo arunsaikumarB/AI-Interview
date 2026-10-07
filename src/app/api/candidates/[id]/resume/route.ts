@@ -15,6 +15,7 @@ const MIME_BY_EXT: Record<string, { type: string; inline: boolean }> = {
     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     inline: false,
   },
+  ".doc": { type: "application/msword", inline: false },
 };
 
 /**

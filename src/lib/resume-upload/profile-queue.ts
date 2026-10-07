@@ -194,7 +194,9 @@ export async function runProfileJob(job: ProfileJob, deps: ProfileWorkerDeps): P
       ? "application/pdf"
       : lower.endsWith(".docx")
         ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        : "text/plain";
+        : lower.endsWith(".doc")
+          ? "application/msword"
+          : "text/plain";
     text = stripPageMarkers(await deps.extractText({ buffer, mimeType, fileName: path.basename(c.resumeUrl) }).catch(() => ""));
     if (!text && mimeType === "application/pdf") text = stripPageMarkers(await deps.ocr(buffer));
     if (text) {

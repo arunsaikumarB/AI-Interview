@@ -1,6 +1,6 @@
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -109,6 +109,8 @@ describe("loadResumeFile", () => {
     await writeFile(path.join(dir, "ok.docx"), Buffer.from([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]));
     await writeFile(path.join(dir, "ok.txt"), "Plain text resume");
     await writeFile(path.join(dir, "fake.pdf"), "<html>not a pdf</html>");
+    await writeFile(path.join(dir, "fake.doc"), "<html>not a doc</html>");
+    await copyFile(path.join(__dirname, "..", "fixtures", "resumes", "resume-plain.doc"), path.join(dir, "ok.doc"));
     await writeFile(path.join(dir, "empty.pdf"), "");
     await writeFile(path.join(dir, "tool.exe"), "MZ");
     await writeFile(path.join(dir, "big.pdf"), Buffer.alloc(10 * 1024 * 1024 + 1, 0x25));
@@ -117,11 +119,13 @@ describe("loadResumeFile", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("loads real PDF, DOCX and TXT files with the right MIME type", async () => {
+  it("loads real PDF, DOCX, DOC and TXT files with the right MIME type", async () => {
     const pdf = await loadResumeFile(dir, "ok.pdf");
     assert.equal(pdf.ok && pdf.resume.mimeType, "application/pdf");
     const docx = await loadResumeFile(dir, "ok.docx");
     assert.equal(docx.ok, true);
+    const doc = await loadResumeFile(dir, "ok.doc");
+    assert.equal(doc.ok && doc.resume.mimeType, "application/msword");
     const txt = await loadResumeFile(dir, "ok.txt");
     assert.equal(txt.ok && txt.resume.mimeType, "text/plain");
   });
@@ -131,7 +135,8 @@ describe("loadResumeFile", () => {
       ["fake.pdf", /not a real PDF/],
       ["empty.pdf", /empty/],
       ["big.pdf", /larger than 10 MB/],
-      ["tool.exe", /PDF, DOCX or TXT/],
+      ["tool.exe", /PDF, DOC, DOCX or TXT/],
+      ["fake.doc", /not a real DOC/],
       ["missing.pdf", /not found/],
       ["../ok.pdf", /plain file name/],
       ["sub\\ok.pdf", /plain file name/],

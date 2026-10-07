@@ -119,7 +119,7 @@ async function post<T>(form: FormData): Promise<{ ok: true; results: T[] } | { o
 }
 
 function localProblem(file: File): string | null {
-  if (!isAllowedResumeFile(file)) return "must be PDF, DOCX or TXT";
+  if (!isAllowedResumeFile(file, { allowDoc: true })) return "must be PDF, DOC, DOCX or TXT";
   if (file.size === 0) return "file is empty";
   if (file.size > RESUME_MAX_BYTES) return "file is larger than 10 MB";
   return null;
@@ -345,7 +345,7 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
             ref={inputRef}
             type="file"
             multiple
-            accept=".pdf,.docx,.txt,application/pdf"
+            accept=".pdf,.doc,.docx,.txt,application/pdf"
             disabled={phase !== "idle"}
             className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:py-1.5 file:text-sm file:text-foreground"
             onChange={(e) => {
@@ -354,7 +354,7 @@ export function ResumeBulkUpload({ jobs }: { jobs: JobOption[] }) {
             }}
           />
           <p className="text-xs text-muted-foreground">
-            PDF, DOCX or TXT, up to 10 MB each and {UPLOAD_SELECTION_MAX_FILES} files at a time. Text is read on
+            PDF, DOC, DOCX or TXT, up to 10 MB each and {UPLOAD_SELECTION_MAX_FILES} files at a time. Text is read on
             this server only.
           </p>
         </div>

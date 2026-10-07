@@ -11,6 +11,7 @@ import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { Prisma, type JobStatus, type PrismaClient } from "@prisma/client";
+import { isOleFile } from "@/lib/resume/doc";
 import { isAllowedResumeFile, RESUME_MAX_BYTES } from "@/lib/resume/mime";
 import { deleteStoredFile, saveUpload } from "@/lib/storage";
 
@@ -27,6 +28,7 @@ const REQUIRED_COLUMNS: Column[] = ["file", "firstName", "lastName", "email"];
 const MIME_BY_EXT: Record<string, string> = {
   ".pdf": "application/pdf",
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".doc": "application/msword",
   ".txt": "text/plain",
 };
 
@@ -162,6 +164,7 @@ export function contentMatchesExtension(ext: string, buf: Buffer): boolean {
   if (ext === ".docx") {
     return buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04;
   }
+  if (ext === ".doc") return isOleFile(buf);
   return !buf.subarray(0, 4096).includes(0);
 }
 
@@ -172,7 +175,7 @@ export function resumeMimeType(fileName: string): string | undefined {
 /** Checks a resume uploaded through the browser. Returns the problem, or null if it is acceptable. */
 export function checkUploadedResume(name: string, type: string, buffer: Buffer): string | null {
   if (!isPlainFileName(name) || name.length > 255) return "file name is not allowed";
-  if (!isAllowedResumeFile({ name, type })) return "must be PDF, DOCX or TXT";
+  if (!isAllowedResumeFile({ name, type }, { allowDoc: true })) return "must be PDF, DOC, DOCX or TXT";
   if (buffer.length === 0) return "file is empty";
   if (buffer.length > RESUME_MAX_BYTES) return "file is larger than 10 MB";
   const ext = path.extname(name).toLowerCase();
@@ -198,8 +201,8 @@ export async function loadResumeFile(
 
   const ext = path.extname(fileName).toLowerCase();
   const mimeType = MIME_BY_EXT[ext];
-  if (!mimeType || !isAllowedResumeFile({ name: fileName, type: mimeType })) {
-    return { ok: false, problem: "resume must be PDF, DOCX or TXT" };
+  if (!mimeType || !isAllowedResumeFile({ name: fileName, type: mimeType }, { allowDoc: true })) {
+    return { ok: false, problem: "resume must be PDF, DOC, DOCX or TXT" };
   }
 
   let info;

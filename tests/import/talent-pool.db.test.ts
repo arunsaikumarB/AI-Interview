@@ -429,11 +429,10 @@ describe("Resume Parser integration boundary", () => {
     assert.equal(again.duplicatesExisting, 20_000);
   });
 
-  it("no API is pretended: the client reports not configured", async () => {
-    const client = rp.getResumeParserClient();
+  it("no API is pretended: without URL and key the client reports not configured", async () => {
+    const client = rp.getResumeParserClient({});
     assert.equal(client.configured, false);
-    await assert.rejects(client.search({}, 1, 25), rp.ResumeParserNotConfiguredError);
-    await assert.rejects(client.getRecord("x"), rp.ResumeParserNotConfiguredError);
-    await assert.rejects(client.getResumeFile("x"), rp.ResumeParserNotConfiguredError);
+    await assert.rejects(client.search({ skills: ["python"] }, 1, 25), rp.ResumeParserNotConfiguredError);
+    await assert.rejects(client.getResumeFile(1), rp.ResumeParserNotConfiguredError);
   });
 });

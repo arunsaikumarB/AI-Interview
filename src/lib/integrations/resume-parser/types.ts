@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 /**
- * One Resume Parser application as HireOS needs it. PROVISIONAL: the Resume Parser API has not
- * been provided, so these are HireOS field names, not Resume Parser's. When the API spec
- * arrives, map its payload onto this shape in the client; nothing downstream should change.
+ * One historical Resume Parser application (role + date) for `importResumeParserRecords`. The
+ * Resume Parser API does not provide this shape; it serves profiles (`resumeParserProfileSchema`).
  * External data is untrusted: every record is validated before it reaches the database.
  */
 export const resumeParserRecordSchema = z
@@ -27,15 +26,58 @@ export const resumeParserRecordSchema = z
 
 export type ResumeParserRecord = z.output<typeof resumeParserRecordSchema>;
 
+const text = (max: number) =>
+  z
+    .string()
+    .nullish()
+    .transform((v) => (v ?? "").trim().slice(0, max));
+
+/**
+ * One profile from `GET /api/v1/external/profiles/search/`. Untrusted: lengths are capped and
+ * `resume_url` is ignored (downloads are built from the configured server address and the id).
+ */
+export const resumeParserProfileSchema = z.object({
+  id: z.number().int().positive(),
+  name: text(160),
+  email: text(254),
+  phone_numbers: text(120),
+  location: text(120),
+  region: text(120),
+  linkedin: text(300),
+  total_experience: z.number().min(0).max(80).nullish().transform((v) => v ?? null),
+  skills: z.array(z.string().trim().min(1).max(80)).max(200).catch([]),
+  matched_skills: z.array(z.string().trim().min(1).max(80)).max(200).catch([]),
+  created_at: text(40),
+  file_name: text(255),
+});
+
+export type ResumeParserProfile = z.output<typeof resumeParserProfileSchema>;
+
+export const resumeParserSearchResponseSchema = z.object({
+  count: z.number().int().min(0),
+  page: z.number().int().min(1),
+  page_size: z.number().int().min(1).max(100),
+  total_pages: z.number().int().min(0),
+  results: z.array(resumeParserProfileSchema).max(100),
+});
+
+/** Filters as the Resume Parser API defines them; every filter is AND-ed. */
 export type ResumeParserSearch = {
-  name?: string;
-  email?: string;
-  role?: string;
+  skills?: string[];
+  anySkills?: string[];
+  excludeSkills?: string[];
   minExperience?: number;
-  year?: number;
-  month?: number;
+  maxExperience?: number;
+  city?: string;
+  state?: string;
 };
 
-export type ResumeParserPage = { records: ResumeParserRecord[]; total: number; page: number; pageSize: number };
+export type ResumeParserPage = {
+  profiles: ResumeParserProfile[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
 
-export type ResumeParserResumeFile = { fileName: string; mimeType: string; data: Buffer };
+export type ResumeParserResumeFile = { fileName: string | null; mimeType: string; data: Buffer };

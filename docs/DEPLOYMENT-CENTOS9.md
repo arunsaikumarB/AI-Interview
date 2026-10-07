@@ -237,6 +237,25 @@ nginx appends the real client address (`$proxy_add_x_forwarded_for`, section 5.2
 This is only safe while port 5000 is closed to the network (section 6). If `TRUST_PROXY` is unset, IP limits are
 off and the careers form falls back to a per-email limit plus one site-wide limit. Restart the app after changing it.
 
+### 5.7 Resume Parser profile search
+
+The Talent Pool can search the Resume Parser database by skill and add a profile (its resume is downloaded and
+read locally). The app calls Resume Parser from the server only. In `APP_DIR/.env`:
+
+```bash
+RESUME_PARSER_API_URL="http://<resume-parser-host>:<port>"   # no trailing path, no credentials
+RESUME_PARSER_API_KEY="<key issued to HireOS by the Resume Parser team>"
+```
+
+Then `sudo systemctl restart hireos-app` (no rebuild needed). Without both values the Talent Pool says
+"Resume Parser is not connected yet." The app server must be able to reach that host and port, and the Resume
+Parser team must add the host name/IP HireOS uses to their `ALLOWED_HOSTS`. Check from the app server:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -H "X-API-Key: $RESUME_PARSER_API_KEY" \
+  "$RESUME_PARSER_API_URL/api/v1/external/profiles/search/?skills=python&page_size=1"   # 200
+```
+
 ## 6. Firewall (app server)
 
 ```bash

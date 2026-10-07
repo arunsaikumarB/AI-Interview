@@ -51,6 +51,9 @@ export type SaveResult = {
   reason?: string;
 };
 
+/** Profile values from a trusted source that win over what was read from the file. */
+export type ProfileOverrides = Partial<Pick<ResumeProfile, "location" | "linkedIn" | "skills">>;
+
 const EMPTY_PROFILE: ResumeProfile = {
   location: "",
   linkedIn: "",
@@ -185,7 +188,17 @@ function isUniqueViolation(err: unknown): boolean {
  */
 export async function saveUploadedResume(
   db: PrismaClient,
-  args: { organizationId: string; jobId: string | null; row: UploadRow; type: string; buffer: Buffer; deps: UploadDeps },
+  args: {
+    organizationId: string;
+    jobId: string | null;
+    row: UploadRow;
+    type: string;
+    buffer: Buffer;
+    deps: UploadDeps;
+    overrides?: ProfileOverrides;
+    /** Saved with a new candidate, in the same transaction. */
+    note?: { authorId: string; text: string };
+  },
 ): Promise<SaveResult> {
   const { organizationId, jobId, row, buffer, deps } = args;
   const name = row.fileName;
@@ -218,7 +231,14 @@ export async function saveUploadedResume(
   }
 
   const resumeText = recallOcrText(organizationId, buffer) ?? (await readText(deps.extractText, name, buffer));
-  const profile = resumeText ? extractResumeProfile(resumeText) : EMPTY_PROFILE;
+  const read = resumeText ? extractResumeProfile(resumeText) : EMPTY_PROFILE;
+  const o = args.overrides ?? {};
+  const profile: ResumeProfile = {
+    ...read,
+    location: o.location || read.location,
+    linkedIn: o.linkedIn || read.linkedIn,
+    skills: o.skills && o.skills.length > 0 ? o.skills : read.skills,
+  };
   const stored = await saveUpload({ category: "resumes", originalName: name, data: buffer });
   let candidateId: string;
   try {
@@ -244,6 +264,9 @@ export async function saveUploadedResume(
         },
         select: { id: true },
       });
+      if (args.note) {
+        await tx.note.create({ data: { candidateId: candidate.id, authorId: args.note.authorId, text: args.note.text } });
+      }
       if (jobId) {
         await tx.application.create({
           data: {

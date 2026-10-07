@@ -2,10 +2,11 @@ import mammoth from "mammoth";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { readDocText } from "./doc";
 import { stripPageMarkers } from "./text";
 
 /**
- * Local resume text extraction — PDF + DOCX + plain text.
+ * Local resume text extraction — PDF + DOCX + DOC + plain text.
  * No cloud document APIs.
  *
  * pdf-parse (pdfjs) expects browser DOM globals. Docker Node has none, so we
@@ -130,11 +131,19 @@ export async function extractResumeText(params: {
     return cleanText(result.value ?? "");
   }
 
+  if (name.endsWith(".doc")) {
+    const text = cleanText(readDocText(params.buffer));
+    if (!text) {
+      throw new Error("Could not extract text from this Word file");
+    }
+    return text;
+  }
+
   if (mime.startsWith("text/") || name.endsWith(".txt") || name.endsWith(".md")) {
     return cleanText(params.buffer.toString("utf8"));
   }
 
-  throw new Error("Unsupported resume format. Upload PDF, DOCX, or plain text.");
+  throw new Error("Unsupported resume format. Upload PDF, DOC, DOCX, or plain text.");
 }
 
 function cleanText(text: string): string {
