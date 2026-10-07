@@ -28,6 +28,7 @@
     "embed:backfill": "tsx scripts/backfill-embeddings.ts",
     "import:resumes": "tsx scripts/import-resumes.ts",
     "import:jobs": "tsx scripts/import-jobs.ts",
+    "clean:demo": "tsx scripts/clean-demo-data.ts",
     "sandbox:setup": "node scripts/sandbox-setup.mjs",
     "sandbox:runner": "node scripts/start-sandbox-runner.mjs",
     "test:sandbox": "tsx --test --test-concurrency=1 tests/sandbox/runner-auth.test.ts tests/sandbox/coding-security.test.ts tests/sandbox/sql-security.test.ts tests/sandbox/task-consistency.test.ts tests/sandbox/practical-failure.test.ts",
