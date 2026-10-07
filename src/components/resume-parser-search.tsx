@@ -19,7 +19,30 @@ type Profile = {
 
 type Page = { items: Profile[]; page: number; pageSize: number; total: number; totalPages: number };
 
-type RowState = { busy?: boolean; candidateId?: string; message?: string; error?: string };
+export type ResumeParserJob = {
+  id: string;
+  title: string;
+  skills: string[];
+  experienceMin: number;
+  experienceMax: number | null;
+};
+
+type RowState = { busy?: boolean; candidateId?: string; message?: string; note?: string; error?: string; inJob?: boolean };
+
+type AddResponse = {
+  status?: string;
+  candidateId?: string;
+  error?: string;
+  job?: "added" | "already_in_job";
+  jobTitle?: string;
+  screening?: "started" | "busy" | "no_resume_text";
+};
+
+const SCREENING_NOTE: Record<NonNullable<AddResponse["screening"]>, string> = {
+  started: "AI screening started. The result shows on the candidate page in a few minutes.",
+  busy: "AI screening is busy. Run it from the candidate page.",
+  no_resume_text: "No readable resume text, so AI screening was skipped.",
+};
 
 const EMPTY = { skills: "", anySkills: "", excludeSkills: "", minExperience: "", maxExperience: "", city: "", state: "" };
 type Filters = typeof EMPTY;
@@ -33,7 +56,9 @@ function dateText(iso: string): string {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
 }
 
-export function ResumeParserSearch() {
+export function ResumeParserSearch({ jobs }: { jobs: ResumeParserJob[] }) {
+  const [jobId, setJobId] = useState("");
+  const job = jobs.find((j) => j.id === jobId) ?? null;
   const [draft, setDraft] = useState<Filters>(EMPTY);
   const [applied, setApplied] = useState<Filters | null>(null);
   const [data, setData] = useState<Page | null>(null);
@@ -65,14 +90,34 @@ export function ResumeParserSearch() {
 
   const set = (k: keyof Filters) => (e: React.ChangeEvent<HTMLInputElement>) => setDraft((d) => ({ ...d, [k]: e.target.value }));
 
-  function search(e: React.FormEvent) {
-    e.preventDefault();
-    if (!draft.skills.trim() && !draft.anySkills.trim()) {
+  function run(f: Filters) {
+    if (!f.skills.trim() && !f.anySkills.trim()) {
       setError("Enter at least one skill in “Has all of” or “Has any of”.");
       return;
     }
-    setApplied({ ...draft });
-    void load(draft, 1);
+    setApplied({ ...f });
+    void load(f, 1);
+  }
+
+  function search(e: React.FormEvent) {
+    e.preventDefault();
+    run(draft);
+  }
+
+  function chooseJob(e: React.ChangeEvent<HTMLSelectElement>) {
+    const next = jobs.find((j) => j.id === e.target.value) ?? null;
+    setJobId(next?.id ?? "");
+    setRows({});
+    if (!next || next.skills.length === 0) return;
+    const filled: Filters = {
+      ...draft,
+      skills: "",
+      anySkills: next.skills.join(", ").slice(0, 600),
+      minExperience: next.experienceMin > 0 ? String(next.experienceMin) : "",
+      maxExperience: next.experienceMax != null ? String(next.experienceMax) : "",
+    };
+    setDraft(filled);
+    run(filled);
   }
 
   async function add(p: Profile) {
@@ -81,14 +126,22 @@ export function ResumeParserSearch() {
       const res = await fetch("/api/talent/resume-parser/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profileId: p.id }),
+        body: JSON.stringify(job ? { profileId: p.id, jobId: job.id } : { profileId: p.id }),
       });
-      const body = (await res.json().catch(() => null)) as { status?: string; candidateId?: string; error?: string } | null;
-      if (res.ok && body?.candidateId) {
-        const message = body.status === "created" ? "Added to the Talent Pool" : "Already in HireOS";
-        setRows((r) => ({ ...r, [p.id]: { candidateId: body.candidateId, message } }));
-      } else {
+      const body = (await res.json().catch(() => null)) as AddResponse | null;
+      if (!res.ok || !body?.candidateId) {
         setRows((r) => ({ ...r, [p.id]: { error: body?.error ?? "Could not add this profile. Try again." } }));
+        return;
+      }
+      const candidateId = body.candidateId;
+      if (body.job === "added") {
+        const note = body.screening ? SCREENING_NOTE[body.screening] : undefined;
+        setRows((r) => ({ ...r, [p.id]: { candidateId, inJob: true, message: `Added to ${body.jobTitle ?? "the job"}`, note } }));
+      } else if (body.job === "already_in_job") {
+        setRows((r) => ({ ...r, [p.id]: { candidateId, inJob: true, message: `Already in ${body.jobTitle ?? "this job"}` } }));
+      } else {
+        const message = body.status === "created" ? "Added to the Talent Pool" : "Already in HireOS";
+        setRows((r) => ({ ...r, [p.id]: { candidateId, message } }));
       }
     } catch {
       setRows((r) => ({ ...r, [p.id]: { error: "Could not reach HireOS. Try again." } }));
@@ -102,12 +155,30 @@ export function ResumeParserSearch() {
           Find profiles in Resume Parser
         </h2>
         <p className="mt-1 max-w-2xl text-[13px] text-muted-foreground">
-          Searches the Resume Parser database by skill. Add to Talent Pool downloads the resume and creates
-          the candidate here, with no job. Existing candidates are never changed. No AI runs here.
+          Pick a job to search with its skills. Add to job downloads the resume, creates the candidate (existing
+          candidates are never changed), puts them in that job at Applied and starts AI resume screening. AI
+          screening is advice only and never moves anyone to another stage.
         </p>
       </div>
 
-      <form onSubmit={search} className="rounded-xl border border-border bg-card/80 p-4">
+      <form onSubmit={search} className="space-y-3 rounded-xl border border-border bg-card/80 p-4">
+        <label className="block max-w-md space-y-1">
+          <span className={labelClass}>Job opening</span>
+          <select className={inputClass} value={jobId} onChange={chooseJob}>
+            <option value="">Talent Pool only (no job)</option>
+            {jobs.map((j) => (
+              <option key={j.id} value={j.id}>
+                {j.title}
+              </option>
+            ))}
+          </select>
+          {job && job.skills.length === 0 ? (
+            <span className="block text-xs text-muted-foreground">This job has no skills listed. Type the skills below.</span>
+          ) : null}
+          {jobs.length === 0 ? (
+            <span className="block text-xs text-muted-foreground">No open job openings. Profiles can still be added to the Talent Pool.</span>
+          ) : null}
+        </label>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="space-y-1">
             <span className={labelClass}>Has all of (skills)</span>
@@ -145,6 +216,7 @@ export function ResumeParserSearch() {
             </Button>
           </div>
         </div>
+        <p className="text-xs text-muted-foreground">Type skills such as Python or Figma, not job titles.</p>
       </form>
 
       {error ? (
@@ -196,11 +268,20 @@ export function ResumeParserSearch() {
                           {state.message ?? "Already in HireOS"}
                           <span className="block text-xs text-muted-foreground">Open candidate</span>
                         </Link>
-                      ) : (
-                        <Button type="button" size="sm" variant="outline" disabled={state.busy} onClick={() => void add(p)}>
-                          {state.busy ? "Adding…" : "Add to Talent Pool"}
+                      ) : null}
+                      {state.note ? <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">{state.note}</p> : null}
+                      {!candidateId || (job && !state.inJob) ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className={candidateId ? "mt-2" : undefined}
+                          disabled={state.busy}
+                          onClick={() => void add(p)}
+                        >
+                          {state.busy ? "Adding…" : job ? "Add to job" : "Add to Talent Pool"}
                         </Button>
-                      )}
+                      ) : null}
                       {state.error ? (
                         <p role="alert" className="mt-1 max-w-[16rem] text-xs text-destructive">
                           {state.error}

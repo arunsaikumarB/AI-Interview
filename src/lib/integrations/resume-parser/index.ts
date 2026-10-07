@@ -7,6 +7,7 @@ export {
   type ResumeParserClient,
 } from "./client";
 export { addResumeParserProfile, type AddProfileResult } from "./add-profile";
+export { addCandidateToJob, type AddToJobResult } from "./add-to-job";
 export { HISTORICAL_JOB_DESCRIPTION, RESUME_PARSER_LABEL, RESUME_PARSER_SOURCE } from "./constants";
 export { importResumeParserRecords, type RecordImportReport } from "./import-records";
 export { clearProfileCache, recallProfile, rememberProfiles } from "./profile-cache";

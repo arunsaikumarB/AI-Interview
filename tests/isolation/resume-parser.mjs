@@ -73,6 +73,7 @@ const profiles = [
   { id: 104, name: "Old Word", email: `doc.${tag}@example.test`, file_name: "old.doc" },
   { id: 105, name: "", email: "", file_name: "anon.pdf" },
   { id: 106, name: "Ravi Kumar", email: `ravi.${tag}@example.test`, file_name: "Ravi_Kumar.doc" },
+  { id: 107, name: "Asha Rao", email: `asha.${tag}@example.test`, file_name: "Asha_Rao.pdf" },
 ].map((p) => ({
   phone_numbers: "+91 98765 43210",
   location: "Hyderabad",
@@ -91,7 +92,13 @@ const files = {
   104: { type: "application/msword", name: "old.doc", data: Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]) },
   105: { type: "application/pdf", name: "anon.pdf", data: textPdf(["No contact details at all"]) },
   106: { type: "application/msword", name: "Ravi_Kumar.doc", data: readFileSync(join("tests", "fixtures", "resumes", "resume-plain.doc")) },
+  107: {
+    type: "application/pdf",
+    name: "Asha_Rao.pdf",
+    data: textPdf(["Asha Rao", "Python developer, 6 years", "Django, SQL, REST APIs", "Built payment services in Python"]),
+  },
 };
+const SCREENING_WAIT_MS = Number(process.env.SCREENING_WAIT_MS ?? 300_000);
 const mockLog = [];
 let decoyHits = 0;
 
@@ -160,6 +167,7 @@ let orgB;
 const users = {};
 const cookies = {};
 let existingId;
+const jobs = {};
 
 async function seed() {
   orgA = await db.organization.create({ data: { name: `RP A ${tag}`, slug: `${tag}-a` } });
@@ -180,6 +188,22 @@ async function seed() {
       data: { organizationId: orgA.id, email: existingEmail, firstName: "Existing", lastName: "Person", phone: "111", skills: ["Kept"] },
     })
   ).id;
+  const job = async (key, organizationId, status, createdById) => {
+    jobs[key] = await db.job.create({
+      data: {
+        organizationId,
+        title: `Python Developer ${key}`,
+        description: "Build backend services in Python and Django.",
+        skills: ["Python", "Django"],
+        experienceMin: 3,
+        status,
+        createdById,
+      },
+    });
+  };
+  await job("openA", orgA.id, "OPEN", users.recruiter.id);
+  await job("closedA", orgA.id, "CLOSED", users.recruiter.id);
+  await job("openB", orgB.id, "OPEN", users.recruiterB.id);
 }
 
 async function cleanup() {
@@ -189,6 +213,7 @@ async function cleanup() {
   });
   for (const c of cands) if (c.resumeUrl) await rm(join(STORAGE_ROOT, c.resumeUrl), { force: true });
   await db.candidate.deleteMany({ where: { organizationId: { in: [orgA?.id, orgB?.id].filter(Boolean) } } });
+  await db.job.deleteMany({ where: { organizationId: { in: [orgA?.id, orgB?.id].filter(Boolean) } } });
   await db.user.deleteMany({ where: { email: { endsWith: `.${tag}@example.test` } } });
   await db.organization.deleteMany({ where: { id: { in: [orgA?.id, orgB?.id].filter(Boolean) } } });
 }
@@ -239,7 +264,7 @@ async function main() {
         page: "1",
         page_size: "25",
       });
-      assert.equal(json.total, 6);
+      assert.equal(json.total, 7);
       for (const item of json.items) assert.deepEqual(Object.keys(item).sort(), ITEM_KEYS);
       assert.equal(JSON.stringify(json).includes("98765"), false, "phone leaked");
       assert.equal(JSON.stringify(json).includes("steal"), false, "resume_url leaked");
@@ -330,6 +355,86 @@ async function main() {
       assert.equal(await db.candidate.count({ where: { organizationId: orgA.id } }), count);
     });
 
+    await check("Add to job: bad, closed or other-organization job ids are 400 before any download", async () => {
+      const count = await db.candidate.count({ where: { organizationId: orgA.id } });
+      const downloads = mockLog.filter((l) => l.path.endsWith("/resume/")).length;
+      for (const jobId of [123, "", "x".repeat(65), null]) {
+        assert.equal((await add(cookies.recruiter, { profileId: 107, jobId })).res.status, 400, JSON.stringify(jobId));
+      }
+      for (const jobId of [jobs.closedA.id, jobs.openB.id, "does-not-exist"]) {
+        const r = await add(cookies.recruiter, { profileId: 107, jobId });
+        assert.equal(r.res.status, 400, jobId);
+        assert.equal(r.json.error, "Choose an open job opening.");
+      }
+      assert.equal(await db.candidate.count({ where: { organizationId: orgA.id } }), count);
+      assert.equal(mockLog.filter((l) => l.path.endsWith("/resume/")).length, downloads);
+    });
+
+    await check("Add to job: interviewer and hiring manager are 403", async () => {
+      for (const who of ["interviewer", "manager"]) {
+        assert.equal((await add(cookies[who], { profileId: 107, jobId: jobs.openA.id })).res.status, 403, who);
+      }
+    });
+
+    let ashaApplicationId;
+    await check("Add to job: new profile gets the resume, an Applied application in the job and screening started", async () => {
+      const { res, json, text } = await add(cookies.recruiter, { profileId: 107, jobId: jobs.openA.id });
+      assert.equal(res.status, 201, text);
+      assert.deepEqual(Object.keys(json).sort(), ["applicationId", "candidateId", "job", "jobTitle", "parsed", "screening", "status"]);
+      assert.equal(json.status, "created");
+      assert.equal(json.job, "added");
+      assert.equal(json.jobTitle, jobs.openA.title);
+      assert.equal(json.screening, "started");
+      ashaApplicationId = json.applicationId;
+      const app = await db.application.findUniqueOrThrow({ where: { id: ashaApplicationId }, include: { candidate: true } });
+      assert.deepEqual([app.stage, app.status, app.jobId], ["APPLIED", "ACTIVE", jobs.openA.id]);
+      assert.equal(app.candidate.organizationId, orgA.id);
+      assert.match(app.candidate.resumeText ?? "", /payment services/);
+      await stat(join(STORAGE_ROOT, app.candidate.resumeUrl));
+    });
+
+    await check("Add to job: the same profile again is 200 'already in job' with no second application", async () => {
+      const r = await add(cookies.recruiter, { profileId: 107, jobId: jobs.openA.id });
+      assert.equal(r.res.status, 200);
+      assert.equal(r.json.job, "already_in_job");
+      assert.equal(r.json.applicationId, undefined);
+      assert.equal(await db.application.count({ where: { jobId: jobs.openA.id } }), 1);
+    });
+
+    await check("Add to job: an existing candidate is added unchanged; no resume text means no screening", async () => {
+      const before = await db.candidate.findUniqueOrThrow({ where: { id: existingId } });
+      const r = await add(cookies.hr, { profileId: 102, jobId: jobs.openA.id });
+      assert.equal(r.res.status, 201, r.text);
+      assert.equal(r.json.status, "exists");
+      assert.equal(r.json.candidateId, existingId);
+      assert.equal(r.json.screening, "no_resume_text");
+      assert.deepEqual(await db.candidate.findUniqueOrThrow({ where: { id: existingId } }), before);
+      const app = await db.application.findUniqueOrThrow({ where: { id: r.json.applicationId } });
+      assert.deepEqual([app.stage, app.status], ["APPLIED", "ACTIVE"]);
+    });
+
+    await check("Add to job: AI screening finishes or records an honest failure; stage and status never change", async () => {
+      const deadline = Date.now() + SCREENING_WAIT_MS;
+      let outcome = null;
+      while (!outcome && Date.now() < deadline) {
+        const events = await db.timelineEvent.findMany({ where: { applicationId: ashaApplicationId } });
+        if (events.some((e) => e.type === "SCREENING_COMPLETED")) outcome = "completed";
+        else if (events.some((e) => e.type === "OTHER" && e.payload?.kind === "ai_screening_failed")) outcome = "failed";
+        else await new Promise((r) => setTimeout(r, 3000));
+      }
+      assert.ok(outcome, `no screening outcome within ${SCREENING_WAIT_MS} ms`);
+      const app = await db.application.findUniqueOrThrow({ where: { id: ashaApplicationId }, include: { aiEvaluations: true } });
+      assert.deepEqual([app.stage, app.status], ["APPLIED", "ACTIVE"]);
+      if (outcome === "completed") {
+        assert.equal(app.aiEvaluations.length, 1);
+        assert.equal(app.aiEvaluations[0].kind, "RESUME_SCREEN");
+        assert.ok(app.aiEvaluations[0].reasoning.trim().length > 0, "reasoning stored");
+      } else {
+        assert.equal(app.aiEvaluations.length, 0, "a failure stores no AI result");
+      }
+      console.log(`  (screening outcome: ${outcome})`);
+    });
+
     await check("org B searching for itself gets its own candidate; org A's is untouched", async () => {
       assert.equal((await search(cookies.recruiterB, "skills=python")).res.status, 200);
       const r = await add(cookies.recruiterB, { profileId: 101 });
@@ -338,6 +443,12 @@ async function main() {
       const b = await db.candidate.findUniqueOrThrow({ where: { id: r.json.candidateId } });
       assert.equal(b.organizationId, orgB.id);
       assert.equal((await db.candidate.findUniqueOrThrow({ where: { id: priyaId } })).organizationId, orgA.id);
+    });
+
+    await check("Add to job: org B cannot use org A's job", async () => {
+      const r = await add(cookies.recruiterB, { profileId: 101, jobId: jobs.openA.id });
+      assert.equal(r.res.status, 400);
+      assert.equal(await db.application.count({ where: { jobId: jobs.openA.id, candidate: { organizationId: orgB.id } } }), 0);
     });
   } finally {
     await cleanup();

@@ -20,13 +20,21 @@ export default async function TalentPoolPage() {
   if (!session) redirect("/login");
   if (!canManagePipeline(session.role)) redirect("/dashboard");
 
-  const jobs = session.organizationId
+  const openJobs = session.organizationId
     ? await prisma.job.findMany({
         where: { organizationId: session.organizationId, status: "OPEN" },
-        select: { id: true, title: true, status: true, location: true },
+        select: { id: true, title: true, status: true, location: true, skills: true, experienceMin: true, experienceMax: true },
         orderBy: { title: "asc" },
       })
     : [];
+  const jobs = openJobs.map(({ id, title, status, location }) => ({ id, title, status, location }));
+  const parserJobs = openJobs.map(({ id, title, skills, experienceMin, experienceMax }) => ({
+    id,
+    title,
+    skills,
+    experienceMin,
+    experienceMax,
+  }));
 
   return (
     <div className="space-y-8">
@@ -39,15 +47,9 @@ export default async function TalentPoolPage() {
         </p>
       </div>
 
-      {session.organizationId ? (
-        <TalentBrowse jobs={jobs} />
-      ) : (
-        <p className="text-sm text-muted-foreground">Your account is not assigned to an organization.</p>
-      )}
-
       {session.organizationId && UPLOAD_ROLES.includes(session.role) ? (
         getResumeParserClient().configured ? (
-          <ResumeParserSearch />
+          <ResumeParserSearch jobs={parserJobs} />
         ) : (
           <section className="space-y-1" aria-labelledby="resume-parser-heading">
             <h2 id="resume-parser-heading" className="text-[17px] font-semibold text-foreground">
@@ -57,6 +59,12 @@ export default async function TalentPoolPage() {
           </section>
         )
       ) : null}
+
+      {session.organizationId ? (
+        <TalentBrowse jobs={jobs} />
+      ) : (
+        <p className="text-sm text-muted-foreground">Your account is not assigned to an organization.</p>
+      )}
 
       <section className="space-y-3" aria-labelledby="ai-search-heading">
         <div>

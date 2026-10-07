@@ -6,6 +6,7 @@ import { handleApiError, isDatabaseUnavailable, jsonError, jsonOk } from "@/lib/
 import { rateLimit } from "@/lib/rate-limit";
 import { UPLOAD_ROLES } from "@/lib/resume-upload/constants";
 import {
+  addCandidateToJob,
   addResumeParserProfile,
   getResumeParserClient,
   recallProfile,
@@ -17,7 +18,12 @@ import { resumeParserErrorResponse } from "../errors";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const bodySchema = z.object({ profileId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
+const bodySchema = z
+  .object({
+    profileId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    jobId: z.string().trim().min(1).max(64).optional(),
+  })
+  .strict();
 
 function noStore(res: Response): Response {
   res.headers.set("Cache-Control", "no-store");
@@ -25,8 +31,9 @@ function noStore(res: Response): Response {
 }
 
 /**
- * Adds one Resume Parser profile to the Talent Pool (no job, not in hiring). Only the profile id
- * comes from the browser; the details come from this server's own recent search results.
+ * Adds one Resume Parser profile to the Talent Pool, and optionally to one OPEN job with
+ * advisory AI screening queued. Only the profile id and job id come from the browser; the
+ * profile details come from this server's own recent search results.
  */
 export async function POST(request: Request) {
   try {
@@ -41,6 +48,7 @@ export async function POST(request: Request) {
     }
     const parsed = bodySchema.safeParse(body);
     if (!parsed.success) return noStore(jsonError("Choose a profile to add.", 400));
+    const { profileId, jobId } = parsed.data;
 
     const client = getResumeParserClient();
     if (!client.configured) throw new ResumeParserNotConfiguredError();
@@ -48,8 +56,17 @@ export async function POST(request: Request) {
     const rl = rateLimit({ key: `resume-parser-add:${user.id}`, limit: 100, windowMs: 10 * 60 * 1000 });
     if (!rl.ok) return noStore(jsonError("Too many profiles added. Wait a few minutes and try again.", 429));
 
-    const profile = recallProfile(organizationId, parsed.data.profileId);
+    const profile = recallProfile(organizationId, profileId);
     if (!profile) return noStore(jsonError("Search again, then add this profile.", 404));
+
+    let job: { id: string; title: string } | null = null;
+    if (jobId) {
+      job = await prisma.job.findFirst({
+        where: { id: jobId, organizationId, status: "OPEN" },
+        select: { id: true, title: true },
+      });
+      if (!job) return noStore(jsonError("Choose an open job opening.", 400));
+    }
 
     const { extractResumeText } = await import("@/lib/resume/parse");
     const { embedCandidate } = await import("@/lib/ai/embeddings");
@@ -63,10 +80,6 @@ export async function POST(request: Request) {
     });
 
     switch (result.status) {
-      case "created":
-        return noStore(jsonOk(result, { status: 201 }));
-      case "exists":
-        return noStore(jsonOk(result));
       case "no_email":
         return noStore(jsonError("This profile has no email address, so it cannot be added.", 422));
       case "no_file":
@@ -74,6 +87,22 @@ export async function POST(request: Request) {
       case "invalid_file":
         return noStore(jsonError(`The resume file cannot be used: ${result.reason}`, 422));
     }
+
+    if (!job) return noStore(jsonOk(result, { status: result.status === "created" ? 201 : 200 }));
+
+    const { queueAutoScreening } = await import("@/lib/ai/auto-screening");
+    const placed = await addCandidateToJob(
+      prisma,
+      { organizationId, candidateId: result.candidateId, jobId: job.id },
+      queueAutoScreening,
+    );
+    const payload = { ...result, jobTitle: job.title, ...placed };
+    if (placed.job === "added") return noStore(jsonOk(payload, { status: 201 }));
+    if (placed.job === "already_in_job") return noStore(jsonOk(payload));
+    if (placed.job === "job_not_open") {
+      return noStore(jsonError("This job opening is no longer open.", 400, { candidateId: result.candidateId }));
+    }
+    return noStore(jsonError("The profile could not be added. Try again.", 500));
   } catch (err) {
     if (err instanceof ResumeParserNotConfiguredError || err instanceof ResumeParserUnavailableError) {
       return noStore(resumeParserErrorResponse(err));

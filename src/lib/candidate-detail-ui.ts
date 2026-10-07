@@ -194,6 +194,7 @@ const PRACTICAL_TIMELINE_TITLES: Record<string, string> = {
   assessment_link_revoked: "Assessment link revoked",
   assessment_completed: "Assessment completed (all required components)",
   assessment_question_generation_failed: "AI question wording partly unavailable (deterministic fallback used)",
+  ai_screening_failed: "Automatic AI screening did not finish (run it again from this page)",
 };
 
 export function humanTimelineTitle(type: string, payload: unknown): string {

@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { addResumeParserProfile } from "../../src/lib/integrations/resume-parser/add-profile";
+import { addCandidateToJob } from "../../src/lib/integrations/resume-parser/add-to-job";
 import type { ResumeParserClient } from "../../src/lib/integrations/resume-parser/client";
 import { resumeParserProfileSchema, type ResumeParserProfile, type ResumeParserResumeFile } from "../../src/lib/integrations/resume-parser/types";
 import { extractResumeText } from "../../src/lib/resume/parse";
@@ -92,6 +93,12 @@ function pdfFile(id: number, text: string, fileName: string | null = null): void
 
 const add = (p: ResumeParserProfile, organizationId = orgId) =>
   addResumeParserProfile(prisma, { organizationId, userId, profile: p, client, deps });
+const newJob = async (organizationId: string, status: "OPEN" | "CLOSED") =>
+  (
+    await prisma.job.create({
+      data: { organizationId, title: `Job ${status}`, description: "d", status, createdById: userId, skills: ["Python"] },
+    })
+  ).id;
 const storedFiles = async () => readdir(path.join(storageRoot, "resumes")).catch(() => [] as string[]);
 const candidateCount = () => prisma.candidate.count({ where: { organizationId: { in: [orgId, otherOrgId] } } });
 
@@ -117,6 +124,7 @@ before(async () => {
 
 after(async () => {
   await prisma.candidate.deleteMany({ where: { organizationId: { in: [orgId, otherOrgId] } } });
+  await prisma.job.deleteMany({ where: { organizationId: { in: [orgId, otherOrgId] } } });
   await prisma.user.deleteMany({ where: { email: `hr.${tag}@example.com` } });
   await prisma.organization.deleteMany({ where: { id: { in: [orgId, otherOrgId] } } });
   await prisma.$disconnect();
@@ -254,6 +262,73 @@ describe("Add Resume Parser profile to the Talent Pool (throwaway DB)", () => {
 
     assert.equal(await candidateCount(), count);
     assert.equal((await storedFiles()).length, stored);
+  });
+
+  it("Add to job: puts the candidate in an OPEN job at Applied and queues screening", async () => {
+    const job = await newJob(orgId, "OPEN");
+    pdfFile(20, "Job Person\nPython");
+    const r = await add(profile(20, { name: "Job Person", email: `job.${tag}@example.com` }));
+    assert.equal(r.status, "created");
+    if (r.status !== "created") return;
+
+    const screened: string[] = [];
+    const placed = await addCandidateToJob(prisma, { organizationId: orgId, candidateId: r.candidateId, jobId: job }, (id) => {
+      screened.push(id);
+      return true;
+    });
+    assert.equal(placed.job, "added");
+    if (placed.job !== "added") return;
+    assert.equal(placed.screening, "started");
+    assert.deepEqual(screened, [placed.applicationId]);
+
+    const app = await prisma.application.findUniqueOrThrow({ where: { id: placed.applicationId }, include: { aiEvaluations: true } });
+    assert.deepEqual([app.stage, app.status, app.jobId, app.candidateId], ["APPLIED", "ACTIVE", job, r.candidateId]);
+    assert.equal(app.aiEvaluations.length, 0, "no AI result is made up");
+
+    const again = await addCandidateToJob(prisma, { organizationId: orgId, candidateId: r.candidateId, jobId: job }, () => {
+      throw new Error("must not queue twice");
+    });
+    assert.deepEqual(again, { job: "already_in_job" });
+    assert.equal(await prisma.application.count({ where: { candidateId: r.candidateId } }), 1);
+  });
+
+  it("Add to job: existing candidate without resume text is added unchanged and screening is skipped", async () => {
+    const job = await newJob(orgId, "OPEN");
+    const before = await prisma.candidate.findUniqueOrThrow({ where: { id: existingId } });
+    const placed = await addCandidateToJob(prisma, { organizationId: orgId, candidateId: existingId, jobId: job }, () => {
+      throw new Error("must not queue without resume text");
+    });
+    assert.equal(placed.job, "added");
+    if (placed.job !== "added") return;
+    assert.equal(placed.screening, "no_resume_text");
+    assert.deepEqual(await prisma.candidate.findUniqueOrThrow({ where: { id: existingId } }), before);
+  });
+
+  it("Add to job: a full screening queue still adds the candidate", async () => {
+    const job = await newJob(orgId, "OPEN");
+    pdfFile(21, "Busy Queue\nPython");
+    const r = await add(profile(21, { name: "Busy Queue", email: `busy.${tag}@example.com` }));
+    if (r.status !== "created") return assert.fail(r.status);
+    const placed = await addCandidateToJob(prisma, { organizationId: orgId, candidateId: r.candidateId, jobId: job }, () => false);
+    assert.equal(placed.job, "added");
+    assert.equal(placed.job === "added" && placed.screening, "busy");
+  });
+
+  it("Add to job: refuses closed jobs and jobs or candidates from another organization", async () => {
+    const closed = await newJob(orgId, "CLOSED");
+    const otherOrgJob = await newJob(otherOrgId, "OPEN");
+    const open = await newJob(orgId, "OPEN");
+    const never = () => {
+      throw new Error("must not queue");
+    };
+    const count = await prisma.application.count();
+    assert.deepEqual(await addCandidateToJob(prisma, { organizationId: orgId, candidateId: existingId, jobId: closed }, never), { job: "job_not_open" });
+    assert.deepEqual(await addCandidateToJob(prisma, { organizationId: orgId, candidateId: existingId, jobId: otherOrgJob }, never), { job: "job_not_open" });
+    assert.deepEqual(
+      await addCandidateToJob(prisma, { organizationId: orgId, candidateId: otherOrgCandidateId, jobId: open }, never),
+      { job: "candidate_not_found" },
+    );
+    assert.equal(await prisma.application.count(), count);
   });
 
   it("two people adding the same profile at once create one candidate", async () => {
