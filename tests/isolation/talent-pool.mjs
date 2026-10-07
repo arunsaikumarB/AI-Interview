@@ -164,16 +164,20 @@ try {
     assert.doesNotMatch(html, new RegExp(`Seetharam Hist${tag}|Uma Upload${tag}`));
   });
 
-  await check("Talent Pool page: HR and hiring manager see search, no CSV import anywhere; interviewer redirected", async () => {
+  await check("Talent Pool page: only Resume Parser search, no other searches or CSV import; interviewer redirected", async () => {
     const hr = await get(`/dashboard/talent`, cookie.hr);
     assert.equal(hr.res.status, 200);
-    assert.match(hr.text, /Search historical and available candidates/);
+    assert.match(hr.text, /Find profiles in Resume Parser/);
+    assert.doesNotMatch(hr.text, /Search historical and available candidates|AI search|Org tags/);
     assert.doesNotMatch(hr.text, /Import Resume Parser|Resume Parser export|Upload CSV|Import CSV|\.csv/i);
-    assert.match(hr.text, new RegExp(`TPI DotNet ${tag}`));
-    assert.doesNotMatch(hr.text, new RegExp(`TPI Paused ${tag}|TPI DotNet 2023 ${tag}|TPI Secret ${tag}`), "only open openings of own org");
+    if (/Job opening/.test(hr.text)) {
+      assert.match(hr.text, new RegExp(`TPI DotNet ${tag}`));
+      assert.doesNotMatch(hr.text, new RegExp(`TPI Paused ${tag}|TPI DotNet 2023 ${tag}|TPI Secret ${tag}`), "only open openings of own org");
+    }
     const mgr = await get(`/dashboard/talent`, cookie.manager);
     assert.equal(mgr.res.status, 200);
-    assert.match(mgr.text, /Search historical and available candidates/);
+    assert.match(mgr.text, /Ask a recruiter or HR admin/);
+    assert.doesNotMatch(mgr.text, /Search historical and available candidates|AI search|Org tags/);
     const iv = await get(`/dashboard/talent`, cookie.interviewer);
     assert.ok([307, 308].includes(iv.res.status) || /NEXT_REDIRECT/.test(iv.text), `interviewer got ${iv.res.status}`);
   });
