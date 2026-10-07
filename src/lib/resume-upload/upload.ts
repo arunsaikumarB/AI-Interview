@@ -49,10 +49,37 @@ export type SaveResult = {
   status: "created" | "linked" | "exists" | "already_applied" | "invalid" | "failed";
   parsed?: boolean;
   reason?: string;
+  /** The application created for the chosen job. */
+  applicationId?: string;
 };
 
 /** Profile values from a trusted source that win over what was read from the file. */
 export type ProfileOverrides = Partial<Pick<ResumeProfile, "location" | "linkedIn" | "skills">>;
+
+/** How the application is recorded when it comes from somewhere other than a manual upload. */
+export type ApplicationDetails = {
+  source: string;
+  coverNote?: string;
+  externalSource?: string;
+  externalId?: string;
+  /** Extra values for the APPLICATION_CREATED timeline entry. */
+  payload?: Record<string, string | number | boolean>;
+};
+
+function applicationFields(details: ApplicationDetails | undefined) {
+  const source = details?.source ?? RESUME_UPLOAD_SOURCE;
+  return {
+    source,
+    data: {
+      source,
+      ...(details?.coverNote ? { coverNote: details.coverNote } : {}),
+      ...(details?.externalSource && details.externalId
+        ? { externalSource: details.externalSource, externalId: details.externalId }
+        : {}),
+    },
+    payload: { ...(details?.payload ?? {}), source },
+  };
+}
 
 const EMPTY_PROFILE: ResumeProfile = {
   location: "",
@@ -79,7 +106,12 @@ function isPdf(name: string): boolean {
   return name.toLowerCase().endsWith(".pdf");
 }
 
-async function findCandidateId(db: Db, organizationId: string, email: string): Promise<string | null> {
+/** Serializes candidate creation for one email (use inside a transaction). */
+export async function lockCandidateEmail(tx: Prisma.TransactionClient, organizationId: string, email: string): Promise<void> {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`resume-upload:${organizationId}:${email}`}))::text`;
+}
+
+export async function findCandidateId(db: Db, organizationId: string, email: string): Promise<string | null> {
   const rows = await db.$queryRaw<{ id: string }[]>`
     SELECT id FROM "Candidate"
     WHERE "organizationId" = ${organizationId} AND lower(email) = ${email.toLowerCase()}
@@ -198,36 +230,40 @@ export async function saveUploadedResume(
     overrides?: ProfileOverrides;
     /** Saved with a new candidate, in the same transaction. */
     note?: { authorId: string; text: string };
+    application?: ApplicationDetails;
   },
 ): Promise<SaveResult> {
   const { organizationId, jobId, row, buffer, deps } = args;
   const name = row.fileName;
   const problem = checkUploadedResume(name, args.type, buffer);
   if (problem) return { name, status: "invalid", reason: problem };
+  const app = applicationFields(args.application);
 
   const plan = await planFor(db, organizationId, row.email, jobId);
   if (plan.status === "exists" || plan.status === "already_applied") return { name, status: plan.status };
 
   if (plan.status === "link" && plan.candidateId && jobId) {
+    let applicationId: string;
     try {
-      await db.application.create({
+      const created = await db.application.create({
         data: {
           jobId,
           candidateId: plan.candidateId,
           stage: "APPLIED",
           status: "ACTIVE",
-          source: RESUME_UPLOAD_SOURCE,
+          ...app.data,
           timelineEvents: {
-            create: { type: "APPLICATION_CREATED", payload: { source: RESUME_UPLOAD_SOURCE, existingCandidate: true } },
+            create: { type: "APPLICATION_CREATED", payload: { ...app.payload, existingCandidate: true } },
           },
         },
         select: { id: true },
       });
+      applicationId = created.id;
     } catch (err) {
       if (isUniqueViolation(err)) return { name, status: "already_applied" };
       throw err;
     }
-    return { name, status: "linked" };
+    return { name, status: "linked", applicationId };
   }
 
   const resumeText = recallOcrText(organizationId, buffer) ?? (await readText(deps.extractText, name, buffer));
@@ -241,9 +277,10 @@ export async function saveUploadedResume(
   };
   const stored = await saveUpload({ category: "resumes", originalName: name, data: buffer });
   let candidateId: string;
+  let applicationId: string | undefined;
   try {
     candidateId = await db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`resume-upload:${organizationId}:${row.email}`}))::text`;
+      await lockCandidateEmail(tx, organizationId, row.email);
       if (await findCandidateId(tx, organizationId, row.email)) throw new DuplicateEmail();
       const candidate = await tx.candidate.create({
         data: {
@@ -268,25 +305,26 @@ export async function saveUploadedResume(
         await tx.note.create({ data: { candidateId: candidate.id, authorId: args.note.authorId, text: args.note.text } });
       }
       if (jobId) {
-        await tx.application.create({
+        const created = await tx.application.create({
           data: {
             jobId,
             candidateId: candidate.id,
             stage: "APPLIED",
             status: "ACTIVE",
-            source: RESUME_UPLOAD_SOURCE,
+            ...app.data,
             timelineEvents: {
               create: [
-                { type: "APPLICATION_CREATED", payload: { source: RESUME_UPLOAD_SOURCE } },
+                { type: "APPLICATION_CREATED", payload: app.payload },
                 {
                   type: "DOCUMENT_UPLOADED",
-                  payload: { fileName: stored.fileName, parsed: Boolean(resumeText), source: RESUME_UPLOAD_SOURCE },
+                  payload: { fileName: stored.fileName, parsed: Boolean(resumeText), source: app.source },
                 },
               ],
             },
           },
           select: { id: true },
         });
+        applicationId = created.id;
       }
       return candidate.id;
     });
@@ -314,5 +352,5 @@ export async function saveUploadedResume(
       });
     }
   }
-  return { name, status: "created", parsed: Boolean(resumeText) };
+  return { name, status: "created", parsed: Boolean(resumeText), ...(applicationId ? { applicationId } : {}) };
 }

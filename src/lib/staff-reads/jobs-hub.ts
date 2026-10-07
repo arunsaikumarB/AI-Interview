@@ -1,5 +1,6 @@
 import type { JobStatus, PipelineStage } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { CAREERS_SOURCE } from "@/lib/integrations/careers/constants";
 import { isInInterviewStage } from "@/lib/recruiting-ui";
 import { djangoGetAllPages } from "./django-client";
 import { useDjangoReads } from "./flag";
@@ -15,6 +16,8 @@ export type JobsHubRow = {
   applications: number;
   inInterview: number;
   selected: number;
+  /** Synced from the LogiSoft careers page. */
+  fromCareersSite: boolean;
 };
 
 function asDate(value: Date | string): Date {
@@ -73,6 +76,7 @@ async function loadJobsHubFromPrisma(opts: {
       applications,
       inInterview,
       selected,
+      fromCareersSite: job.externalSource === CAREERS_SOURCE,
     };
   });
 }
@@ -117,6 +121,7 @@ async function loadJobsHubFromDjango(opts: {
       applications: s.total,
       inInterview: s.inInterview,
       selected: s.selected,
+      fromCareersSite: false,
     };
   });
 }

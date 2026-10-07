@@ -49,6 +49,7 @@ import {
   RESUME_PARSER_LABEL,
   RESUME_PARSER_SOURCE,
 } from "@/lib/integrations/resume-parser/constants";
+import { CAREERS_APPLICATION_SOURCE } from "@/lib/integrations/careers/constants";
 import { isUntouchedImport } from "@/lib/hiring/pipeline-filter";
 import { cn } from "@/lib/utils";
 
@@ -347,6 +348,21 @@ export default async function CandidateDetailPage({ params, searchParams }: Ctx)
                 Source: {RESUME_PARSER_LABEL} · Applied {formatDate(selectedApp.createdAt)}
                 {selectedApp.status === "ON_HOLD" ? " · On hold" : ""}
               </p>
+            ) : selectedApp.source === CAREERS_APPLICATION_SOURCE ? (
+              <p className="mt-1 text-[13px] text-muted-foreground">
+                Source: LogiSoft careers page · Added {formatDate(selectedApp.createdAt)}
+                {selectedApp.status === "ON_HOLD" ? " · On hold" : ""}
+              </p>
+            ) : null}
+            {canDecide && selectedApp.coverNote ? (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[13px] font-medium text-foreground">
+                  Application form
+                </summary>
+                <p className="mt-1.5 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/20 p-3 text-[13px] text-foreground/90">
+                  {selectedApp.coverNote}
+                </p>
+              </details>
             ) : null}
           </div>
           <PipelineStrip current={selectedApp.stage} />

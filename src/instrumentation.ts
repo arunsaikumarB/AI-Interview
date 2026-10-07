@@ -7,5 +7,10 @@ export async function register() {
     void recoverAndStartProfileWorker().catch((err: unknown) => {
       console.error("[resume-profile] could not start", { name: err instanceof Error ? err.name : typeof err });
     });
+
+    const { startCareersSyncSchedule } = await import("@/lib/integrations/careers/runner");
+    void startCareersSyncSchedule().catch((err: unknown) => {
+      console.error("[careers-sync] could not start", { name: err instanceof Error ? err.name : typeof err });
+    });
   }
 }

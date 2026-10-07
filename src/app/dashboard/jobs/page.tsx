@@ -8,6 +8,8 @@ import { loadJobsHub } from "@/lib/staff-reads/jobs-hub";
 import { Badge } from "@/components/ui/badge";
 import { RecruitingSubnav } from "@/components/recruiting-subnav";
 import { JobsHubToolbar } from "@/components/jobs-hub-toolbar";
+import { CareersSyncCard } from "@/components/careers-sync-card";
+import { parseCareersConfig } from "@/lib/integrations/careers/client";
 import { buttonVariants } from "@/components/ui/button";
 import { formatDate } from "@/lib/format";
 import { JOB_STATUS_LABELS } from "@/lib/recruiting-ui";
@@ -35,6 +37,10 @@ export default async function JobsPage({
   if (!session) redirect("/login");
   const scope = orgScopeWhere(session);
   const canCreate = canManageJobs(session.role);
+  const showCareersSync =
+    (session.role === "SUPER_ADMIN" || session.role === "HR_ADMIN") &&
+    Boolean(session.organizationId) &&
+    parseCareersConfig() !== null;
 
   const statusFilter =
     searchParams?.status &&
@@ -77,6 +83,8 @@ export default async function JobsPage({
           </Link>
         ) : null}
       </div>
+
+      {showCareersSync ? <CareersSyncCard /> : null}
 
       <Suspense fallback={null}>
         <JobsHubToolbar />
@@ -121,7 +129,9 @@ export default async function JobsPage({
                       {job.title}
                     </Link>
                     <p className="text-xs text-muted-foreground">
-                      {job.location ?? "—"}
+                      {[job.location, job.fromCareersSite ? "From careers page" : null]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
                     </p>
                   </td>
                   <td className="px-4 py-3 tabular-nums text-foreground/90">

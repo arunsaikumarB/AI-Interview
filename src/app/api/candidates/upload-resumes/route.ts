@@ -140,16 +140,15 @@ export async function POST(request: Request) {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        results.push(
-          await saveUploadedResume(prisma, {
-            organizationId,
-            jobId,
-            row: rows[i],
-            type: file.type,
-            buffer: Buffer.from(await file.arrayBuffer()),
-            deps: { extractText: extractResumeText, embed: embedCandidate, queueProfile: queueProfileReading },
-          }),
-        );
+        const { applicationId: _applicationId, ...saved } = await saveUploadedResume(prisma, {
+          organizationId,
+          jobId,
+          row: rows[i],
+          type: file.type,
+          buffer: Buffer.from(await file.arrayBuffer()),
+          deps: { extractText: extractResumeText, embed: embedCandidate, queueProfile: queueProfileReading },
+        });
+        results.push(saved);
       } catch (err) {
         if (isDatabaseUnavailable(err)) throw err;
         logFailure("file failed", err);

@@ -35,7 +35,7 @@ function firstEmail(raw: string): string {
 }
 
 /** First phone number in a field that may hold several, in the characters HireOS accepts. */
-function firstPhone(raw: string): string {
+export function firstPhone(raw: string): string {
   const match = /\+?\d[\d\s().-]{6,24}\d/.exec(raw);
   return match ? match[0].replace(/\s+/g, " ").slice(0, 30) : "";
 }
@@ -54,7 +54,7 @@ export function resumeFileName(profileId: number, preferred: string | null, mime
   return `${stem}${ext}`;
 }
 
-function linkedInUrl(raw: string): string {
+export function linkedInUrl(raw: string): string {
   try {
     const url = new URL(raw);
     return url.protocol === "https:" || url.protocol === "http:" ? url.toString().slice(0, 300) : "";

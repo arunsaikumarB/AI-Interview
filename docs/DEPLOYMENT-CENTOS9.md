@@ -256,6 +256,48 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "X-API-Key: $RESUME_PARSER_API_KEY" 
   "$RESUME_PARSER_API_URL/api/v1/external/profiles/search/?skills=python&page_size=1"   # 200
 ```
 
+### 5.8 LogiSoft careers page sync (WordPress)
+
+Applications made on the LogiSoft careers page (WordPress `careers/v1` API) are brought into HireOS: each
+careers job becomes a job in Jobs & Candidates (marked "From careers page"), each applicant becomes a candidate
+at **Applied** on that job, with the resume and the form answers. An existing candidate (same email) is never
+changed; it only gets the new application. Careers jobs that leave the live list are set to **Closed** (people
+and history stay). The first import runs no AI; after it, new applicants get advisory AI screening (stage never
+changes). It runs every 15 minutes, and HR admins have **Sync now** on Jobs & Candidates.
+
+**One-time database update — do this BEFORE deploying the release that contains it.** It only adds four empty
+columns and two indexes (`prisma/manual/20261007_careers_sync.sql`); the running app is not affected and it is
+safe to run twice. Take a backup first (`pg_dump`), then as `APP_USER`:
+
+```bash
+cd APP_DIR && git pull --ff-only
+npx prisma db execute --file prisma/manual/20261007_careers_sync.sql --schema prisma/schema.prisma
+# check: 4 rows
+psql "<database url without ?schema=…>" -c "SELECT table_name, column_name FROM information_schema.columns WHERE table_name IN ('Job','Application') AND column_name IN ('externalSource','externalId');"
+```
+
+Do not use `prisma db push` or `prisma migrate` for this (see `docs/DEPLOYMENT-DATABASE-V3.1.md`, R-4).
+
+Then in `APP_DIR/.env` (server only, never `NEXT_PUBLIC_*`), deploy (section 11), and restart:
+
+```bash
+CAREERS_API_URL="https://logisofttechinc.com"     # site address only; the app adds /wp-json/careers/v1/...
+CAREERS_API_KEY="<Bearer key from the WordPress developer>"
+# Optional:
+# CAREERS_SYNC_INTERVAL_MINUTES=15      # 0 = only "Sync now"; default 15 in production
+# CAREERS_ORGANIZATION_ID="<org id>"    # only needed if the database has more than one organization
+```
+
+Without both values nothing runs and the card is hidden. The first sync starts about a minute after the app
+starts and imports every live application (about 1,300 at first, so it takes a while); progress shows on the
+card. Logs: `sudo journalctl -u hireos-app | grep careers-sync` (counts only, no applicant details). Check the key
+from the app server (expect 200):
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $CAREERS_API_KEY" \
+  "$CAREERS_API_URL/wp-json/careers/v1/live-applications?per_page=1"
+```
+
 ## 6. Firewall (app server)
 
 ```bash

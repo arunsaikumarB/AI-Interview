@@ -288,6 +288,10 @@ model Job {
   /// Structured screening criteria for AI + human review, e.g. { "mustHave": [], "niceToHave": [] }
   screeningCriteria Json        @default("{}")
   createdById    String
+  /// Outside system this job is synced from (e.g. "wordpress_careers"); null for jobs made in HireOS
+  externalSource String?
+  /// The job's id in that system
+  externalId     String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -297,6 +301,7 @@ model Job {
   assignments  JobAssignment[]
   applications Application[]
 
+  @@unique([organizationId, externalSource, externalId])
   @@index([status])
   @@index([organizationId])
   @@index([departmentId])
@@ -366,6 +371,10 @@ model Application {
   /// e.g. "career_site", "referral", "linkedin", "agency"
   source      String?
   coverNote   String?
+  /// Outside system this application came from (e.g. "wordpress_careers"); null otherwise
+  externalSource String?
+  /// The application's id in that system
+  externalId     String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
@@ -378,6 +387,7 @@ model Application {
   assessmentLink       CandidateAssessmentLink?
 
   @@unique([candidateId, jobId])
+  @@unique([jobId, externalSource, externalId])
   @@index([stage])
   @@index([status])
   @@index([jobId])
