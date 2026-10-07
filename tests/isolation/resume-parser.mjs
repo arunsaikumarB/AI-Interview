@@ -1,5 +1,5 @@
 /**
- * Resume Parser integration over HTTP: skill search and Add to Talent Pool, with role checks,
+ * Resume Parser integration over HTTP: skill search and Add to job, with role checks,
  * organization isolation, input validation, safe error messages and file checks. Starts its own
  * mock Resume Parser (spec: GET /api/v1/external/profiles/search/ and /<id>/resume/, X-API-Key)
  * and a decoy listener at the address put in `resume_url`, which must never be called.
@@ -160,7 +160,15 @@ async function call(cookie, method, path, body) {
   return { res, json, text };
 }
 const search = (cookie, qs) => call(cookie, "GET", `/api/talent/resume-parser/search?${qs}`);
-const add = (cookie, body) => call(cookie, "POST", "/api/talent/resume-parser/add", body);
+const addRaw = (cookie, body) => call(cookie, "POST", "/api/talent/resume-parser/add", body);
+/** Adds to the caller's own open job unless the body names a job. */
+const add = (cookie, body) =>
+  addRaw(
+    cookie,
+    body && typeof body === "object" && !("jobId" in body)
+      ? { ...body, jobId: cookie === cookies.recruiterB ? jobs.openB.id : jobs.openA.id }
+      : body,
+  );
 
 let orgA;
 let orgB;
@@ -289,6 +297,13 @@ async function main() {
       }
     });
 
+    await check("adding without a job is refused (no Talent-Pool-only add) and stores nothing", async () => {
+      const count = await db.candidate.count({ where: { organizationId: orgA.id } });
+      const r = await addRaw(cookies.recruiter, { profileId: 101 });
+      assert.equal(r.res.status, 400);
+      assert.equal(await db.candidate.count({ where: { organizationId: orgA.id } }), count);
+    });
+
     await check("another organization cannot add a profile only org A searched; unknown ids are 404", async () => {
       const r1 = await add(cookies.recruiterB, { profileId: 101 });
       assert.equal(r1.res.status, 404);
@@ -297,12 +312,13 @@ async function main() {
     });
 
     let priyaId;
-    await check("add creates a Talent Pool candidate in the caller's org from the downloaded resume", async () => {
+    await check("add creates the candidate in the caller's org from the downloaded resume, in the chosen job", async () => {
       const downloadsBefore = mockLog.filter((l) => l.path.endsWith("/resume/")).length;
       const { res, json, text } = await add(cookies.recruiter, { profileId: 101 });
       assert.equal(res.status, 201, text);
       assert.equal(json.status, "created");
-      assert.deepEqual(Object.keys(json).sort(), ["candidateId", "parsed", "status"]);
+      assert.equal(json.job, "added");
+      assert.deepEqual(Object.keys(json).sort(), ["applicationId", "candidateId", "job", "jobTitle", "parsed", "screening", "status"]);
       priyaId = json.candidateId;
       const c = await db.candidate.findUniqueOrThrow({ where: { id: priyaId }, include: { applications: true, notes: true } });
       assert.equal(c.organizationId, orgA.id);
@@ -313,7 +329,8 @@ async function main() {
       assert.equal(c.experience, 6);
       assert.ok(c.resumeText?.includes(`SECRET_TEXT_${tag}`));
       assert.equal(/--\s*\d+\s+of\s+\d+\s*--/.test(c.resumeText ?? ""), false, "page marker stored");
-      assert.equal(c.applications.length, 0, "must not enter hiring");
+      assert.equal(c.applications.length, 1);
+      assert.deepEqual([c.applications[0].jobId, c.applications[0].stage, c.applications[0].status], [jobs.openA.id, "APPLIED", "ACTIVE"]);
       assert.equal(c.notes.length, 1);
       assert.equal(c.notes[0].authorId, users.recruiter.id);
       await stat(join(STORAGE_ROOT, c.resumeUrl));
@@ -327,15 +344,20 @@ async function main() {
       assert.equal(decoyHits, 0);
     });
 
-    await check("adding again and adding an existing email return the existing candidate unchanged", async () => {
+    await check("adding again is 'already in job'; an existing email is added to the job unchanged, no screening without text", async () => {
       const again = await add(cookies.recruiter, { profileId: 101 });
       assert.equal(again.res.status, 200);
-      assert.deepEqual(again.json, { status: "exists", candidateId: priyaId });
+      assert.deepEqual(again.json, { status: "exists", candidateId: priyaId, jobTitle: jobs.openA.title, job: "already_in_job" });
+      assert.equal(await db.application.count({ where: { candidateId: priyaId } }), 1);
       const before = await db.candidate.findUniqueOrThrow({ where: { id: existingId } });
       const ex = await add(cookies.hr, { profileId: 102 });
-      assert.equal(ex.res.status, 200);
-      assert.deepEqual(ex.json, { status: "exists", candidateId: existingId });
+      assert.equal(ex.res.status, 201, ex.text);
+      assert.equal(ex.json.status, "exists");
+      assert.equal(ex.json.candidateId, existingId);
+      assert.equal(ex.json.screening, "no_resume_text");
       assert.deepEqual(await db.candidate.findUniqueOrThrow({ where: { id: existingId } }), before);
+      const app = await db.application.findUniqueOrThrow({ where: { id: ex.json.applicationId } });
+      assert.deepEqual([app.stage, app.status, app.jobId], ["APPLIED", "ACTIVE", jobs.openA.id]);
     });
 
     await check("a real old Word (.doc) resume is added and its text read locally", async () => {
@@ -398,19 +420,7 @@ async function main() {
       assert.equal(r.res.status, 200);
       assert.equal(r.json.job, "already_in_job");
       assert.equal(r.json.applicationId, undefined);
-      assert.equal(await db.application.count({ where: { jobId: jobs.openA.id } }), 1);
-    });
-
-    await check("Add to job: an existing candidate is added unchanged; no resume text means no screening", async () => {
-      const before = await db.candidate.findUniqueOrThrow({ where: { id: existingId } });
-      const r = await add(cookies.hr, { profileId: 102, jobId: jobs.openA.id });
-      assert.equal(r.res.status, 201, r.text);
-      assert.equal(r.json.status, "exists");
-      assert.equal(r.json.candidateId, existingId);
-      assert.equal(r.json.screening, "no_resume_text");
-      assert.deepEqual(await db.candidate.findUniqueOrThrow({ where: { id: existingId } }), before);
-      const app = await db.application.findUniqueOrThrow({ where: { id: r.json.applicationId } });
-      assert.deepEqual([app.stage, app.status], ["APPLIED", "ACTIVE"]);
+      assert.equal(await db.application.count({ where: { jobId: jobs.openA.id, candidateId: r.json.candidateId } }), 1);
     });
 
     await check("Add to job: AI screening finishes or records an honest failure; stage and status never change", async () => {

@@ -27,7 +27,7 @@ export type ResumeParserJob = {
   experienceMax: number | null;
 };
 
-type RowState = { busy?: boolean; candidateId?: string; message?: string; note?: string; error?: string; inJob?: boolean };
+type RowState = { busy?: boolean; candidateId?: string; message?: string; note?: string; error?: string; doneJobId?: string };
 
 type AddResponse = {
   status?: string;
@@ -65,6 +65,7 @@ export function ResumeParserSearch({ jobs }: { jobs: ResumeParserJob[] }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<Record<number, RowState>>({});
+  const [rowJob, setRowJob] = useState<Record<number, string>>({});
 
   async function load(f: Filters, page: number) {
     setLoading(true);
@@ -81,6 +82,7 @@ export function ResumeParserSearch({ jobs }: { jobs: ResumeParserJob[] }) {
       }
       setData(body);
       setRows({});
+      setRowJob({});
     } catch {
       setError("Could not reach HireOS. Check your connection and try again.");
     } finally {
@@ -107,7 +109,7 @@ export function ResumeParserSearch({ jobs }: { jobs: ResumeParserJob[] }) {
   function chooseJob(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = jobs.find((j) => j.id === e.target.value) ?? null;
     setJobId(next?.id ?? "");
-    setRows({});
+    setRowJob({});
     if (!next || next.skills.length === 0) return;
     const filled: Filters = {
       ...draft,
@@ -120,31 +122,32 @@ export function ResumeParserSearch({ jobs }: { jobs: ResumeParserJob[] }) {
     run(filled);
   }
 
-  async function add(p: Profile) {
-    setRows((r) => ({ ...r, [p.id]: { busy: true } }));
+  async function add(p: Profile, targetJobId: string) {
+    if (!targetJobId) {
+      setRows((r) => ({ ...r, [p.id]: { ...r[p.id], error: "Choose a job first." } }));
+      return;
+    }
+    setRows((r) => ({ ...r, [p.id]: { ...r[p.id], busy: true, error: undefined } }));
     try {
       const res = await fetch("/api/talent/resume-parser/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(job ? { profileId: p.id, jobId: job.id } : { profileId: p.id }),
+        body: JSON.stringify({ profileId: p.id, jobId: targetJobId }),
       });
       const body = (await res.json().catch(() => null)) as AddResponse | null;
-      if (!res.ok || !body?.candidateId) {
-        setRows((r) => ({ ...r, [p.id]: { error: body?.error ?? "Could not add this profile. Try again." } }));
+      if (!res.ok || !body?.candidateId || !body.job) {
+        setRows((r) => ({ ...r, [p.id]: { ...r[p.id], busy: false, error: body?.error ?? "Could not add this profile. Try again." } }));
         return;
       }
       const candidateId = body.candidateId;
-      if (body.job === "added") {
-        const note = body.screening ? SCREENING_NOTE[body.screening] : undefined;
-        setRows((r) => ({ ...r, [p.id]: { candidateId, inJob: true, message: `Added to ${body.jobTitle ?? "the job"}`, note } }));
-      } else if (body.job === "already_in_job") {
-        setRows((r) => ({ ...r, [p.id]: { candidateId, inJob: true, message: `Already in ${body.jobTitle ?? "this job"}` } }));
-      } else {
-        const message = body.status === "created" ? "Added to the Talent Pool" : "Already in HireOS";
-        setRows((r) => ({ ...r, [p.id]: { candidateId, message } }));
-      }
+      const title = body.jobTitle ?? "the job";
+      const done =
+        body.job === "added"
+          ? { message: `Added to ${title}`, note: body.screening ? SCREENING_NOTE[body.screening] : undefined }
+          : { message: `Already in ${title}`, note: undefined };
+      setRows((r) => ({ ...r, [p.id]: { candidateId, doneJobId: targetJobId, ...done } }));
     } catch {
-      setRows((r) => ({ ...r, [p.id]: { error: "Could not reach HireOS. Try again." } }));
+      setRows((r) => ({ ...r, [p.id]: { ...r[p.id], busy: false, error: "Could not reach HireOS. Try again." } }));
     }
   }
 
@@ -155,17 +158,18 @@ export function ResumeParserSearch({ jobs }: { jobs: ResumeParserJob[] }) {
           Find profiles in Resume Parser
         </h2>
         <p className="mt-1 max-w-2xl text-[13px] text-muted-foreground">
-          Pick a job to search with its skills. Add to job downloads the resume, creates the candidate (existing
-          candidates are never changed), puts them in that job at Applied and starts AI resume screening. AI
-          screening is advice only and never moves anyone to another stage.
+          Pick a job to search with its skills, then choose the job in each row and click Add to job. That downloads
+          the resume, creates the candidate (existing candidates are never changed), puts them in the job at Applied
+          under Jobs &amp; Candidates and starts AI resume screening. AI screening is advice only and never moves anyone
+          to another stage.
         </p>
       </div>
 
       <form onSubmit={search} className="space-y-3 rounded-xl border border-border bg-card/80 p-4">
         <label className="block max-w-md space-y-1">
           <span className={labelClass}>Job opening</span>
-          <select className={inputClass} value={jobId} onChange={chooseJob}>
-            <option value="">Talent Pool only (no job)</option>
+          <select className={inputClass} value={jobId} onChange={chooseJob} disabled={jobs.length === 0}>
+            <option value="">{jobs.length ? "Choose a job to use its skills" : "No open job openings"}</option>
             {jobs.map((j) => (
               <option key={j.id} value={j.id}>
                 {j.title}
@@ -176,7 +180,12 @@ export function ResumeParserSearch({ jobs }: { jobs: ResumeParserJob[] }) {
             <span className="block text-xs text-muted-foreground">This job has no skills listed. Type the skills below.</span>
           ) : null}
           {jobs.length === 0 ? (
-            <span className="block text-xs text-muted-foreground">No open job openings. Profiles can still be added to the Talent Pool.</span>
+            <span className="block text-xs text-muted-foreground">
+              Profiles can only be added to an open job.{" "}
+              <Link href="/dashboard/jobs/new" className="text-foreground underline">
+                Create a job
+              </Link>
+            </span>
           ) : null}
         </label>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -234,7 +243,7 @@ export function ResumeParserSearch({ jobs }: { jobs: ResumeParserJob[] }) {
                 <th className="px-4 py-3 font-medium">Experience</th>
                 <th className="px-4 py-3 font-medium">Skills</th>
                 <th className="px-4 py-3 font-medium">In Resume Parser since</th>
-                <th className="px-4 py-3 font-medium">HireOS</th>
+                <th className="px-4 py-3 font-medium">Add to job</th>
               </tr>
             </thead>
             <tbody>
@@ -262,26 +271,50 @@ export function ResumeParserSearch({ jobs }: { jobs: ResumeParserJob[] }) {
                       ))}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{dateText(p.addedAt)}</td>
-                    <td className="px-4 py-3">
+                    <td className="min-w-[14rem] px-4 py-3">
                       {candidateId ? (
                         <Link href={`/dashboard/candidates/${candidateId}`} className="text-foreground/90 hover:underline">
                           {state.message ?? "Already in HireOS"}
                           <span className="block text-xs text-muted-foreground">Open candidate</span>
                         </Link>
                       ) : null}
-                      {state.note ? <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">{state.note}</p> : null}
-                      {!candidateId || (job && !state.inJob) ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className={candidateId ? "mt-2" : undefined}
-                          disabled={state.busy}
-                          onClick={() => void add(p)}
-                        >
-                          {state.busy ? "Adding…" : job ? "Add to job" : "Add to Talent Pool"}
-                        </Button>
+                      {state.doneJobId ? (
+                        <Link href={`/dashboard/jobs/${state.doneJobId}`} className="block text-xs text-muted-foreground hover:underline">
+                          Open job in Jobs &amp; Candidates
+                        </Link>
                       ) : null}
+                      {state.note ? <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">{state.note}</p> : null}
+                      {jobs.length === 0 ? (
+                        <Link href="/dashboard/jobs/new" className="mt-1 block text-xs text-muted-foreground underline">
+                          Create a job first
+                        </Link>
+                      ) : (
+                        <div className={candidateId ? "mt-2 space-y-2" : "space-y-2"}>
+                          <select
+                            className="h-8 w-full rounded-lg border border-input bg-background px-2 text-xs text-foreground"
+                            aria-label={`Job for ${p.name || p.email || `profile ${p.id}`}`}
+                            value={rowJob[p.id] ?? jobId}
+                            onChange={(e) => setRowJob((r) => ({ ...r, [p.id]: e.target.value }))}
+                            disabled={state.busy}
+                          >
+                            <option value="">Choose job…</option>
+                            {jobs.map((j) => (
+                              <option key={j.id} value={j.id}>
+                                {j.title}
+                              </option>
+                            ))}
+                          </select>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={state.busy || !(rowJob[p.id] ?? jobId) || (rowJob[p.id] ?? jobId) === state.doneJobId}
+                            onClick={() => void add(p, rowJob[p.id] ?? jobId)}
+                          >
+                            {state.busy ? "Adding…" : "Add to job"}
+                          </Button>
+                        </div>
+                      )}
                       {state.error ? (
                         <p role="alert" className="mt-1 max-w-[16rem] text-xs text-destructive">
                           {state.error}

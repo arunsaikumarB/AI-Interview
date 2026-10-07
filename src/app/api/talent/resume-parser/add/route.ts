@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 const bodySchema = z
   .object({
     profileId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    jobId: z.string().trim().min(1).max(64).optional(),
+    jobId: z.string().trim().min(1).max(64),
   })
   .strict();
 
@@ -31,9 +31,9 @@ function noStore(res: Response): Response {
 }
 
 /**
- * Adds one Resume Parser profile to the Talent Pool, and optionally to one OPEN job with
- * advisory AI screening queued. Only the profile id and job id come from the browser; the
- * profile details come from this server's own recent search results.
+ * Adds one Resume Parser profile to one OPEN job (candidate + Applied application) and queues
+ * advisory AI screening. Only the profile id and job id come from the browser; the profile
+ * details come from this server's own recent search results.
  */
 export async function POST(request: Request) {
   try {
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       return noStore(jsonError("Choose a profile to add.", 400));
     }
     const parsed = bodySchema.safeParse(body);
-    if (!parsed.success) return noStore(jsonError("Choose a profile to add.", 400));
+    if (!parsed.success) return noStore(jsonError("Choose a profile and an open job.", 400));
     const { profileId, jobId } = parsed.data;
 
     const client = getResumeParserClient();
@@ -59,14 +59,11 @@ export async function POST(request: Request) {
     const profile = recallProfile(organizationId, profileId);
     if (!profile) return noStore(jsonError("Search again, then add this profile.", 404));
 
-    let job: { id: string; title: string } | null = null;
-    if (jobId) {
-      job = await prisma.job.findFirst({
-        where: { id: jobId, organizationId, status: "OPEN" },
-        select: { id: true, title: true },
-      });
-      if (!job) return noStore(jsonError("Choose an open job opening.", 400));
-    }
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId, status: "OPEN" },
+      select: { id: true, title: true },
+    });
+    if (!job) return noStore(jsonError("Choose an open job opening.", 400));
 
     const { extractResumeText } = await import("@/lib/resume/parse");
     const { embedCandidate } = await import("@/lib/ai/embeddings");
@@ -87,8 +84,6 @@ export async function POST(request: Request) {
       case "invalid_file":
         return noStore(jsonError(`The resume file cannot be used: ${result.reason}`, 422));
     }
-
-    if (!job) return noStore(jsonOk(result, { status: result.status === "created" ? 201 : 200 }));
 
     const { queueAutoScreening } = await import("@/lib/ai/auto-screening");
     const placed = await addCandidateToJob(
