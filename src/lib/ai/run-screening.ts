@@ -10,8 +10,12 @@ import { embedCandidate } from "@/lib/ai/embeddings";
 /**
  * Advisory screening for one application.
  * GUARDRAIL: does NOT touch Application.stage or Application.status.
+ * `background`: the AI call gives way (AIError PREEMPTED) to interviews and staff-started AI.
  */
-export async function screenApplication(applicationId: string): Promise<{
+export async function screenApplication(
+  applicationId: string,
+  options?: { background?: boolean },
+): Promise<{
   evaluation: {
     id: string;
     kind: "RESUME_SCREEN";
@@ -55,7 +59,7 @@ export async function screenApplication(applicationId: string): Promise<{
       certifications: application.candidate.certifications,
       resumeText,
     },
-  });
+  }, { background: options?.background });
 
   if (!result.reasoning?.trim()) {
     throw new AIError("VALIDATION", "AIEvaluation.reasoning cannot be empty");

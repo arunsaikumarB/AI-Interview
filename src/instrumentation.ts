@@ -12,5 +12,10 @@ export async function register() {
     void startCareersSyncSchedule().catch((err: unknown) => {
       console.error("[careers-sync] could not start", { name: err instanceof Error ? err.name : typeof err });
     });
+
+    const { startScreeningSweep } = await import("@/lib/ai/screening-sweep");
+    void startScreeningSweep().catch((err: unknown) => {
+      console.error("[screening-sweep] could not start", { name: err instanceof Error ? err.name : typeof err });
+    });
   }
 }

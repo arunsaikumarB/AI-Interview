@@ -65,6 +65,11 @@ type WorkerState = { running: boolean; lock: Promise<unknown> };
 const g = globalThis as typeof globalThis & { __hireosProfileQueue?: WorkerState };
 const shared: WorkerState = (g.__hireosProfileQueue ??= { running: false, lock: Promise.resolve() });
 
+/** True while the background resume reader still has work in this process. */
+export function profileWorkerRunning(): boolean {
+  return shared.running;
+}
+
 export async function defaultQueueFile(): Promise<string> {
   const { getStorageRoot } = await import("@/lib/storage");
   return path.join(getStorageRoot(), "queue", "resume-profile.json");

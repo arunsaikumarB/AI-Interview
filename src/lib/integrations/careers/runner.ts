@@ -10,7 +10,8 @@ import { laterSiteTime, shiftSiteTime } from "./text";
 /**
  * Runs the careers sync: one run at a time per server process, on a schedule and on demand.
  * Progress is kept in a small JSON file under STORAGE_ROOT. The first complete full read is the
- * initial import (no AI screening); later applications are screened (advisory only).
+ * initial import (not queued here; the background screening sweep reaches it); later applications
+ * are queued for AI screening straight away (advisory only).
  */
 
 const FULL_SWEEP_EVERY_MS = 6 * 60 * 60 * 1000;

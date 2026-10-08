@@ -286,6 +286,7 @@ CAREERS_API_KEY="<Bearer key from the WordPress developer>"
 # Optional:
 # CAREERS_SYNC_INTERVAL_MINUTES=15      # 0 = only "Sync now"; default 15 in production
 # CAREERS_ORGANIZATION_ID="<org id>"    # only needed if the database has more than one organization
+# AUTO_SCREENING_SWEEP_MINUTES=2        # auto AI screening of unscreened applicants; 0 = off; default 2 in production
 ```
 
 Without both values nothing runs and the card is hidden. The first sync starts about a minute after the app

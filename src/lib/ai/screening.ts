@@ -231,7 +231,7 @@ export async function runResumeScreening(params: {
     | "screeningCriteria"
   >;
   candidate: ScreeningCandidateInput;
-}): Promise<{ result: ScreeningResult; model: string; raw: unknown }> {
+}, options?: { background?: boolean }): Promise<{ result: ScreeningResult; model: string; raw: unknown }> {
   const user = buildScreeningUserPrompt(params);
 
   try {
@@ -246,6 +246,7 @@ export async function runResumeScreening(params: {
           string,
           unknown
         >,
+        background: options?.background,
       },
     );
 
