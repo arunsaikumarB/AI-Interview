@@ -21,6 +21,12 @@ import { createInterface } from "node:readline/promises";
 import path from "node:path";
 
 const CAREERS = "wordpress_careers";
+const HIREOS_FOLDERS = new Set(["resumes", "interviews", "recordings", "assessments", "misc"]);
+const DEMO_FOLDER = /^_(demo-polish|uat-quarantine)-/;
+
+function isHireosFolder(name: string): boolean {
+  return HIREOS_FOLDERS.has(name) || DEMO_FOLDER.test(name);
+}
 
 type Args = { apply: boolean; confirmDb: string | null };
 
@@ -164,15 +170,21 @@ async function main(): Promise<number> {
       return files
         .filter((f) => {
           const top = f.rel.split("/")[0];
-          if (!f.rel.includes("/") || top === "queue" || top === "integrations") return false;
+          if (!f.rel.includes("/") || !isHireosFolder(top)) return false;
           if (f.mtime >= cutoff) return false;
           if (referenced.has(f.rel)) return false;
-          if (top.startsWith("_")) return true;
-          if (top === "resumes") return true;
+          if (DEMO_FOLDER.test(top) || top === "resumes") return true;
           if (top === "interviews") return !sessionIds.has(f.rel.split("/")[1] ?? "");
           return !tokens.some((t) => f.rel.includes(t));
         })
         .map(({ rel, abs, bytes }) => ({ rel, abs, bytes }));
+    };
+    const reportOtherFolders = async () => {
+      const entries = await readdir(storageRoot, { withFileTypes: true }).catch(() => []);
+      const other = entries
+        .filter((e) => e.isDirectory() && !isHireosFolder(e.name) && e.name !== "queue" && e.name !== "integrations")
+        .map((e) => `${e.name}/`);
+      if (other.length) console.log(`Left alone (not HireOS folders): ${other.join(", ")}`);
     };
 
     if (!args.apply) {
@@ -190,6 +202,7 @@ async function main(): Promise<number> {
       if (byTop.size === 0) console.log("    none");
       console.log("");
       console.log(`Storage: ${storageRoot}  (files changed after ${cutoff.toISOString()} are never deleted)`);
+      await reportOtherFolders();
       console.log("Dry run only. Nothing was changed. Take a backup, then re-run with --apply.");
       return 0;
     }
@@ -253,7 +266,11 @@ async function main(): Promise<number> {
         failed++;
       }
     }
-    await removeEmptyDirs(storageRoot, 0);
+    for (const top of Array.from(HIREOS_FOLDERS)) await removeEmptyDirs(path.join(storageRoot, top), 1);
+    for (const e of await readdir(storageRoot, { withFileTypes: true }).catch(() => [])) {
+      if (e.isDirectory() && DEMO_FOLDER.test(e.name)) await removeEmptyDirs(path.join(storageRoot, e.name), 1);
+    }
+    await reportOtherFolders();
     console.log(`Files done. Deleted ${removed} file(s), ${mb(bytes)}${failed ? `; ${failed} could not be deleted` : ""}.`);
     return failed ? 2 : 0;
   } catch (err) {
