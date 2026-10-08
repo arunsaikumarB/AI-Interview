@@ -48,23 +48,26 @@ export function ScreenAllButton({ jobId }: { jobId: string }) {
       let screened = 0;
       let failed = 0;
       let queued = 0;
+      let queueFull = 0;
 
       for (let i = 0; i < withResume.length; i++) {
         const app = withResume[i];
-        setProgress(`Screening ${i + 1} of ${withResume.length}… ${app.candidateName}`);
-        const res = await fetch(`/api/applications/${app.id}/screen`, {
+        setProgress(`Queuing ${i + 1} of ${withResume.length}… ${app.candidateName}`);
+        const res = await fetch(`/api/applications/${app.id}/screen?batch=1`, {
           method: "POST",
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && isAcceptedEnqueue(String(data.status ?? ""))) {
           queued += 1;
         } else if (res.ok) screened += 1;
+        else if (res.status === 429) queueFull += 1;
         else failed += 1;
       }
 
-      if (queued) {
+      if (queued || queueFull) {
         toast.success(
-          `${queued} screening job(s) queued` +
+          `${queued} screening job(s) queued; results appear on each candidate as the AI finishes` +
+            (queueFull ? `, ${queueFull} not queued (queue full, run Screen all again later)` : "") +
             (failed ? `, ${failed} failed` : "") +
             (skipped ? `, ${skipped} skipped (no resume)` : "") +
             ". Stages unchanged.",

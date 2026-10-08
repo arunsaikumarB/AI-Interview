@@ -7,7 +7,8 @@ import {
 } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
 import { AIError } from "@/lib/ai/ollama";
-import { screenApplication } from "@/lib/ai/run-screening";
+import { queueAutoScreening } from "@/lib/ai/auto-screening";
+import { getManualScreeningRunner } from "@/lib/ai/manual-screening";
 import { enqueueDjangoJob } from "@/lib/staff-async/enqueue";
 import { useDjangoAsync } from "@/lib/staff-async/flag";
 import { djangoReadToResponse } from "@/lib/staff-reads/errors";
@@ -15,7 +16,8 @@ import { djangoReadToResponse } from "@/lib/staff-reads/errors";
 type Ctx = { params: { id: string } };
 
 /**
- * Advisory resume screening via local Ollama.
+ * Advisory resume screening via local Ollama, started in the background; the page polls
+ * screen-status. `?batch=1` (Screen all) uses the one-at-a-time automatic queue instead.
  * NEVER changes Application.stage or Application.status.
  * Each run creates a NEW AIEvaluation (history preserved).
  */
@@ -29,7 +31,10 @@ export async function POST(request: Request, { params }: Ctx) {
 
     const application = await prisma.application.findUnique({
       where: { id: params.id },
-      include: { job: { select: { organizationId: true } } },
+      include: {
+        job: { select: { organizationId: true } },
+        candidate: { select: { resumeText: true } },
+      },
     });
 
     if (!application) {
@@ -59,14 +64,38 @@ export async function POST(request: Request, { params }: Ctx) {
       });
     }
 
-    const { evaluation, embeddingUpdated } = await screenApplication(params.id);
+    if (!application.candidate.resumeText?.trim()) {
+      return Response.json(
+        { error: "No resume text available for this candidate. Upload and parse a resume first." },
+        { status: 400 },
+      );
+    }
 
+    if (new URL(request.url).searchParams.get("batch") === "1") {
+      if (!queueAutoScreening(params.id)) {
+        return Response.json(
+          { error: "The AI screening queue is full. Try again later.", busy: true },
+          { status: 429 },
+        );
+      }
+      return jsonOk({
+        status: "QUEUED",
+        advisoryOnly: true,
+        message: "AI screening queued. Application stage/status unchanged — recruiter decides.",
+      });
+    }
+
+    const started = getManualScreeningRunner().start(params.id);
+    if (started === "BUSY") {
+      return Response.json(
+        { error: "The AI is already running other screenings. Try again in a minute.", busy: true },
+        { status: 429 },
+      );
+    }
     return jsonOk({
-      evaluation,
-      embeddingUpdated,
+      status: started,
       advisoryOnly: true,
-      message:
-        "AI suggestion stored. Application stage/status unchanged — recruiter decides.",
+      message: "AI screening started. Application stage/status unchanged — recruiter decides.",
     });
   } catch (err) {
     if (err instanceof AIError) {

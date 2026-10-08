@@ -4,6 +4,7 @@ import { AuthError, canManagePipeline, requireUser } from "@/lib/auth/rbac";
 import { handleApiError, jsonOk } from "@/lib/api";
 import { djangoAsyncStatus } from "@/lib/staff-async/enqueue";
 import { normalizeAsyncStatus, useDjangoAsync } from "@/lib/staff-async/flag";
+import { getManualScreeningRunner } from "@/lib/ai/manual-screening";
 import { djangoReadToResponse } from "@/lib/staff-reads/errors";
 
 type Ctx = { params: { id: string } };
@@ -14,9 +15,6 @@ export async function GET(request: Request, { params }: Ctx) {
     const user = requireUser(session);
     if (!canManagePipeline(user.role)) {
       throw new AuthError("Insufficient permissions", 403);
-    }
-    if (!useDjangoAsync()) {
-      return jsonOk({ status: "IDLE", task_id: null });
     }
     const application = await prisma.application.findUnique({
       where: { id: params.id },
@@ -31,6 +29,17 @@ export async function GET(request: Request, { params }: Ctx) {
       application.job.organizationId !== user.organizationId
     ) {
       throw new AuthError("Insufficient permissions", 403);
+    }
+    if (!useDjangoAsync()) {
+      const local = getManualScreeningRunner().status(params.id);
+      if (!local) {
+        return jsonOk({
+          status: "FAILED",
+          task_id: null,
+          error: "No screening is running for this candidate. Run AI screening again.",
+        });
+      }
+      return jsonOk({ status: local.status, task_id: null, ...(local.error ? { error: local.error } : {}) });
     }
     const body = await djangoAsyncStatus("/api/v1/screening/status/", request, {
       application_id: params.id,

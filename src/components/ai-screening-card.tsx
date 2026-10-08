@@ -68,6 +68,7 @@ export function AIScreeningCard({
   const poll = useStaffAsyncPoll({
     url: pollUrl,
     enabled: Boolean(pollUrl),
+    maxWaitMs: 12 * 60 * 1000,
     onComplete: () => {
       setLoading(false);
       setPollUrl(null);
@@ -87,10 +88,23 @@ export function AIScreeningCard({
     setPollUrl(null);
     let queued = false;
     try {
-      const res = await fetch(`/api/applications/${applicationId}/screen`, {
-        method: "POST",
-      });
-      const data = await res.json();
+      let res: Response;
+      try {
+        res = await fetch(`/api/applications/${applicationId}/screen`, { method: "POST" });
+      } catch {
+        setError({ message: "Could not reach the server. Check your connection and try again.", ollamaDown: false });
+        return;
+      }
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+        ollamaDown?: boolean;
+        status?: string;
+        evaluation?: unknown;
+      } | null;
+      if (!data) {
+        setError({ message: `The server did not answer properly (HTTP ${res.status}). Try again.`, ollamaDown: false });
+        return;
+      }
       if (!res.ok) {
         setError({
           message: data.error ?? "Screening failed",
@@ -109,11 +123,6 @@ export function AIScreeningCard({
         return;
       }
       router.refresh();
-    } catch {
-      setError({
-        message: "Could not reach the server. Is the app running?",
-        ollamaDown: false,
-      });
     } finally {
       if (!queued) setLoading(false);
     }
@@ -143,7 +152,8 @@ export function AIScreeningCard({
 
       {pollUrl ? (
         <p className="text-sm text-muted-foreground">
-          {staffAsyncLabel(poll.status ?? asyncStatus)}
+          {staffAsyncLabel(poll.status ?? asyncStatus)} on the local AI… {elapsed}s. This can take a few
+          minutes when the server is busy; the result appears here when it is ready.
         </p>
       ) : null}
 
@@ -175,10 +185,9 @@ export function AIScreeningCard({
           <div className="h-3 rounded bg-muted" />
           <div className="h-3 rounded bg-muted" />
           <div className="h-3 w-2/3 rounded bg-muted" />
-          <p className="text-sm text-muted-foreground">
-            Running advisory resume match on the local AI model… {elapsed}s. This can take
-            up to 2 minutes.
-          </p>
+          {pollUrl ? null : (
+            <p className="text-sm text-muted-foreground">Starting advisory resume match… {elapsed}s</p>
+          )}
         </div>
       ) : null}
 

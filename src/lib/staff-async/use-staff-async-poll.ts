@@ -46,7 +46,14 @@ export function useStaffAsyncPoll(opts: {
           error_class?: string;
         };
         if (!res.ok) {
-          setError(data.error ?? "Status check failed");
+          const msg = data.error ?? "Status check failed";
+          setError(msg);
+          if (res.status === 401 || res.status === 403 || res.status === 404) {
+            opts.onFailed?.(msg);
+            return;
+          }
+          attempt += 1;
+          timer = setTimeout(() => void tick(), nextDelay(attempt));
           return;
         }
         const st = String(data.status ?? "idle");
