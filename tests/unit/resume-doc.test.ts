@@ -74,6 +74,12 @@ describe("readDocText (Word 97–2003 files saved by Microsoft Word)", () => {
     assert.doesNotMatch(text, /\n{3,}/);
     assert.equal(text, text.trim());
   });
+
+  it("extractResumeText drops NUL characters, which Postgres refuses to store", async () => {
+    const buffer = Buffer.from("Ramya\0 Sharma\nSQL\0, Power BI", "utf8");
+    const text = await extractResumeText({ buffer, mimeType: "text/plain", fileName: "cv.txt" });
+    assert.equal(text, "Ramya Sharma\nSQL, Power BI");
+  });
 });
 
 describe(".doc is accepted only where staff bring resumes in", () => {

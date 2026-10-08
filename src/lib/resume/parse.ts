@@ -148,6 +148,7 @@ export async function extractResumeText(params: {
 
 function cleanText(text: string): string {
   return text
+    .replace(/\0/g, "")
     .replace(/\r\n/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")

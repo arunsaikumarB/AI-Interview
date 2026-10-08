@@ -5,7 +5,7 @@
 const PAGE_MARKER_LINE = /^[ \t]*--[ \t]*\d+[ \t]+of[ \t]+\d+[ \t]*--[ \t]*$/gm;
 
 export function stripPageMarkers(text: string): string {
-  return text.replace(PAGE_MARKER_LINE, "").replace(/\n{3,}/g, "\n\n").trim();
+  return text.replace(/\0/g, "").replace(PAGE_MARKER_LINE, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** For stored text that predates extraction-time stripping. */

@@ -16,6 +16,10 @@ describe("stripPageMarkers", () => {
     const raw = "Led team -- 5 of 8 engineers promoted\n-- notes --";
     assert.equal(stripPageMarkers(raw), raw);
   });
+
+  it("drops NUL characters, which Postgres refuses to store", () => {
+    assert.equal(stripPageMarkers("Ra\0mya\nSQL\0"), "Ramya\nSQL");
+  });
 });
 
 describe("publicResumeText", () => {
