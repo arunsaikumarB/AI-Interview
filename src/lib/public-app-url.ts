@@ -102,6 +102,56 @@ function lanIpFromEnv(): string | null {
   return raw;
 }
 
+function isIPv4Literal(hostname: string): boolean {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
+}
+
+/** HTTPS origin the candidate's browser used (e.g. nginx on the app server). */
+function httpsOriginFromRequest(request?: Request): string | null {
+  if (!request) return null;
+  const xfProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const host = (
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? ""
+  )
+    .split(",")[0]!
+    .trim();
+  let proto = xfProto;
+  if (!proto) {
+    try {
+      proto = new URL(request.url).protocol.replace(":", "");
+    } catch {
+      return null;
+    }
+  }
+  if (proto !== "https" || !host) return null;
+  try {
+    const url = new URL(`https://${host}`);
+    if (isLoopbackHostname(url.hostname)) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Configured HTTPS address (PUBLIC_HTTPS_URL, then NEXT_PUBLIC_APP_URL). */
+function configuredHttpsOrigin(): string | null {
+  for (const raw of [process.env.PUBLIC_HTTPS_URL, process.env.NEXT_PUBLIC_APP_URL]) {
+    const value = (raw ?? "").trim();
+    if (!value) continue;
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "https:" || isLoopbackHostname(url.hostname)) continue;
+    // An IP from a previous Wi‑Fi times out on the phone; only trust IPs this machine has.
+    if (isIPv4Literal(url.hostname) && !lanAddressesOnThisPc().has(url.hostname)) continue;
+    return url.origin;
+  }
+  return null;
+}
+
 function phoneHttpsOrigin(): { origin: string; lanIp: string } | null {
   const live = detectLanIPv4();
   if (!live) return null;
@@ -249,8 +299,18 @@ export function secondaryPairUrl(
   lanIp?: string;
   requiresHttpsTrust?: boolean;
 } {
-  // Always use the live Wi‑Fi IP. PUBLIC_HTTPS_URL in .env is often a stale
-  // address from another network (ERR_CONNECTION_TIMED_OUT on the phone).
+  // The phone camera needs HTTPS. Prefer the HTTPS address the candidate is already
+  // using (server behind nginx), then a configured one; the live LAN IP on
+  // PUBLIC_HTTPS_PORT is only for the laptop pilot proxy.
+  const https = httpsOriginFromRequest(request) ?? configuredHttpsOrigin();
+  if (https) {
+    return {
+      pairUrl: `${https}/interview/secondary/${pairToken}`,
+      reachableFromPhone: true,
+      requiresHttpsTrust: true,
+    };
+  }
+
   const phone = phoneHttpsOrigin();
   if (phone) {
     return {

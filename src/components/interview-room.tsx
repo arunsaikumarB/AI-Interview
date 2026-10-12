@@ -293,7 +293,7 @@ export function InterviewRoom({ token }: { token: string }) {
     setPendingProcessing(Boolean(data.pendingProcessing));
     if (data.pendingProcessing) {
       setError(
-        "AI is still processing your last answer — your text was saved. Retry when ready.",
+        "AI is still processing your last answer — your answer was saved. Retry when ready.",
       );
     } else {
       setError((prev) =>
@@ -747,12 +747,9 @@ export function InterviewRoom({ token }: { token: string }) {
       // No answer saved yet (e.g. speech was down) — refresh room, don't look like an outage.
       if (res.status === 400 && data.code === "VALIDATION") {
         setPendingProcessing(false);
-        setError(
-          data.error === "No answered turns to process"
-            ? "Answer the current question first (type or record). Speech service must be running for voice."
-            : (data.error ?? "Nothing to continue yet"),
-        );
+        setError(null);
         await loadState();
+        setError("Your last answer was not saved. Please answer the current question.");
         return;
       }
       setError(data.error ?? "Still processing — retry shortly");
@@ -844,7 +841,14 @@ export function InterviewRoom({ token }: { token: string }) {
     setTranscriptFailed(false);
     setHeardLabel(null);
     chunks.current = [];
-    const stream = await ensureMic();
+    let stream: MediaStream;
+    try {
+      stream = await ensureMic();
+    } catch (err) {
+      setError(microphoneErrorMessage(err));
+      return;
+    }
+    setError(null);
     const ctx = new AudioContext();
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
@@ -926,7 +930,9 @@ export function InterviewRoom({ token }: { token: string }) {
     } catch {
       setVoiceSubmitting(false);
       setThinking(false);
-      setError("Send failed");
+      setError(
+        "Your recording could not be sent and was not saved. Check your connection, then record again or type your answer.",
+      );
       return;
     }
 
@@ -936,7 +942,11 @@ export function InterviewRoom({ token }: { token: string }) {
     if (resStatus === 503 && data.speechDown) {
       setThinking(false);
       setAnswerMode("text");
-      setError("Speech service is offline. Continue by typing your answer.");
+      setError(
+        typeof data.error === "string"
+          ? data.error
+          : "We couldn't process your recorded answer, and it was not saved. Please type your answer instead.",
+      );
       return;
     }
 
@@ -1308,7 +1318,7 @@ export function InterviewRoom({ token }: { token: string }) {
 
       <div className="relative z-10 grid min-h-0 flex-1 gap-4 overflow-y-auto lg:overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(280px,32%)]">
         {/* LEFT */}
-        <div className="flex flex-col gap-3 lg:min-h-0 lg:overflow-hidden">
+        <div className="flex flex-col gap-3 [scrollbar-color:rgba(255,255,255,0.15)_transparent] [scrollbar-width:thin] lg:min-h-0 lg:overflow-y-auto">
           {/* Context bar */}
           <div className="grid shrink-0 gap-3 sm:grid-cols-[1.2fr_1fr]">
             <div className="rounded-2xl border border-white/10 bg-[#0d121c]/90 px-4 py-3">
@@ -1353,16 +1363,20 @@ export function InterviewRoom({ token }: { token: string }) {
           </div>
 
           {/* Orb + question */}
-          <div className="flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d121c]/70 lg:min-h-0">
-            <div className="min-h-0 flex-1 overflow-hidden px-4 pb-2 pt-4 md:px-6 [@media(max-height:820px)]:pt-3">
-              <AIInterviewOrb
-                state={orbState}
-                heading={heading}
-                statusLabel={statusLabel}
-                guidance={guidance}
-                reducedMotion={reducedMotion}
-                fill
-              />
+          <div className="flex min-h-[420px] flex-1 flex-col rounded-2xl border border-white/10 bg-[#0d121c]/70 lg:min-h-fit">
+            {/* Absolute so the orb never adds to the card's minimum height: on short
+                windows it shrinks to the floor and the column scrolls instead of overlapping. */}
+            <div className="relative min-h-[128px] flex-1">
+              <div className="absolute inset-0 overflow-hidden px-4 pb-2 pt-4 md:px-6 [@media(max-height:820px)]:pt-3">
+                <AIInterviewOrb
+                  state={orbState}
+                  heading={heading}
+                  statusLabel={statusLabel}
+                  guidance={guidance}
+                  reducedMotion={reducedMotion}
+                  fill
+                />
+              </div>
             </div>
 
             <div className="shrink-0 px-4 pb-2 md:px-6">
@@ -1422,31 +1436,20 @@ export function InterviewRoom({ token }: { token: string }) {
                 <div className="mb-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-50">
                   <p>
                     {error ??
-                      "AI is still processing your last answer — your text was saved. Retry when ready."}
+                      "AI is still processing your last answer — your answer was saved. Retry when ready."}
                   </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={continueTurn}
-                      disabled={thinking}
-                    >
-                      {thinking ? "Retrying…" : "Retry AI (answer already saved)"}
-                    </Button>
-                    {info.mode === "VOICE" &&
-                    error?.toLowerCase().includes("speech") ? (
+                  {pendingProcessing ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
                       <Button
                         size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setAnswerMode("text");
-                          setError(null);
-                        }}
+                        variant="outline"
+                        onClick={continueTurn}
+                        disabled={thinking}
                       >
-                        Switch to typing
+                        {thinking ? "Retrying…" : "Retry AI (answer already saved)"}
                       </Button>
-                    ) : null}
-                  </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -1535,7 +1538,7 @@ export function InterviewRoom({ token }: { token: string }) {
         </div>
 
         {/* RIGHT */}
-        <aside className="flex flex-col gap-3 lg:min-h-0 lg:overflow-hidden">
+        <aside className="flex flex-col gap-3 [scrollbar-color:rgba(255,255,255,0.15)_transparent] [scrollbar-width:thin] lg:min-h-0 lg:overflow-y-auto">
           <PrimaryCameraPanel
             stream={primaryCameraStream}
             cameraStatus={primaryCameraStatus}
@@ -1551,7 +1554,7 @@ export function InterviewRoom({ token }: { token: string }) {
                 : undefined
             }
             onDismiss={dismissPrimaryCamera}
-            className="min-h-[240px] flex-1 lg:min-h-0"
+            className="min-h-[240px] flex-1 lg:min-h-fit"
             fill
           />
 
@@ -1589,4 +1592,18 @@ function formatElapsed(sec: number) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function microphoneErrorMessage(err: unknown): string {
+  if (typeof window !== "undefined" && !window.isSecureContext) {
+    return "Voice answers need a secure (https://) interview link. Type your answer, or ask the recruiter for the secure link.";
+  }
+  const name = err instanceof Error ? err.name : "";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "Microphone access is blocked. Allow the microphone in your browser's address bar, or type your answer.";
+  }
+  if (name === "NotFoundError") {
+    return "No microphone was found. Connect one, or type your answer.";
+  }
+  return "The microphone could not be started. Close other apps using it, or type your answer.";
 }

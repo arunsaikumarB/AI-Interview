@@ -113,6 +113,23 @@ export function foregroundChatBusy(quietMs = 60_000, now = Date.now()): boolean 
   return traffic.foreground > 0 || now - traffic.lastForegroundAt < quietMs;
 }
 
+/**
+ * Run work a person is waiting on with foreground priority: in-flight background chat
+ * calls are cancelled and new ones wait until it finishes. Also used for speech-to-text,
+ * which shares the CPU with Ollama.
+ */
+export async function withForegroundAiPriority<T>(work: () => Promise<T>): Promise<T> {
+  traffic.foreground++;
+  traffic.lastForegroundAt = Date.now();
+  for (const c of Array.from(traffic.background)) c.abort();
+  try {
+    return await work();
+  } finally {
+    traffic.foreground--;
+    traffic.lastForegroundAt = Date.now();
+  }
+}
+
 async function ollamaFetch<T>(
   baseUrl: string,
   path: string,
@@ -229,15 +246,7 @@ export async function chatJSON<T>(
   },
 ): Promise<{ data: T; model: string; raw: unknown }> {
   if (options?.background) return chatJSONBackground(system, user, zodSchema, options);
-  traffic.foreground++;
-  traffic.lastForegroundAt = Date.now();
-  for (const c of Array.from(traffic.background)) c.abort();
-  try {
-    return await chatJSONOnce(system, user, zodSchema, options);
-  } finally {
-    traffic.foreground--;
-    traffic.lastForegroundAt = Date.now();
-  }
+  return withForegroundAiPriority(() => chatJSONOnce(system, user, zodSchema, options));
 }
 
 async function chatJSONBackground<T>(

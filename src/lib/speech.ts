@@ -81,7 +81,8 @@ export async function transcribeAudio(
   });
   form.append("audio", blob, filename);
 
-  const timeoutMs = Number(process.env.SPEECH_STT_TIMEOUT_MS ?? 60_000);
+  // CPU-only servers: Whisper on a long answer can take over a minute when Ollama is busy.
+  const timeoutMs = Number(process.env.SPEECH_STT_TIMEOUT_MS ?? 120_000);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 

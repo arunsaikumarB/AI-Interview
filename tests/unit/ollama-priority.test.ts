@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { z } from "zod";
-import { AIError, chatJSON, foregroundChatBusy } from "../../src/lib/ai/ollama";
+import { AIError, chatJSON, foregroundChatBusy, withForegroundAiPriority } from "../../src/lib/ai/ollama";
 
 const Shape = z.object({ ok: z.boolean() });
 const realFetch = globalThis.fetch;
@@ -81,6 +81,29 @@ describe("Ollama foreground priority", () => {
     pending[1].resolve();
     assert.deepEqual((await a).data, { ok: true });
     assert.deepEqual((await b).data, { ok: true });
+  });
+
+  it("non-chat foreground work (speech-to-text) cancels background calls and blocks new ones", async () => {
+    const pending = fakeOllama();
+    const background = chatJSON("s", "u", Shape, { background: true });
+    await until(() => pending.length === 1);
+
+    let release!: () => void;
+    const work = withForegroundAiPriority(() => new Promise<string>((r) => (release = () => r("heard"))));
+    await assert.rejects(background, (err: unknown) => err instanceof AIError && err.code === "PREEMPTED");
+    await assert.rejects(
+      chatJSON("s", "u", Shape, { background: true }),
+      (err: unknown) => err instanceof AIError && err.code === "PREEMPTED",
+    );
+    assert.equal(pending.length, 1, "no new background request while transcribing");
+    release();
+    assert.equal(await work, "heard");
+    assert.equal(foregroundChatBusy(0), false);
+  });
+
+  it("foreground work releases priority when it throws", async () => {
+    await assert.rejects(withForegroundAiPriority(async () => { throw new Error("stt down"); }), /stt down/);
+    assert.equal(foregroundChatBusy(0), false);
   });
 
   it("a background timeout is still reported as a timeout, not a preemption", async () => {

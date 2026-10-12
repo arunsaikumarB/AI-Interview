@@ -348,23 +348,21 @@ export function EnhancedProctoringSetup({
           </p>
           {localhostWarn ? (
             <p className="text-xs text-warning">
-              Could not build a phone-reachable URL. Run{" "}
-              <code className="text-foreground">npm run db:ensure</code> then{" "}
-              <code className="text-foreground">npm run https:up</code>, and
-              refresh the QR code.
+              This link cannot be opened from a phone. Please contact your
+              recruiter.
             </p>
           ) : httpsTrustHint ? (
             <p className="text-xs text-muted-foreground">
-              Phone and this PC must be on the <strong>same Wi‑Fi</strong> —
-              turn off mobile data. Scan a <strong>fresh QR</strong> (do not
-              reopen an old 192.168… tab). Brave will warn about the local
-              certificate: tap Advanced → Proceed, then Allow camera &amp;
-              microphone.
+              Your phone must be on the <strong>same network</strong> as this
+              computer (for example the office Wi‑Fi) — turn off mobile data.
+              Scan a <strong>fresh QR code</strong>; do not reopen an old tab.
+              If the phone shows a security warning, tap Advanced → Proceed,
+              then allow camera &amp; microphone.
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Phone must be on the same Wi‑Fi as this PC. Scan the QR or open
-              the URL above.
+              Your phone must be on the same network as this computer. Scan the
+              QR code or open the link above.
             </p>
           )}
         </div>

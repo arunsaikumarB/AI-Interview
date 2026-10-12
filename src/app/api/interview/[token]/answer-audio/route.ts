@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { AIError } from "@/lib/ai/ollama";
+import { AIError, withForegroundAiPriority } from "@/lib/ai/ollama";
 import {
   mapAnswerProcessError,
   submitInterviewAnswer,
@@ -21,6 +21,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 25 * 1024 * 1024;
+
+const VOICE_UNAVAILABLE_MESSAGE =
+  "We couldn't process your recorded answer, and it was not saved. Please type your answer instead.";
 
 /**
  * VOICE answer: upload audio → local STT → same submit path as /answer.
@@ -113,18 +116,24 @@ export async function POST(request: Request, { params }: Ctx) {
       avgLogprob: number;
     };
     try {
-      transcript = await transcribeAudio(
-        bytes,
-        file.name || `a${current.sequence}.${ext}`,
-        file.type || (ext === "wav" ? "audio/wav" : "audio/webm"),
+      transcript = await withForegroundAiPriority(() =>
+        transcribeAudio(
+          bytes,
+          file.name || `a${current.sequence}.${ext}`,
+          file.type || (ext === "wav" ? "audio/wav" : "audio/webm"),
+        ),
       );
     } catch (err) {
       if (err instanceof SpeechError) {
+        console.error("[answer-audio] speech-to-text failed", {
+          code: err.code,
+          message: err.message,
+        });
         return Response.json(
           {
-            error: err.message,
-            speechDown: err.speechDown,
-            retryable: true,
+            error: VOICE_UNAVAILABLE_MESSAGE,
+            speechDown: true,
+            answerSaved: false,
           },
           { status: 503 },
         );
@@ -170,11 +179,12 @@ export async function POST(request: Request, { params }: Ctx) {
       return mapAnswerProcessError(err);
     }
   } catch (err) {
-    console.error(err);
+    console.error("[answer-audio] voice answer failed", err);
     return Response.json(
       {
-        error: err instanceof Error ? err.message : "Audio answer failed",
-        retryable: true,
+        error: VOICE_UNAVAILABLE_MESSAGE,
+        speechDown: true,
+        answerSaved: false,
       },
       { status: 503 },
     );

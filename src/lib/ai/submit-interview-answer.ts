@@ -31,11 +31,18 @@ export async function submitInterviewAnswer(params: {
   return processAnswerTurn(params.sessionId);
 }
 
+/** Candidate-facing text only — AI error messages carry internal hosts and model details. */
+export const AI_UNAVAILABLE_MESSAGE =
+  "The AI interviewer is not responding right now. Your answer was saved — retry in a moment.";
+export const ANSWER_PROCESSING_FAILED_MESSAGE =
+  "Your answer could not be processed right now. Retry in a moment.";
+
 export function mapAnswerProcessError(err: unknown): Response {
   if (err instanceof AIError) {
+    console.error("[interview] answer processing failed", { code: err.code, message: err.message });
     return Response.json(
       {
-        error: err.message,
+        error: AI_UNAVAILABLE_MESSAGE,
         code: err.code,
         retryable: true,
         ollamaDown:
@@ -44,10 +51,10 @@ export function mapAnswerProcessError(err: unknown): Response {
       { status: 503 },
     );
   }
-  console.error(err);
+  console.error("[interview] answer processing failed", err);
   return Response.json(
     {
-      error: err instanceof Error ? err.message : "Answer processing failed",
+      error: ANSWER_PROCESSING_FAILED_MESSAGE,
       retryable: true,
     },
     { status: 503 },

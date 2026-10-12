@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { AIError } from "@/lib/ai/ollama";
 import { processAnswerTurn } from "@/lib/ai/process-answer-turn";
+import { mapAnswerProcessError } from "@/lib/ai/submit-interview-answer";
 import {
   releaseSessionLock,
   tryAcquireSessionLock,
@@ -61,32 +62,15 @@ export async function POST(_request: Request, { params }: Ctx) {
       if (err.code === "VALIDATION") {
         return Response.json(
           {
-            error: err.message,
+            error: "There is no saved answer to process yet.",
             code: err.code,
             retryable: false,
           },
           { status: 400 },
         );
       }
-      return Response.json(
-        {
-          error: err.message,
-          code: err.code,
-          retryable: true,
-          ollamaDown:
-            err.code === "OLLAMA_UNREACHABLE" || err.code === "OLLAMA_HTTP",
-        },
-        { status: 503 },
-      );
     }
-    console.error(err);
-    return Response.json(
-      {
-        error: err instanceof Error ? err.message : "Continue failed",
-        retryable: true,
-      },
-      { status: 503 },
-    );
+    return mapAnswerProcessError(err);
   } finally {
     releaseSessionLock(session.id);
   }
