@@ -27,6 +27,7 @@ type Status =
       intervalMinutes: number;
       running: boolean;
       initialImportDone: boolean;
+      autoScreening?: boolean;
       lastRun: { trigger: "schedule" | "manual"; startedAt: string; finishedAt: string; report: Report } | null;
     };
 
@@ -117,9 +118,11 @@ export function CareersSyncCard() {
         <p className="text-muted-foreground">
           Active careers jobs and their applicants are brought in here
           {status.intervalMinutes > 0 ? ` every ${status.intervalMinutes} minutes` : " when you sync"}.
-          {status.initialImportDone
-            ? " New applicants get advisory AI screening."
-            : " The first import runs without AI screening."}
+          {status.autoScreening
+            ? " Every applicant with a resume gets advisory AI screening automatically."
+            : status.initialImportDone
+              ? " New applicants get advisory AI screening."
+              : " The first import runs without AI screening."}
         </p>
         {status.running ? (
           <p className="text-foreground" role="status">

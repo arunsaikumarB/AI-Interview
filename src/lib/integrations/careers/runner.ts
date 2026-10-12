@@ -6,6 +6,7 @@ import type { UploadDeps } from "@/lib/resume-upload/upload";
 import { parseCareersConfig, createHttpCareersClient, type CareersClient } from "./client";
 import { syncCareersApplications, type CareersSyncReport } from "./sync";
 import { laterSiteTime, shiftSiteTime } from "./text";
+import { sweepIntervalMinutes } from "@/lib/ai/screening-sweep";
 
 /**
  * Runs the careers sync: one run at a time per server process, on a schedule and on demand.
@@ -60,6 +61,8 @@ export type CareersSyncStatus = {
   intervalMinutes: number;
   running: boolean;
   initialImportDone: boolean;
+  /** The background sweep screens every applicant with a resume, including the initial import. */
+  autoScreening: boolean;
   lastRun: CareersSyncState["lastRun"];
 };
 
@@ -194,6 +197,7 @@ export function createCareersRunner(deps: CareersRunnerDeps, env: Record<string,
         intervalMinutes: intervalMinutes(env),
         running: running !== null,
         initialImportDone: state.screenAfter !== null,
+        autoScreening: sweepIntervalMinutes(env) > 0,
         lastRun: state.lastRun,
       };
     },
