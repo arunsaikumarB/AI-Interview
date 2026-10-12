@@ -1,7 +1,49 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { AIError } from "../../src/lib/ai/ollama";
-import { createManualScreeningRunner, screeningFailureMessage } from "../../src/lib/ai/manual-screening";
+import {
+  SCREENING_GIVE_UP_MS,
+  createManualScreeningRunner,
+  fallbackScreeningStatus,
+  parseScreeningSince,
+  screeningFailureMessage,
+} from "../../src/lib/ai/manual-screening";
+
+describe("screening status when this process has no record of the run", () => {
+  const now = Date.parse("2026-10-09T10:00:00.000Z");
+
+  it("reads a valid start time and rejects bad, future or old ones", () => {
+    assert.equal(parseScreeningSince("2026-10-09T09:59:00.000Z", now)?.toISOString(), "2026-10-09T09:59:00.000Z");
+    assert.equal(parseScreeningSince(null, now), null);
+    assert.equal(parseScreeningSince("not a date", now), null);
+    assert.equal(parseScreeningSince("2026-10-09T10:05:00.000Z", now), null);
+    assert.equal(parseScreeningSince("2026-10-07T10:00:00.000Z", now), null);
+    assert.equal(parseScreeningSince("x".repeat(41), now), null);
+  });
+
+  it("is finished when a result was saved after the click", () => {
+    const since = new Date(now - 90_000);
+    assert.deepEqual(fallbackScreeningStatus({ since, resultSince: true, now }), { status: "COMPLETED" });
+  });
+
+  it("keeps waiting while it may still be running in another app process", () => {
+    const since = new Date(now - 90_000);
+    assert.deepEqual(fallbackScreeningStatus({ since, resultSince: false, now }), { status: "PROCESSING" });
+  });
+
+  it("reports not finished once the longest possible run has passed", () => {
+    const since = new Date(now - SCREENING_GIVE_UP_MS - 1);
+    const r = fallbackScreeningStatus({ since, resultSince: false, now });
+    assert.equal(r.status, "FAILED");
+    assert.match(r.error ?? "", /did not finish/);
+  });
+
+  it("without a start time, says nothing is running (old pages)", () => {
+    const r = fallbackScreeningStatus({ since: null, resultSince: false, now });
+    assert.equal(r.status, "FAILED");
+    assert.match(r.error ?? "", /No screening is running/);
+  });
+});
 
 function deferred() {
   let resolve!: () => void;

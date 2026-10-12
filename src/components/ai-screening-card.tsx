@@ -99,6 +99,7 @@ export function AIScreeningCard({
         error?: string;
         ollamaDown?: boolean;
         status?: string;
+        startedAt?: string;
         evaluation?: unknown;
       } | null;
       if (!data) {
@@ -115,7 +116,8 @@ export function AIScreeningCard({
       if (isAcceptedEnqueue(String(data.status ?? ""))) {
         queued = true;
         setAsyncStatus(String(data.status));
-        setPollUrl(`/api/applications/${applicationId}/screen-status`);
+        const since = typeof data.startedAt === "string" ? `?since=${encodeURIComponent(data.startedAt)}` : "";
+        setPollUrl(`/api/applications/${applicationId}/screen-status${since}`);
         return;
       }
       if (!data.evaluation) {

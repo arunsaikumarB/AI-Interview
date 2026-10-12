@@ -85,6 +85,7 @@ export async function POST(request: Request, { params }: Ctx) {
       });
     }
 
+    const startedAt = new Date().toISOString();
     const started = getManualScreeningRunner().start(params.id);
     if (started === "BUSY") {
       return Response.json(
@@ -94,6 +95,7 @@ export async function POST(request: Request, { params }: Ctx) {
     }
     return jsonOk({
       status: started,
+      startedAt,
       advisoryOnly: true,
       message: "AI screening started. Application stage/status unchanged — recruiter decides.",
     });

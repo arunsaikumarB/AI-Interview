@@ -8,6 +8,12 @@
 
 export const MANUAL_SCREENING_MAX_RUNNING = 2;
 const KEEP_FINISHED_MS = 10 * 60 * 1000;
+/** Longest a screening can run (two 4-minute AI attempts plus waiting); after this it is reported as not finished. */
+export const SCREENING_GIVE_UP_MS = 10 * 60 * 1000;
+/** Clock difference allowed between this server and the database when matching a new result. */
+export const SCREENING_CLOCK_SLACK_MS = 60 * 1000;
+const NO_RUN_MESSAGE = "No screening is running for this candidate. Run AI screening again.";
+const NOT_FINISHED_MESSAGE = "The screening did not finish. Run AI screening again.";
 
 export type ManualScreeningStatus = "PROCESSING" | "COMPLETED" | "FAILED";
 
@@ -29,6 +35,30 @@ export function screeningFailureMessage(err: unknown): string {
   }
   if (code === "INVALID_JSON") return "The AI returned an answer that could not be read. Try again.";
   return "Screening failed. Try again.";
+}
+
+/** `since` from the status URL: an ISO time no later than now (plus clock slack) and under a day old. */
+export function parseScreeningSince(raw: string | null, now: number = Date.now()): Date | null {
+  if (!raw || raw.length > 40) return null;
+  const t = Date.parse(raw);
+  if (!Number.isFinite(t) || t > now + SCREENING_CLOCK_SLACK_MS || now - t > 24 * 3600_000) return null;
+  return new Date(t);
+}
+
+/**
+ * Status when this server process has no record of the run (the request reached another app
+ * process, or this one restarted): a result saved since the click means it finished; otherwise it
+ * may still be running elsewhere until SCREENING_GIVE_UP_MS has passed.
+ */
+export function fallbackScreeningStatus(args: {
+  since: Date | null;
+  resultSince: boolean;
+  now?: number;
+}): { status: ManualScreeningStatus; error?: string } {
+  if (!args.since) return { status: "FAILED", error: NO_RUN_MESSAGE };
+  if (args.resultSince) return { status: "COMPLETED" };
+  if ((args.now ?? Date.now()) - args.since.getTime() < SCREENING_GIVE_UP_MS) return { status: "PROCESSING" };
+  return { status: "FAILED", error: NOT_FINISHED_MESSAGE };
 }
 
 export function createManualScreeningRunner(
