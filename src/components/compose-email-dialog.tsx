@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
   CATEGORY_LABELS,
@@ -160,14 +161,24 @@ export function ComposeEmailDialog({
     }
   }
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 sm:items-center">
-      <div className="glass-modal max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border p-5">
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      // A stray backdrop click must not discard a half-written email; Escape and Close still work.
+      disablePointerDismissal
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="block max-h-[90vh] max-w-[calc(100%-2rem)] overflow-y-auto rounded-2xl sm:max-w-2xl"
+      >
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h2 className="text-lg font-medium text-foreground">Compose email</h2>
+            <DialogTitle className="text-lg leading-7 font-medium text-foreground">
+              Compose email
+            </DialogTitle>
             <p className="text-xs text-muted-foreground">To: {toEmail}</p>
           </div>
           <Badge
@@ -291,7 +302,7 @@ export function ComposeEmailDialog({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

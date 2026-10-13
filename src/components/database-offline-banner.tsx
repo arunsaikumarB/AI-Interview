@@ -39,7 +39,7 @@ export function DatabaseOfflineBanner() {
   return (
     <div
       role="alert"
-      className="sticky top-0 z-50 border-b border-destructive bg-destructive px-4 py-2 text-center text-sm font-medium text-destructive-foreground"
+      className="sticky top-0 z-sticky border-b border-destructive bg-destructive px-4 py-2 text-center text-sm font-medium text-destructive-foreground"
     >
       Database offline — Postgres is unreachable. Run{" "}
       <code className="rounded bg-black/20 px-1">docker compose up -d</code>{" "}

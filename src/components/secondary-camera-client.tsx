@@ -21,6 +21,7 @@ import type { SecondaryFramingStatus } from "@/lib/secondary-integrity-client";
 import { secondaryCandidateWarning } from "@/lib/integrity";
 import type { SecondaryIntegrityKind } from "@/lib/integrity";
 import { createOrientedRecordStream, cameraBufferNeedsPortraitRotate } from "@/lib/secondary-record-orientation";
+import { fetchSecondaryJson } from "@/lib/secondary-pairing-fetch";
 
 type Meta = {
   jobTitle: string;
@@ -111,6 +112,12 @@ async function openCameraAndMic(): Promise<MediaStream> {
  */
 export function SecondaryCameraClient({ code }: { code: string }) {
   const [meta, setMeta] = useState<Meta | null>(null);
+  const [loadFailure, setLoadFailure] = useState<{
+    message: string;
+    retryable: boolean;
+  } | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [camReady, setCamReady] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -450,19 +457,33 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   );
 
   useEffect(() => {
-    (async () => {
-      const res = await fetch(`/api/interview/secondary/${code}`);
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Secondary camera connection unavailable.");
-        return;
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadFailure(null);
+    void (async () => {
+      const result = await fetchSecondaryJson<Meta>(
+        `/api/interview/secondary/${code}`,
+      );
+      if (cancelled) return;
+      if (result.ok) {
+        setMeta(result.data);
+      } else {
+        setLoadFailure({ message: result.message, retryable: result.retryable });
       }
-      setMeta(data);
     })();
+    return () => {
+      cancelled = true;
+    };
+  }, [code, loadAttempt]);
+
+  useEffect(() => {
     return () => {
       void stopAll(true);
     };
-  }, [code, stopAll]);
+  }, [stopAll]);
 
   // Poll for shouldRecord / interview start
   useEffect(() => {
@@ -668,6 +689,13 @@ export function SecondaryCameraClient({ code }: { code: string }) {
       setUiState("Secondary camera disconnected");
       return;
     }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError(
+        "This browser can't use the camera. Open this link in Safari (iPhone) or Chrome (Android) instead of an in-app browser.",
+      );
+      setUiState("Secondary camera disconnected");
+      return;
+    }
     try {
       const stream = await openCameraAndMic();
       await attachStream(stream);
@@ -676,7 +704,13 @@ export function SecondaryCameraClient({ code }: { code: string }) {
       const name = err instanceof DOMException ? err.name : "";
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
         setError(
-          "Camera and microphone permission required. Tap Allow, then choose Allow in the browser prompt.",
+          "Camera or microphone access was blocked. iPhone: tap \"aA\" in the address bar → Website Settings → set Camera and Microphone to Allow (or Settings → Safari → Camera / Microphone). Android Chrome: tap the lock icon → Permissions → Allow. Then reload this page.",
+        );
+      } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+        setError("No usable camera or microphone was found on this device.");
+      } else if (name === "NotReadableError" || name === "AbortError") {
+        setError(
+          "The camera is in use by another app. Close other camera apps, then tap Allow camera & microphone again.",
         );
       } else {
         setError("Could not access camera/microphone on this device.");
@@ -688,12 +722,16 @@ export function SecondaryCameraClient({ code }: { code: string }) {
   async function pairWithSession() {
     setError(null);
     setUiState("Connecting secondary camera…");
-    const res = await fetch(`/api/interview/secondary/${code}/connect`, {
-      method: "POST",
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error ?? "Could not pair with interview");
+    const result = await fetchSecondaryJson<unknown>(
+      `/api/interview/secondary/${code}/connect`,
+      { method: "POST" },
+    );
+    if (!result.ok) {
+      setError(
+        result.retryable
+          ? `${result.message} Then tap Pair again.`
+          : result.message,
+      );
       setUiState("Secondary camera disconnected");
       return;
     }
@@ -702,23 +740,54 @@ export function SecondaryCameraClient({ code }: { code: string }) {
     startStreaming();
   }
 
-  if (error && !meta) {
+  if (loadFailure && !meta) {
     return (
-      <div className="mx-auto max-w-md rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-destructive">
+      <div
+        role="alert"
+        className="mx-auto max-w-md rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-destructive"
+      >
         <div className="mb-3 text-foreground">
           <BrandLogo size="header" />
         </div>
         <p className="font-medium">Secondary camera connection unavailable.</p>
-        <p className="mt-2 text-sm">{error}</p>
+        <p className="mt-2 text-sm">{loadFailure.message}</p>
+        {loadFailure.retryable ? (
+          <Button
+            className="mt-4 w-full"
+            onClick={() => setLoadAttempt((n) => n + 1)}
+          >
+            Try again
+          </Button>
+        ) : null}
       </div>
     );
   }
 
   if (!meta) {
     return (
-      <div className="mx-auto max-w-md space-y-3 p-6 text-center">
+      <div
+        className="mx-auto max-w-md space-y-3 p-6 text-center"
+        role="status"
+        aria-live="polite"
+      >
         <BrandLogo size="header" />
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground">
+          Connecting to your interview…
+        </p>
+        {/* Server-rendered only: if the app script never starts on this phone, this appears after a delay. */}
+        {!hydrated ? (
+          <p className="delayed-reveal text-sm text-muted-foreground">
+            Still loading? Make sure this phone is on the same Wi‑Fi as the
+            interview laptop, open the link in Safari or Chrome, then reload this
+            page.
+          </p>
+        ) : null}
+        <noscript>
+          <p className="text-sm text-destructive">
+            JavaScript is turned off. Turn it on in your browser settings, then
+            reload this page.
+          </p>
+        </noscript>
       </div>
     );
   }

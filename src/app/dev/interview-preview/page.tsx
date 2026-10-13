@@ -165,7 +165,7 @@ export default function InterviewPreviewPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-4 left-4 z-50 max-w-md space-y-2 rounded-xl border border-sky-400/30 bg-zinc-950/95 p-3">
+      <div className="fixed bottom-4 left-4 z-sticky max-w-md space-y-2 rounded-xl border border-sky-400/30 bg-zinc-950/95 p-3">
         <p className="text-xs font-medium text-white">
           Preview {autoCycle ? "(auto-cycling)" : "(manual)"}
         </p>

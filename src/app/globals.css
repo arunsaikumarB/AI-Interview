@@ -336,6 +336,18 @@
 }
 
 @layer components {
+  /* Hidden, then shown after a delay without JavaScript (fallback hints on server-rendered pages). */
+  .delayed-reveal {
+    opacity: 0;
+    animation: delayed-reveal 0.3s ease-out 10s forwards;
+  }
+
+  @keyframes delayed-reveal {
+    to {
+      opacity: 1;
+    }
+  }
+
   .app-canvas {
     position: relative;
     z-index: 1;

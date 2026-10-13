@@ -113,6 +113,23 @@ const config: Config = {
       transitionDuration: {
         ui: "160ms",
       },
+      /**
+       * Layering scale — use these names, not raw numbers.
+       * Page content lives inside `.app-canvas` (its own stacking context at z 1), so
+       * nothing inside a page can rise above overlays. Overlays must render through the
+       * shared Base UI portals (components/ui/dialog, sheet, select, dropdown-menu) so a
+       * card's `backdrop-filter` / `transform` cannot trap or clip them.
+       *   sticky  — sticky banners / headers inside the page
+       *   modal   — dialog + sheet backdrop and popup (nested dialogs stack by portal order)
+       *   popover — select / menu popups; above modal so they work inside dialogs
+       *   toast   — notifications (sonner sets its own higher value)
+       */
+      zIndex: {
+        sticky: "30",
+        modal: "50",
+        popover: "60",
+        toast: "100",
+      },
       keyframes: {
         shimmer: {
           "100%": { transform: "translateX(100%)" },

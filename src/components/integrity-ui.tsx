@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand-logo";
 
@@ -23,14 +24,15 @@ export function IntegrityWarningDialog({
   onDismiss: () => void;
   stayHint?: string;
 }) {
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
   // Warning N of 3 (secondary) or N of 2 (Strict). Dialog stays until they confirm.
   const of = Math.max(warningOf, 1);
 
-  return (
+  // Portal to <body> so no ancestor stacking context / containing block can trap it.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 p-4"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="integrity-warning-title"
@@ -54,7 +56,8 @@ export function IntegrityWarningDialog({
           Continue
         </Button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
