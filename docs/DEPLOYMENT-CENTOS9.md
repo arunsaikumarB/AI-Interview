@@ -515,3 +515,46 @@ curl -sk https://10.0.12.218/api/health      # {"ok":true,...,"ollama":{"ok":tru
 ```
 
 From another PC: `https://10.0.12.218/login` opens, sign-in reaches the dashboard, and `http://10.0.12.218:5000`, `:4000`, `:8010`, `:11434`, `:8001` are **not** reachable.
+
+## 13. Public access without VPN (Cloudflare Tunnel)
+
+Candidates and their phones open `https://<hostname>` from anywhere. The app, database, AI and files stay on
+this server; `cloudflared` makes an outbound connection to Cloudflare, so no inbound port is opened. Traffic is
+decrypted at Cloudflare's edge, so this needs company approval. Free plan is enough.
+
+Needs: a domain whose DNS is on Cloudflare (a subdomain such as `hireos.<company domain>` is fine), and outbound
+TCP/UDP **7844** from this server to Cloudflare.
+
+**1. Cloudflare dashboard** (Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared):
+
+- Name `hireos`. On the install page, copy the token (the long string after `--token`). Do not run the shown command.
+- Public hostname: subdomain + domain = `<hostname>`; Service type **HTTPS**, URL **127.0.0.1:443**;
+  Additional application settings → TLS → **No TLS Verify: on**. Save.
+- For the domain (not Zero Trust): Speed → **Rocket Loader off**; Scrape Shield → **Email Address Obfuscation off**;
+  Security → Bots → **Bot Fight Mode off**; do not enable Web Analytics auto-setup. They inject scripts the
+  app's security policy blocks. SSL/TLS → Edge Certificates → **Always Use HTTPS on**.
+
+**2. On this server** (as root; asks for the token, input hidden):
+
+```bash
+cd APP_DIR && git pull --ff-only
+sudo bash scripts/setup-cloudflare-tunnel.sh <hostname>
+```
+
+It adds an nginx entry on `127.0.0.1:443` that only the tunnel can reach (`/etc/nginx/conf.d/hireos-tunnel.conf`;
+the visitor IP comes from Cloudflare, so `TRUST_PROXY=1` stays), installs `cloudflared` from Cloudflare's package
+repository, runs it as service `hireos-tunnel` (token in `/etc/cloudflared/hireos-tunnel.env`, root-only), checks
+`https://<hostname>` end to end, and only then sets `NEXT_PUBLIC_APP_URL="https://<hostname>"` in `.env` (backup
+kept). Any failure stops with the reason and leaves `.env` unchanged. Safe to run again.
+
+**3. Rebuild** as `APP_USER`: `cd APP_DIR && bash scripts/deploy-release.sh` (section 11).
+
+**4. Use the public address for everything.** Staff should sign in at `https://<hostname>`: interview and assessment
+links they copy use the address in their browser, so links copied on `https://10.0.12.218` only work on VPN.
+
+**Check:** `https://<hostname>/login` opens on a phone on mobile data; sign in; create an interview link, open it on a
+phone, pair the phone camera; complete one full interview. Cloudflare ends any single request after 100 seconds; if
+an AI reply ever shows an error on a slow (CPU-only) server, report it.
+
+Undo: `sudo systemctl disable --now hireos-tunnel && sudo rm /etc/nginx/conf.d/hireos-tunnel.conf && sudo systemctl reload nginx`,
+restore the `.env` backup, rebuild.
