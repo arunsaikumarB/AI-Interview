@@ -470,6 +470,11 @@ deletes the running app's files mid-build, the app crashes, and nginx shows **50
 All releases share `APP_DIR/.env` (symlinked), so `STORAGE_ROOT` **must** be an absolute path
 (`/data/hireos/storage`, section 10) — the script refuses to deploy otherwise.
 
+The phone camera's detection models (`public/mediapipe`) are not in git. Run `npm run setup:mediapipe` once in
+`APP_DIR` (and again after it changes); each release copies them from there before building. Deploying by hand
+instead of with the script: run `npm run setup:mediapipe` before `npm run build`, then check
+`curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5000/mediapipe/wasm/vision_wasm_internal.js` returns 200.
+
 **One-time setup** (as root unless noted):
 
 ```bash

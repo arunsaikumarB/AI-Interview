@@ -115,6 +115,14 @@ log "preparing ${sha:0:7} in $rel (live app keeps running)"
 git -C "$APP_DIR" worktree add --detach --quiet "$rel" "$sha"
 ln -s "$ENV_FILE" "$rel/.env"
 
+# public/mediapipe is gitignored (created in APP_DIR by `npm run setup:mediapipe`); without it the
+# secondary-camera detectors cannot load.
+if [[ -d "$APP_DIR/public/mediapipe/wasm" ]]; then
+  cp -r "$APP_DIR/public/mediapipe" "$rel/public/"
+else
+  log "WARNING: $APP_DIR/public/mediapipe is missing; run 'npm run setup:mediapipe' in $APP_DIR (secondary-camera detection will not work)"
+fi
+
 discard() {
   git -C "$APP_DIR" worktree remove --force "$rel" 2>/dev/null || rm -rf "$rel"
   git -C "$APP_DIR" worktree prune

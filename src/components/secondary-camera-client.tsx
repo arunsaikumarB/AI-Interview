@@ -242,10 +242,15 @@ export function SecondaryCameraClient({ code }: { code: string }) {
     await flushQueue();
     if (finalize) {
       try {
-        await fetch(`/api/interview/secondary/${code}/recording/finalize`, {
-          method: "POST",
-        });
-        setRecLabel("Secondary recording saved");
+        const res = await fetch(
+          `/api/interview/secondary/${code}/recording/finalize`,
+          { method: "POST" },
+        );
+        setRecLabel(
+          res.ok && pendingQueue.current.length === 0
+            ? "Secondary recording saved"
+            : "Secondary recording could not be fully saved",
+        );
       } catch {
         setRecLabel("Secondary recording interrupted");
       }
