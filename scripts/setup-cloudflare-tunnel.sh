@@ -88,6 +88,7 @@ if ! nginx -t >/dev/null 2>&1; then
   die "nginx rejected the tunnel config; removed it, nothing else changed"
 fi
 systemctl reload nginx
+sleep 3   # reload returns before nginx workers switch to the new config
 body="$(curl -sk --max-time 10 --resolve "$host:443:127.0.0.1" "https://$host/api/health" || true)"
 healthy_body "$body" || die "nginx tunnel entry does not reach the app (check $TUNNEL_SITE)"
 log "nginx tunnel entry OK ($TUNNEL_SITE)"

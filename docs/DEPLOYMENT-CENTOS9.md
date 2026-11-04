@@ -558,3 +558,33 @@ an AI reply ever shows an error on a slow (CPU-only) server, report it.
 
 Undo: `sudo systemctl disable --now hireos-tunnel && sudo rm /etc/nginx/conf.d/hireos-tunnel.conf && sudo systemctl reload nginx`,
 restore the `.env` backup, rebuild.
+
+## 14. Public access without VPN (company domain + free Let's Encrypt certificate)
+
+Free, permanent, and nothing leaves the company network except normal HTTPS. Use this or section 13, not both.
+
+**1. IT (one-time):**
+
+- Public DNS record `hireos.logisofttechinc.com` (A) → the office's public IP.
+- Firewall/router: forward public TCP **80** and **443** to `10.0.12.218` (80 is only for certificate renewal; the
+  app redirects it to HTTPS). Keep every other port closed (section 6).
+- If the name does not open from inside the office (router without NAT loopback): internal DNS record
+  `hireos.logisofttechinc.com` → `10.0.12.218`.
+
+**2. On this server** (as root):
+
+```bash
+cd APP_DIR && git pull --ff-only
+sudo bash scripts/setup-public-domain.sh hireos.logisofttechinc.com it@<company domain>
+```
+
+It installs certbot (EPEL), lets nginx answer Let's Encrypt on port 80, gets the certificate, points
+`/etc/nginx/conf.d/hireos.conf` at it (backup kept; any change nginx rejects is rolled back), enables automatic
+renewal (`certbot-renew.timer`, reloads nginx), checks `https://hireos.logisofttechinc.com` with a trusted
+certificate, and only then sets `NEXT_PUBLIC_APP_URL` in `.env` (backup kept). Safe to run again.
+
+**3. Rebuild** as `APP_USER`: `cd APP_DIR && bash scripts/deploy-release.sh` (section 11).
+
+**4. Check** from a phone on mobile data: `https://hireos.logisofttechinc.com/login` opens with no warning; sign in;
+create an interview link, open it on a phone, pair the phone camera, complete one interview. Staff should sign in at
+this address too: links they copy use the address in their browser.
